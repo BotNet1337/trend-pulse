@@ -44,6 +44,18 @@ _DEFAULT_CLUSTER_COSINE_THRESHOLD = 0.75
 # global default threshold is needed.
 _DEFAULT_SCORER_RECENT_WINDOW_SECONDS = 3600
 
+# Alert delivery (task-009). Named, non-secret defaults — never magic literals.
+# The Telegram Bot API base; `<token>` is appended per-request and NEVER logged.
+# HTTP timeout bounds a hung Telegram/webhook call (seconds). The retry policy:
+# `dispatch_alert` retries TRANSIENT failures up to `alert_max_retries` times with
+# exponential backoff starting at `alert_retry_backoff_seconds`, capped at
+# `alert_retry_backoff_max_seconds`, after which the alert is marked `failed`.
+_DEFAULT_TELEGRAM_API_BASE_URL = "https://api.telegram.org"
+_DEFAULT_ALERT_HTTP_TIMEOUT_SECONDS = 10
+_DEFAULT_ALERT_MAX_RETRIES = 5
+_DEFAULT_ALERT_RETRY_BACKOFF_SECONDS = 2
+_DEFAULT_ALERT_RETRY_BACKOFF_MAX_SECONDS = 600
+
 
 class Settings(BaseSettings):
     """Runtime configuration read from the process environment.
@@ -78,6 +90,13 @@ class Settings(BaseSettings):
 
     # --- Scorer (task-008). Non-secret, settable; defaults above. ---
     scorer_recent_window_seconds: int = _DEFAULT_SCORER_RECENT_WINDOW_SECONDS
+
+    # --- Alert delivery (task-009). Non-secret, settable; defaults above. ---
+    telegram_api_base_url: str = _DEFAULT_TELEGRAM_API_BASE_URL
+    alert_http_timeout_seconds: int = _DEFAULT_ALERT_HTTP_TIMEOUT_SECONDS
+    alert_max_retries: int = _DEFAULT_ALERT_MAX_RETRIES
+    alert_retry_backoff_seconds: int = _DEFAULT_ALERT_RETRY_BACKOFF_SECONDS
+    alert_retry_backoff_max_seconds: int = _DEFAULT_ALERT_RETRY_BACKOFF_MAX_SECONDS
 
     telegram_api_id: int | None = None
     telegram_api_hash: str | None = None

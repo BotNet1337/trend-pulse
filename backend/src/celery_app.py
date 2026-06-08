@@ -20,9 +20,11 @@ celery_app = Celery(
     "trendpulse",
     broker=_settings.redis_url,
     backend=_settings.redis_url,
-    # Tasks live in `pipeline.tasks`; `include` defers their import to worker
-    # startup, breaking the `celery_app` <-> `pipeline.tasks` import cycle.
-    include=["pipeline.tasks"],
+    # Tasks live in `pipeline.tasks` + `alerts.tasks`; `include` defers their
+    # import to worker startup, breaking the `celery_app` <-> task-module import
+    # cycle. `alerts.tasks.dispatch_alert` (task-009) is unrouted → it lands on the
+    # default `celery` queue the worker already consumes (no compose change).
+    include=["pipeline.tasks", "alerts.tasks"],
 )
 celery_app.conf.task_serializer = "json"
 celery_app.conf.accept_content = ["json"]

@@ -88,7 +88,7 @@ python_version = "3.12"
 # config checked the single `trendpulse` package; this preserves that scope —
 # src only, tests excluded). `mypy_path = src` + `explicit_package_bases` make
 # src/ the import root so the flat top-level names resolve without a parent pkg.
-packages = ["api", "collector", "pipeline", "storage", "config", "celery_app", "scheduler"]
+packages = ["api", "alerts", "collector", "pipeline", "scorer", "storage", "config", "celery_app", "scheduler"]
 mypy_path = "src"
 explicit_package_bases = true
 strict = true

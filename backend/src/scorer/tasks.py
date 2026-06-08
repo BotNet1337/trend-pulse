@@ -178,7 +178,7 @@ def _create_alert_idempotent(
     cluster: Cluster,
     score: float,
     channels_count: int,
-) -> bool:
+) -> int | None:
     """Insert an `Alert` for `(user_id, cluster_id)`; skip if it already exists.
 
     A pre-check `SELECT` short-circuits the common already-alerted case, and the
@@ -186,39 +186,40 @@ def _create_alert_idempotent(
     `uq_alerts_user_cluster` unique constraint (migration 0003): a concurrent tick
     that inserted first raises `IntegrityError`, which rolls back ONLY this savepoint
     (not the surrounding transaction's earlier work) and is treated as a no-op
-    (AC6 — idempotent, race-safe). Returns True iff a new alert was created.
+    (AC6 — idempotent, race-safe). Returns the NEW alert id iff one was created,
+    else `None` (so the caller can enqueue delivery only for newly-created alerts).
     """
     existing = session.scalar(
         select(Alert.id).where(Alert.user_id == user_id).where(Alert.cluster_id == cluster.id)
     )
     if existing is not None:
-        return False
+        return None
+    alert = Alert(
+        user_id=user_id,
+        cluster_id=cluster.id,
+        score=score,
+        channels_count=channels_count,
+        first_seen=cluster.first_seen,
+    )
     try:
         with session.begin_nested():
-            session.add(
-                Alert(
-                    user_id=user_id,
-                    cluster_id=cluster.id,
-                    score=score,
-                    channels_count=channels_count,
-                    first_seen=cluster.first_seen,
-                )
-            )
+            session.add(alert)
     except IntegrityError:
-        return False
-    return True
+        return None
+    session.flush()
+    return alert.id
 
 
-def _score_user(session: Session, *, user_id: int, window_start: datetime) -> int:
+def _score_user(session: Session, *, user_id: int, window_start: datetime) -> list[int]:
     """Score one user's fresh clusters; create alerts on topic-match + threshold.
 
-    Returns the number of alerts created this tick (0 when none cross/match).
+    Returns the ids of alerts created this tick (empty when none cross/match).
     """
     topic_configs = _topic_configs(session, user_id=user_id)
     if not topic_configs:
-        return 0
+        return []
 
-    alerts_created = 0
+    created_alert_ids: list[int] = []
     for cluster in _recent_clusters(session, user_id=user_id, window_start=window_start):
         config = topic_configs.get(cluster.topic)
         if config is None:
@@ -236,15 +237,28 @@ def _score_user(session: Session, *, user_id: int, window_start: datetime) -> in
         if viral_score <= config.threshold:
             # Below (or at) threshold → no alert (AC3).
             continue
-        if _create_alert_idempotent(
+        alert_id = _create_alert_idempotent(
             session,
             user_id=user_id,
             cluster=cluster,
             score=viral_score,
             channels_count=inputs.unique_channels_count,
-        ):
-            alerts_created += 1
-    return alerts_created
+        )
+        if alert_id is not None:
+            created_alert_ids.append(alert_id)
+    return created_alert_ids
+
+
+def _enqueue_delivery(alert_id: int) -> None:
+    """Enqueue alert delivery (task-009). Lazy import avoids a scorer↔alerts cycle.
+
+    This is the sanctioned cross-task touch: the scorer hands a NEW alert id to the
+    `alerts` domain via its public `dispatch_alert` task (CONVENTIONS: cross-module
+    via service interfaces; JSON-serializable id, not an ORM object).
+    """
+    from alerts.tasks import dispatch_alert
+
+    dispatch_alert.apply_async(args=(alert_id,))
 
 
 def score_recent_clusters() -> int:
@@ -252,14 +266,25 @@ def score_recent_clusters() -> int:
 
     Returns the total number of alerts created across all users this tick. The beat
     seam `pipeline.tasks.score_tick` delegates here (one scheduled scorer tick).
+    Each newly-created alert is enqueued for delivery (task-009) AFTER its session
+    commits, so the row is visible when `dispatch_alert` loads it; only newly-created
+    alerts are enqueued (the scorer's idempotency is preserved).
     """
     settings = get_settings()
     window_start = utcnow() - timedelta(seconds=settings.scorer_recent_window_seconds)
-    total_alerts = 0
+    created_alert_ids: list[int] = []
     with get_session() as session:
         user_ids = list_active_user_ids(session)
     for user_id in user_ids:
         with get_session() as session:
-            total_alerts += _score_user(session, user_id=user_id, window_start=window_start)
-    logger.info("score_recent_clusters alerts_created=%d users=%d", total_alerts, len(user_ids))
-    return total_alerts
+            created_alert_ids.extend(
+                _score_user(session, user_id=user_id, window_start=window_start)
+            )
+    for alert_id in created_alert_ids:
+        _enqueue_delivery(alert_id)
+    logger.info(
+        "score_recent_clusters alerts_created=%d users=%d",
+        len(created_alert_ids),
+        len(user_ids),
+    )
+    return len(created_alert_ids)

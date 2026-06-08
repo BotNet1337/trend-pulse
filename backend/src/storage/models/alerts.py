@@ -2,10 +2,18 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, UniqueConstraint
+from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from storage.models.base import UserOwnedBase, utcnow
+
+# Delivery lifecycle states (task-009). `pending` on insert, `delivered` once at
+# least one channel succeeds, `failed` when retries are exhausted or a permanent
+# error occurs. Named, not magic literals (CONVENTIONS).
+DELIVERY_STATUS_PENDING = "pending"
+DELIVERY_STATUS_DELIVERED = "delivered"
+DELIVERY_STATUS_FAILED = "failed"
+_DELIVERY_STATUS_MAX = 16
 
 
 class Alert(UserOwnedBase):
@@ -25,3 +33,15 @@ class Alert(UserOwnedBase):
         DateTime(timezone=True), nullable=False, default=utcnow
     )
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Delivery state machine (task-009). NOT NULL with a server_default so existing
+    # rows backfill to `pending` (additive, backward-compatible migration 0004).
+    delivery_status: Mapped[str] = mapped_column(
+        String(_DELIVERY_STATUS_MAX),
+        nullable=False,
+        server_default=DELIVERY_STATUS_PENDING,
+        default=DELIVERY_STATUS_PENDING,
+    )
+    # Count of delivery attempts (used by the retry policy / observability).
+    delivery_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0", default=0
+    )

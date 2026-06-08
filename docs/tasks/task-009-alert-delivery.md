@@ -1,12 +1,12 @@
 ---
 id: TASK-009
 title: Alert delivery — Telegram Bot API + webhook (notifier, Celery dispatch, idempotent, retried)
-status: planned        # planned → in-progress → review → done
+status: done        # planned → in-progress → review → done
 owner: backend
 created: 2026-06-08
 updated: 2026-06-08
-baseline_commit: ""    # set by executor at ship time
-branch: ""             # set by executor at ship time
+baseline_commit: "46470773a385f7232ef28d396c7e051c251eac10"
+branch: "gsd/phase-009-alert-delivery"
 tags: [backend, alerts, notifier, telegram, webhook, celery, delivery, ssrf]
 ---
 
@@ -103,20 +103,30 @@ tags: [backend, alerts, notifier, telegram, webhook, celery, delivery, ssrf]
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
-baseline_commit: ""
-branch: ""
-lock: ""
+current_step: done
+baseline_commit: "46470773a385f7232ef28d396c7e051c251eac10"
+branch: "gsd/phase-009-alert-delivery"
+lock: "loop-009"
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + runtime + real behavior)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (applicable: SSRF/webhook + secrets — validate scheme/host, block internal/link-local ranges, no token/secret leakage in payload or logs, bot-token via env)
-- [ ] 6 ship (confirm plan done → PR)
-- [ ] 7 learnings (auto)
+- [x] 4 verify (G2 — tests + runtime + real behavior)
+- [x] 5 review (auto — HIGH SSRF DNS-rebinding + MEDIUM token-repr fixed)
+- [x] 5.5 security (REQUIRED — HIGH SSRF rebinding fixed; PASS)
+- [x] 6 ship (PR #10, squash-merged)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план составлен по overview §3/§4/§6 и high-level-architecture §3/§4; зависит от task-008 (scorer создаёт строки alert) и task-003 (auth/delivery-config); security 5.5 applicable — SSRF на user-supplied webhook URL + secret handling)
+
+
+### Step 3 do · 4 verify · 5 review · 5.5 security · loop-009
+- **do (TDD, FLAT):** `alerts/` — formatting (pure msg + webhook payload overview §4), errors, security (SSRF guard), backends (DeliveryBackend proto + TelegramBotBackend httpx + WebhookBackend), notifier (idempotent deliver + plan-gating), tasks (`dispatch_alert` retry/backoff). Migration 0004 (down 0003): Alert.delivery_status/delivery_attempts + User delivery-config (telegram_bot_token/chat_id/webhook_url/plan, all additive server_default). scorer enqueues `dispatch_alert` для новых alert'ов. ci-fast green (mypy strict). RED→GREEN: test_formatting AC1.
+- **verify (G2):** integration — end-to-end доставка через локальный фейк-webhook + замоканный Bot API → `delivered` (AC2/AC3/AC6); миграция chain 0001→0002→0003→0004. AC1/4/5/7 unit (42 alerts unit).
+- **review (opus) + security (opus) → BOTH flagged the SAME HIGH (blocking) → fixed (debug cycle 1):**
+  - **HIGH SSRF DNS-rebinding TOCTOU:** `validate_webhook_url` резолвил DNS, а `httpx.post` резолвил повторно при коннекте → low-TTL DNS отдаёт public IP на валидации, private/metadata на коннекте → байпас. **FIX:** `PinnedIPTransport` — резолв ОДИН раз, валидация всех IP (is_global deny-list: 127/8, RFC1918, ::1, 169.254/16+metadata, 0.0.0.0, fc00::/7, fe80::/10, IPv4-mapped-IPv6), пиннинг TCP-коннекта к провалидированному IP; Host/SNI/cert — по реальному hostname; follow_redirects=False. Регресс-тест (public@validate→private@connect → blocked). 
+  - **MEDIUM token-repr:** `TelegramTarget.bot_token` = `field(repr=False)` (не светится в repr/логах).
+  - Также: добавил `alerts`+`scorer` в `mypy.packages` (были не покрыты strict — упущение task-008/009) → всплыли и исправлены 3 type-ошибки (Task generic args, apply_async args tuple). Integration-патч переведён на `build_ssrf_safe_client`.
+- **security 5.5 PASS** после фикса. Остаток (LOW, → task-012): bot_token/webhook_url plaintext at-rest (шифрование), как OAuth-токены task-003.
