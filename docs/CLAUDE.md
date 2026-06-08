@@ -8,6 +8,7 @@ derive patterns from general knowledge.
 
 - **Product:** [`product/overview.md`](./product/overview.md) — what it is, architecture, monetization, roadmap, compliance.
 - **Conventions:** [`CONVENTIONS.md`](./CONVENTIONS.md) — coding hard rules (enforced by `trendpulse-review` + the forbidden-patterns hook).
+- **Full system test:** [`full-system-test.md`](./full-system-test.md) — end-to-end test runbook (CI + live external integrations + prod IaC).
 - **Codemaps:** [`CODEMAPS/`](./CODEMAPS/) — structural maps to read first (modules, tasks/queues, events).
 - **Tasks:** [`tasks/`](./tasks/) — surgical-change task docs + [`tasks/tasks-index.md`](./tasks/tasks-index.md).
 - **Architecture:** [`architecture/`](./architecture/):
