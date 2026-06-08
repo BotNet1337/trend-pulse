@@ -79,5 +79,14 @@ def enqueue_active_user_batches() -> None:
 
 @celery_app.task(name=SCORE_TICK_TASK)
 def score_tick() -> None:
-    """Scorer tick seam (task-008). No-op now; scoring formulas land later."""
-    logger.info("score_tick (seam, no-op)")
+    """Beat-scheduled scorer tick (task-006 seam, task-008 body).
+
+    Delegates to `scorer.score_recent_clusters()` — the single scheduled scorer
+    entry (mirrors `run_user_batch → process_user_batch`): per active user it scores
+    fresh clusters and creates threshold-crossing alerts idempotently. The scorer is
+    imported lazily so this module stays free of the `scorer` package at import time.
+    """
+    from scorer.tasks import score_recent_clusters
+
+    created = score_recent_clusters()
+    logger.info("score_tick created_alerts=%d", created)
