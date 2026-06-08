@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from celery_app import celery_app
+from pipeline.batch_processor import process_user_batch
 from pipeline.constants import (
     BATCH_QUEUE,
     ENQUEUE_BATCHES_TASK,
@@ -47,17 +48,17 @@ def run_user_batch(user_id: int) -> None:
 
     Acquires the user's batch lock; if it is already held, the batch is a clean
     no-op ("skipped: locked", AC2) so a double-enqueue from beat cannot run two
-    batches for the same user in parallel. When acquired it does placeholder work
-    (the real pipeline lands in task-007) and always releases the lock on exit.
+    batches for the same user in parallel. When acquired it runs the pipeline body
+    (`process_user_batch`: drain → dedup → normalize → embed → cluster → persist,
+    task-007) and always releases the lock on exit.
     """
     redis = get_redis_client()
     with user_batch_lock(redis, user_id) as acquired:
         if not acquired:
             logger.info("run_user_batch skipped: locked user_id=%s", user_id)
             return
-        # SEAM (task-007): idempotent drain of the user's slice of the by-source
-        # buffer + pipeline (dedup → normalize → embed → cluster). No-op for now.
         logger.info("run_user_batch start user_id=%s", user_id)
+        process_user_batch(user_id)
 
 
 @celery_app.task(name=ENQUEUE_BATCHES_TASK)

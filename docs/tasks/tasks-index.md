@@ -13,7 +13,7 @@ Roadmap: [`../architecture/roadmap.md`](../architecture/roadmap.md). Epic A = Ba
 | [TASK-004](./task-004-watchlist-api.md) | Watchlist CRUD API (каналы, топики, alert-config) | A | done | backend | 002, 003 | 2026-06-08 |
 | [TASK-005](./task-005-collector-telegram.md) | Source abstraction + Telegram collector (пул, FLOOD_WAIT, dedup) | A | done | backend | 002 | 2026-06-08 |
 | [TASK-006](./task-006-celery-infra.md) | Celery infra — app, beat, per-user queues, locks | A | done | backend | 002, 005 | 2026-06-08 |
-| [TASK-007](./task-007-pipeline.md) | Pipeline — dedup→normalize→embed→cluster + batch | A | planned | backend | 005, 006 | 2026-06-08 |
+| [TASK-007](./task-007-pipeline.md) | Pipeline — dedup→normalize→embed→cluster + batch | A | done | backend | 005, 006 | 2026-06-08 |
 | [TASK-008](./task-008-scorer.md) | Scorer — velocity/engagement/cross_channel + alert trigger | A | planned | backend | 007 | 2026-06-08 |
 | [TASK-009](./task-009-alert-delivery.md) | Alert delivery — Telegram Bot + webhook | A | planned | backend | 008, 003 | 2026-06-08 |
 | [TASK-010](./task-010-billing-nowpayments.md) | Billing — крипто (NOWPayments) Free/Pro/Team + limits | A | planned | backend | 003, 004 | 2026-06-08 |

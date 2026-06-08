@@ -5,12 +5,15 @@
 # collector (TASK-005) needs MTProto access; api/db/redis stay isolated.
 services:
   worker:
-    image: ${APP_IMAGE}
+    # ml-enabled image (core + sentence-transformers/torch) for the embed
+    # pipeline (task-007); api/beat keep the lean ${APP_IMAGE}.
+    image: ${APP_IMAGE_ML}
     build:
       context: ../../backend
       args:
         PYTHON_VERSION: ${PYTHON_VERSION}
         UV_VERSION: ${UV_VERSION}
+        INSTALL_ML: "true"
     # Consume the default + the batch + scorer queues (TASK-006 routing); without
     # -Q the worker would only drain `celery` and beat-routed batch/score tasks
     # would pile up unconsumed.

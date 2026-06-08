@@ -123,3 +123,16 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "telethon.*"
 ignore_missing_imports = true
+
+# datasketch (MinHash, dedup step) ships without type stubs / py.typed; scope the
+# missing-import allowance to it instead of inline `# type: ignore` (CONVENTIONS).
+[[tool.mypy.overrides]]
+module = "datasketch.*"
+ignore_missing_imports = true
+
+# sentence-transformers (embedding model) is the heavy `ml`-group dep, imported
+# LAZILY inside the embed step (never at module import); it ships without type
+# stubs, so scope the missing-import allowance here instead of inline ignores.
+[[tool.mypy.overrides]]
+module = "sentence_transformers.*"
+ignore_missing_imports = true

@@ -1,12 +1,12 @@
 ---
 id: TASK-007
 title: Batch pipeline — dedup→normalize→embed→cluster + batch_processor (per-user)
-status: planned        # planned → in-progress → review → done
+status: done        # planned → in-progress → review → done
 owner: backend
 created: 2026-06-08
 updated: 2026-06-08
-baseline_commit: ""    # set by executor at ship time
-branch: ""             # set by executor at ship time
+baseline_commit: "f1a876202c9f23aca0184280369ff5fa495c74b8"
+branch: "gsd/phase-007-pipeline"
 tags: [backend, pipeline, ml, celery, dedup, embed, cluster, multi-tenancy]
 ---
 
@@ -108,20 +108,32 @@ Pipeline по [ADR-001](../architecture/adr-001-source-abstraction.md) **пла�
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
-baseline_commit: ""
-branch: ""
-lock: ""
+current_step: done
+baseline_commit: "f1a876202c9f23aca0184280369ff5fa495c74b8"
+branch: "gsd/phase-007-pipeline"
+lock: "loop-007"
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + runtime + real behavior)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security — N/A (pure compute; no auth/secret/input boundary)
-- [ ] 6 ship (confirm plan done → PR)
-- [ ] 7 learnings (auto)
+- [x] 4 verify (G2 — tests + runtime + real behavior)
+- [x] 5 review (auto — HIGH worker-image-ml + MEDIUM atomic-drain fixed)
+- [x] 5.5 security (N/A — pure compute)
+- [x] 6 ship (PR #8, squash-merged)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план составлен по overview §4 «Pipeline», ADR-001 (source abstraction, RawPost/NormalizedPost), high-level-architecture §4 шаг 3; зависит от task-005 (collector/RawPost + Redis-буфер) и task-006 (Celery app, per-user очереди, lock/max_instances=1); потребитель кластеров — task-008 scorer)
+
+
+### Step 3 do · 4 verify · 5 review · loop-007
+- **do (TDD, FLAT):** pure/immutable steps `pipeline/steps/{dedup(MinHash),normalize,embed(lazy ST),cluster(cosine)}`, `batch_processor.process_user_batch` (drain user's by-source buffers → steps → persist Cluster scoped user_id), wired into existing locked `run_user_batch` seam. embed lazy singleton (model name from settings), vectors == EMBEDDING_DIM(384). ci-fast 128 unit green (mypy strict; ST/datasketch mocked in unit).
+- **verify (G2):** real-model integration 2 passed against эфемерный Postgres (real MiniLM → embed→cluster→persist scoped user_id **AC3/AC6**; empty buffer no-op **AC5**). AC1/2/4/7 unit. 
+- **review (opus) → changes-required → fixed (debug cycle 1):**
+  - **HIGH:** shared image built `--no-dev` без `ml` → worker не мог импортировать sentence_transformers (pipeline падал бы в проде). **FIX:** Dockerfile build-ARG `INSTALL_ML`; **отдельный ml-worker-образ** `APP_IMAGE_ML` (worker.yml `INSTALL_ML=true`), api/beat/migration_runner остаются на лёгком `APP_IMAGE` (инвариант task-001 «torch только в worker»). Verified: `trendpulse-backend-ml:dev` имеет st 3.4.1+torch; `trendpulse-backend:dev` — без torch.
+  - **MEDIUM:** `buffer.drain_source` non-atomic (lrange+delete) → гонка с collector rpush теряла посты. **FIX:** атомарный MULTI/EXEC pipeline (lrange+delete за одну транзакцию).
+  - LOW/INFO: integration cross-session visibility, unbounded batch, pipeline import surface — отмечены, не блок.
+  - Также: integration `importorskip` перенесён внутрь тестов (collection не импортирует torch → lazy unit-тест надёжен при установленной ml локально).
+- **security 5.5:** N/A (pure compute, no auth/secret/input).
+- **DECISION (logged):** ml — отдельный worker-образ (build-arg), не общий; per task-001 инвариант.
