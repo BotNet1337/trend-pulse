@@ -18,3 +18,7 @@ development/env/sensitive.env
 .claude/
 _bmad/
 _bmad-output/
+
+# OS / editor cruft
+.DS_Store
+docs/.obsidian/
