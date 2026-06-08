@@ -1,7 +1,7 @@
 ---
 id: TASK-002
 title: Data model — SQLAlchemy 2.0 модели, Alembic baseline, multi-tenancy (pgvector)
-status: in-progress    # planned → in-progress → review → done
+status: done           # planned → in-progress → review → done
 owner: backend
 created: 2026-06-08
 updated: 2026-06-08
