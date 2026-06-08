@@ -1,12 +1,12 @@
 ---
 id: TASK-006
 title: Celery infra — app, beat, per-user queues, locks, scheduler
-status: planned        # planned → in-progress → review → done
+status: done        # planned → in-progress → review → done
 owner: backend
 created: 2026-06-08
 updated: 2026-06-08
-baseline_commit: ""    # set by executor at ship time
-branch: ""             # set by executor at ship time
+baseline_commit: "340fd70007a3dca8ee3b9778da33bae390000ac2"
+branch: "gsd/phase-006-celery-infra"
 tags: [backend, celery, redis, beat, queues, multi-tenancy, locks]
 ---
 
@@ -98,20 +98,31 @@ TrendPulse (см. [`../product/overview.md`](../product/overview.md) §4/§5, [`
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
-baseline_commit: ""
-branch: ""
-lock: ""
+current_step: done
+baseline_commit: "340fd70007a3dca8ee3b9778da33bae390000ac2"
+branch: "gsd/phase-006-celery-infra"
+lock: "loop-006"
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + runtime + real behavior)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (N/A — no auth/secret/input surface; Redis URL via env from task-001)
-- [ ] 6 ship (confirm plan done → PR)
-- [ ] 7 learnings (auto)
+- [x] 4 verify (G2 — tests + runtime + real behavior)
+- [x] 5 review (auto, adversarial — 1 HIGH queue-consumption + 1 MEDIUM import-side-effect fixed)
+- [x] 5.5 security (N/A — no auth/secret/input surface)
+- [x] 6 ship (PR #7, squash-merged)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план составлен по ADR-002 (per-user queues/locks/beat) и overview §4/§5, поверх скелета celery_app.py/scheduler.py из task-001; зависит от task-002 (active users repo) и task-005 (общий буфер по источнику). 5.5 security: N/A (no auth/secret/input surface) — нет user-input/auth/OAuth/raw SQL; Redis-URL и креды идут из env через config.py task-001.)
+
+
+### Step 3 do · 4 verify · 5 review · 5.5 security · loop-006
+- **do (TDD, FLAT):** celery_app (Redis broker/backend, json serializers, task_acks_late, routes), scheduler.beat_schedule (enqueue@60s, score_tick@300s from settings), pipeline/{tasks,locks,constants}. RED→GREEN test_locks (AC1). ping (task-001) intact. ci-fast 96 unit green (mypy strict 54).
+- **verify (G2):** worker `celery@ ready`, tasks registered (run_user_batch/enqueue/score_tick + ping); beat `Sending due task enqueue-active-user-batches` → worker `dispatched=N` (real DB); `run_user_batch.delay` → received→start→succeeded. AC1-5 unit, AC6-7 behavioral.
+- **review (opus) → changes-required → fixed (debug cycle 1):**
+  - **HIGH:** worker `-Q` consumed only default → beat-routed `batch:user_{id}`/`score:global` tasks unconsumed (piled up). **FIX (ADR-002 §2 refinement):** dynamic per-user queues aren't statically consumable; per-user `max_instances=1` isolation is the **Redis lock's** job → batches share ONE consumable `batch` queue; `run_user_batch`→`batch`, `score_tick`→`score:global`; worker `-Q celery,batch,score:global`. Re-verified: worker consumes all three; `run_user_batch.delay`→`batch`→succeeded.
+  - **MEDIUM:** locks.py called `get_settings()` at import (coupled to auth secrets). **FIX:** ttl resolved lazily in `user_batch_lock` (no import-time Settings). 
+  - LOW (release assumes bytes client) — documented; INFO acks_late seam — task-007.
+- **security 5.5:** N/A (no auth/secret/input surface; Redis URL from env).
+- **DECISION (logged):** per-user queues → shared `batch` queue + per-user Redis lock. Rationale: dynamic per-tenant queue consumption is operationally infeasible with static workers; the lock already guarantees per-user serialization. Considered an ADR-002 §2 refinement.
