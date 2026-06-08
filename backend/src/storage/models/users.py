@@ -17,10 +17,24 @@ from fastapi_users_db_sqlalchemy import (
     SQLAlchemyBaseOAuthAccountTable,
     SQLAlchemyBaseUserTable,
 )
-from sqlalchemy import DateTime, ForeignKey, Integer
+from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from storage.models.base import Base, utcnow
+
+# Plan tiers (task-009 gating seam; hard enforcement is task-010). Telegram is
+# available on every plan; webhook delivery requires `pro` or `team`. Named, not
+# magic literals (CONVENTIONS).
+PLAN_FREE = "free"
+PLAN_PRO = "pro"
+PLAN_TEAM = "team"
+_PLAN_MAX = 16
+# Column widths for the (secret) delivery-config fields — see SECRETS note in the
+# task doc: the bot token lives in this plaintext column (known at-rest concern,
+# like OAuth tokens); it is NEVER logged.
+_TELEGRAM_BOT_TOKEN_MAX = 128
+_TELEGRAM_CHAT_ID_MAX = 64
+_WEBHOOK_URL_MAX = 2048
 
 
 class OAuthAccount(SQLAlchemyBaseOAuthAccountTable[int], Base):
@@ -52,4 +66,19 @@ class User(SQLAlchemyBaseUserTable[int], Base):
     # the DB-level CASCADE above (no per-row ORM delete).
     oauth_accounts: Mapped[list[OAuthAccount]] = relationship(
         OAuthAccount, lazy="joined", passive_deletes=True
+    )
+    # --- Delivery config (task-009). All additive/nullable/defaulted (migration
+    # 0004), so existing rows are backward-compatible. The bot token is a secret at
+    # rest (NEVER logged); real config UI/management lands in a later task. ---
+    telegram_bot_token: Mapped[str | None] = mapped_column(
+        String(_TELEGRAM_BOT_TOKEN_MAX), nullable=True
+    )
+    telegram_chat_id: Mapped[str | None] = mapped_column(
+        String(_TELEGRAM_CHAT_ID_MAX), nullable=True
+    )
+    webhook_url: Mapped[str | None] = mapped_column(String(_WEBHOOK_URL_MAX), nullable=True)
+    # Plan gating seam (task-009): webhook delivery requires pro/team. Hard plan
+    # enforcement is task-010; this column is the membership check.
+    plan: Mapped[str] = mapped_column(
+        String(_PLAN_MAX), nullable=False, server_default=PLAN_FREE, default=PLAN_FREE
     )
