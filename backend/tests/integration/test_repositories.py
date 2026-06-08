@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from trendpulse.storage import (
+from storage import (
     EMBEDDING_DIM,
     Alert,
     Channel,
@@ -17,7 +17,7 @@ from trendpulse.storage import (
     User,
     Watchlist,
 )
-from trendpulse.storage.repositories import (
+from storage.repositories import (
     ChannelRepository,
     ClusterRepository,
 )
@@ -26,7 +26,9 @@ pytestmark = pytest.mark.integration
 
 
 def _make_user(session: Session, email: str) -> User:
-    user = User(email=email)
+    # hashed_password is NOT NULL since TASK-003 aligned `users` with fastapi-users;
+    # a placeholder hash is enough for storage round-trip/cascade/scoping tests.
+    user = User(email=email, hashed_password="x" * 16)
     session.add(user)
     session.flush()
     return user

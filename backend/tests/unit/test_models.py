@@ -2,7 +2,7 @@
 
 Introspects mappers/columns ONLY — never opens a DB connection, so it runs in
 `make ci-fast` (marker: not integration). Verifies:
-- all 7 models + `Base` import from `trendpulse.storage`,
+- all 7 models + `Base` import from `storage`,
 - `Cluster.embedding` is a pgvector `Vector` of dimension `EMBEDDING_DIM == 384`,
 - user-owned tables carry a `user_id` FK → `users.id` with `ondelete="CASCADE"`,
 - `Channel` has NO `user_id`,
@@ -13,7 +13,7 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy import DateTime
 from sqlalchemy.orm import DeclarativeBase
 
-from trendpulse.storage import (
+from storage import (
     EMBEDDING_DIM,
     Alert,
     Base,
@@ -40,6 +40,7 @@ def test_all_models_share_base_metadata() -> None:
     tables = set(Base.metadata.tables)
     assert tables == {
         "users",
+        "oauth_accounts",
         "channels",
         "watchlists",
         "posts",

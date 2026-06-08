@@ -12,7 +12,7 @@ from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 
-from trendpulse.config import get_settings
+from config import get_settings
 
 pytestmark = pytest.mark.integration
 
@@ -43,6 +43,7 @@ def test_upgrade_head_creates_schema_with_vector_extension() -> None:
     try:
         # Start clean so the migration (not create_all) builds the schema.
         _drop_statements = (
+            "DROP TABLE IF EXISTS oauth_accounts CASCADE",
             "DROP TABLE IF EXISTS alerts CASCADE",
             "DROP TABLE IF EXISTS scores CASCADE",
             "DROP TABLE IF EXISTS clusters CASCADE",
@@ -70,7 +71,9 @@ def test_upgrade_head_creates_schema_with_vector_extension() -> None:
         with engine.connect() as conn:
             current = MigrationContext.configure(conn).get_current_revision()
         head = ScriptDirectory.from_config(_alembic_config()).get_current_head()
-        assert current == _BASELINE_REVISION
-        assert head == _BASELINE_REVISION
+        # After `upgrade head` the DB is at the latest revision (now 0002_auth,
+        # not just the 0001 baseline). Assert it tracked head rather than a literal.
+        assert head is not None
+        assert current == head
     finally:
         engine.dispose()

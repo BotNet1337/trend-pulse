@@ -5,8 +5,8 @@ Task args MUST be JSON-serializable (pass ids, not ORM objects) — see CONVENTI
 
 from celery import Celery
 
-from trendpulse.config import get_settings
-from trendpulse.scheduler import beat_schedule
+from config import get_settings
+from scheduler import beat_schedule
 
 _settings = get_settings()
 

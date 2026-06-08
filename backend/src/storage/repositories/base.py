@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from trendpulse.storage.models.base import Base
+from storage.models.base import Base
 
 
 class Repository[ModelT: Base]:

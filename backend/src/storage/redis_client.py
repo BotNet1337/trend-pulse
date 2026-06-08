@@ -2,7 +2,7 @@
 
 from redis import Redis
 
-from trendpulse.config import get_settings
+from config import get_settings
 
 
 def get_redis_client() -> Redis:

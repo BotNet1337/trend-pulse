@@ -10,8 +10,8 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from trendpulse.storage.models.base import UserOwnedBase, utcnow
-from trendpulse.storage.models.clusters import EMBEDDING_DIM
+from storage.models.base import UserOwnedBase, utcnow
+from storage.models.clusters import EMBEDDING_DIM
 
 _EXTERNAL_ID_MAX = 128
 

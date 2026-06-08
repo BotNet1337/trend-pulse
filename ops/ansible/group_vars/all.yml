@@ -14,3 +14,9 @@ internal_network: internal
 postgres_network: postgres_net
 redis_network: redis_net
 trendpulse_debug: "false"
+# Auth (ADR-003) — non-secret access-token TTL in seconds. Secrets (JWT_SECRET,
+# OAUTH_STATE_SECRET, GOOGLE_CLIENT_*) live in vault.yml, never here.
+jwt_lifetime_seconds: "3600"
+# Local dev serves over plain http (:80, TLS is prod-only) → the auth cookie must
+# NOT be Secure or the browser/curl won't send it back. Prod overrides this to true.
+auth_cookie_secure: "false"

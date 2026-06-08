@@ -2,7 +2,7 @@
 
 from fastapi.testclient import TestClient
 
-from trendpulse.api.main import app
+from api.main import app
 
 _HTTP_OK = 200
 

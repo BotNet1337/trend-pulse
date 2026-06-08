@@ -6,6 +6,7 @@ a session, and tears it down. Unit tests (`-m 'not integration'`, used by
 `make ci-fast`) never touch it, so they need no DB.
 """
 
+import os
 from collections.abc import Iterator
 
 import pytest
@@ -13,8 +14,20 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from trendpulse.config import get_settings
-from trendpulse.storage.models import Base
+# Auth secrets have NO source default (AC6: fail-fast in prod). Seed test-only
+# dummies BEFORE any module imports `get_settings()`, so the suite (and
+# `make ci-fast`) runs without a real sensitive.env. `setdefault` never clobbers a
+# value the AC6 test deletes via monkeypatch.delenv.
+os.environ.setdefault("JWT_SECRET", "test-jwt-secret")
+os.environ.setdefault("OAUTH_STATE_SECRET", "test-oauth-state-secret")
+os.environ.setdefault("GOOGLE_CLIENT_ID", "test-google-client-id")
+os.environ.setdefault("GOOGLE_CLIENT_SECRET", "test-google-client-secret")
+# TestClient talks plain http → a Secure cookie would never be sent back, so the
+# auth flow test uses a non-Secure cookie (mirrors local dev; prod stays True).
+os.environ.setdefault("AUTH_COOKIE_SECURE", "false")
+
+from config import get_settings
+from storage.models import Base
 
 
 @pytest.fixture(scope="session")

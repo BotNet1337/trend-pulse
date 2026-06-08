@@ -9,7 +9,7 @@ services:
       args:
         PYTHON_VERSION: ${PYTHON_VERSION}
         UV_VERSION: ${UV_VERSION}
-    command: celery -A trendpulse.celery_app worker -l info
+    command: celery -A celery_app worker -l info
     restart: unless-stopped
     env_file:
       - ../env/deploy.env

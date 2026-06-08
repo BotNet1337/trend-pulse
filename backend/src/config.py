@@ -9,8 +9,14 @@ from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # SQLAlchemy 2.0 + psycopg3 driver scheme; the only place the dialect is named.
+# `psycopg` (v3) serves both the sync engine (storage/) and the async engine the
+# fastapi-users SQLAlchemy adapter needs (api/auth/) — same driver, no asyncpg.
 _POSTGRES_DRIVER = "postgresql+psycopg"
 _DEFAULT_POSTGRES_PORT = 5432
+
+# Non-secret default for the access-token TTL (seconds) — a named constant, not a
+# magic literal at the call site (CONVENTIONS). Overridable via JWT_LIFETIME_SECONDS.
+_DEFAULT_JWT_LIFETIME_SECONDS = 3600
 
 
 class Settings(BaseSettings):
@@ -36,6 +42,22 @@ class Settings(BaseSettings):
 
     telegram_api_id: int | None = None
     telegram_api_hash: str | None = None
+
+    # --- Auth secrets (fastapi-users + httpx-oauth, ADR-003). ---
+    # NO defaults on the SECRET fields → a missing env var fails fast at startup
+    # (AC6): pydantic raises a ValidationError when the value is absent. Source:
+    # sensitive.env (ADR-005), never hardcoded. The env names are the UPPERCASE
+    # field names (JWT_SECRET, OAUTH_STATE_SECRET, GOOGLE_CLIENT_ID/SECRET).
+    jwt_secret: str
+    oauth_state_secret: str
+    google_client_id: str
+    google_client_secret: str
+    # Non-secret config — settable, with a named-constant default (not a magic literal).
+    jwt_lifetime_seconds: int = _DEFAULT_JWT_LIFETIME_SECONDS
+    # Auth cookie `Secure` flag: True in prod (HTTPS via nginx), but MUST be False
+    # for local dev which serves over plain http on :80 (TLS is prod-only, task-001)
+    # — a Secure cookie is never sent back over http, breaking login/session locally.
+    auth_cookie_secure: bool = True
 
     @property
     def database_url(self) -> str:

@@ -9,6 +9,10 @@
 ---
 postgres_password: trendpulse
 jwt_secret: change-me-dev-only
+# Auth secrets (ADR-003) — dev placeholders; real values come from ansible-vault.
+oauth_state_secret: dev-state-secret-change-me
+google_client_id: dev-google-client-id
+google_client_secret: dev-google-client-secret
 nowpayments_api_key: ""
 nowpayments_ipn_secret: ""
 telegram_api_id: "0"

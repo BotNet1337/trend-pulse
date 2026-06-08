@@ -1,6 +1,6 @@
 """Alembic migration environment (SQLAlchemy 2.0).
 
-DB URL comes from the environment via `trendpulse.config.Settings`, never the ini.
+DB URL comes from the environment via `config.Settings`, never the ini.
 `target_metadata` will reference the ORM `Base.metadata` once the data model lands
 (task-002); for task-001 it is `None` (no autogenerate target yet).
 """
@@ -11,11 +11,11 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 from sqlalchemy.engine import Connection
 
-from trendpulse.config import get_settings
+from config import get_settings
 
 # Importing the models package populates `Base.metadata` with every table, so
 # `target_metadata` reflects the full schema (autogenerate / online migrations).
-from trendpulse.storage.models import Base
+from storage.models import Base
 
 config = context.config
 
