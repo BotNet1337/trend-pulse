@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(uv:*)",
+      "Bash(uv run:*)",
+      "Bash(uv sync:*)",
+      "Bash(uv add:*)",
+      "Bash(pytest:*)",
+      "Bash(ruff check:*)",
+      "Bash(ruff format:*)",
+      "Bash(mypy:*)",
+      "Bash(pre-commit:*)",
+      "Bash(alembic:*)",
+      "Bash(docker compose:*)",
+      "Bash(git diff:*)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(curl:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/Users/macbookpro16/.nvm/versions/node/v22.15.1/bin/node\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/trendpulse-session-state.js",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/Users/macbookpro16/.nvm/versions/node/v22.15.1/bin/node\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/trendpulse-bash-guard.js",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/Users/macbookpro16/.nvm/versions/node/v22.15.1/bin/node\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/trendpulse-forbidden-patterns.js",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/Users/macbookpro16/.nvm/versions/node/v22.15.1/bin/node\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/trendpulse-learnings-guard.js",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
