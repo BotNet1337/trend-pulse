@@ -1,12 +1,12 @@
 ---
 id: TASK-002
 title: Data model — SQLAlchemy 2.0 модели, Alembic baseline, multi-tenancy (pgvector)
-status: planned        # planned → in-progress → review → done
+status: in-progress    # planned → in-progress → review → done
 owner: backend
 created: 2026-06-08
 updated: 2026-06-08
-baseline_commit: ""    # set by executor at ship time (репо инициализирован в task-001)
-branch: ""             # set by executor at ship time
+baseline_commit: "310b28d5cae15e0249090e8902f57b0add443f66"
+branch: "gsd/phase-002-data-model"
 tags: [backend, storage, sqlalchemy, alembic, pgvector, multi-tenancy]
 ---
 
@@ -194,20 +194,41 @@ erDiagram
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
-baseline_commit: ""
-branch: ""
+current_step: done
+baseline_commit: "310b28d5cae15e0249090e8902f57b0add443f66"
+branch: "gsd/phase-002-data-model"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + runtime + real behavior)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (low — schema/SQLAlchemy bind-params only; no auth surface; N/A unless raw SQL introduced)
-- [ ] 6 ship (confirm plan done → PR)
-- [ ] 7 learnings (auto)
-debug_runs: []
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + runtime + real behavior)
+- [x] 5 review (auto, adversarial — PASS, 0 blocking)
+- [x] 5.5 security (N/A — no auth/secrets/user-input; only static DDL raw SQL; SQL-injection check passed in review)
+- [x] 6 ship (PR #2, squash-merged to main)
+- [x] 7 learnings (auto)
+debug_runs: []   # no debug cycles — verify + review passed first time
 
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план составлен по эталону task-001, source of truth: overview §4/§5/§7, ADR-001 `source_kind`, ADR-002 multi-tenancy/каскад; размерность вектора 384 для MiniLM, sync SQLAlchemy+psycopg для миграций/репозиториев)
+
+### Step 3 — do (TDD) · loop-20260608-192301
+- **RED→GREEN:** `tests/unit/test_models.py` написан первым → `ModuleNotFoundError: trendpulse.storage` (RED), после реализации 9/9 GREEN. `make ci-fast` зелёный: ruff/format ✓ · ruff ✓ · mypy strict (25 файлов) ✓ · pytest 10 passed / 6 deselected.
+- **Создано:** `trendpulse.storage` — `Base(DeclarativeBase)` + `EMBEDDING_DIM=384`, 7 моделей (User/Channel/Watchlist/Post/Cluster/Score/Alert, typed `Mapped`, `DateTime(timezone=True)` + `datetime.now(UTC)`, user-owned FK `ondelete=CASCADE`, `Channel` глобальная без user_id, unique `(source_kind, handle)` через `SourceKind(StrEnum)`, индексы по user_id); `database.py` (sync engine/SessionLocal/get_session); user-scoped репозитории (`user_id` обязателен — `base.py`/`user_scoped.py`/`watchlist_repo`/`cluster_repo`/`alert_repo`) + глобальный `channel_repo.get_or_create`; `redis_client.py`. Baseline-миграция в **существующем** `migrations/versions/0001_baseline.py` (defensive `CREATE EXTENSION IF NOT EXISTS vector` первой операцией, 7 таблиц, `Vector(384)`); `migrations/env.py` → `target_metadata = Base.metadata`.
+- **Решения:** pgvector без py.typed → mypy override `ignore_missing_imports` на уровне конфигурации (НЕ inline `# type: ignore`, CONVENTIONS). Абстрактный `UserOwnedBase`-mixin для типобезопасных user-scoped репозиториев (PEP 695 generics, без `Any`). `alerts.delivered_at` nullable (ещё не доставлен) + `timezone=True`. Новых зависимостей нет; `config.py` не тронут (`database_url`/`redis_url` уже были).
+
+### Step 4 — verify (G2, реальная behavioral) · PASS
+- **Integration-suite (6/6) против реальной pgvector-БД** (эфемерный `pgvector/pgvector:pg16` на host-порту, изолированно от стека): `test_migrations` (alembic upgrade head → vector ext **AC3**, 7 таблиц **AC2**, revision 0001), round-trip вектора 384 **AC4**, каскад тенанта (channels остаются) **AC5**, user-scoping **AC6**, tz-aware UTC **AC7**, channel get_or_create dedup.
+- **Продакшн-путь** на изолированном compose-стеке: `make build` → `make dev-infra-up` → `pg_vector_provisioner` exit 0, `migration_runner` exit 0; `docker exec psql`: `pg_extension`=vector, таблицы {users,channels,watchlists,posts,clusters,scores,alerts}+alembic_version, `alembic_version`=0001, `clusters.embedding`=`vector(384)`. **AC8** — `make ci-fast` зелёный. Стек свёрнут `make down`.
+
+### Step 5 — review (adversarial, opus) · PASS (0 blocking)
+Вердикт clean. Multi-tenancy подтверждена: `UserScopedRepository` не имеет нефильтрованных list/get/delete; глобальный `Repository` base используется ТОЛЬКО `ChannelRepository`; все 5 user-owned таблиц — FK `ondelete=CASCADE` (модели+миграция); `channels` глобальная. `EMBEDDING_DIM=384` единый источник; нет f-string SQL (только статичный DDL); mypy-override scoped на `pgvector.*`; tz-aware UTC везде. Только LOW/INFO (downstream-footguns, не блокеры):
+- LOW: `EMBEDDING_DIM` продублирован литералом в миграции — стандартная Alembic-практика (миграции самодостаточны), ок; для task-007 — следить за drift.
+- LOW: generic `Repository` базу теоретически можно связать с tenant-моделью (сегодня безопасно — так делает только глобальный channel_repo).
+- INFO: хелпер `utcnow()` (имя похоже на запрещённый `datetime.utcnow`, но функция tz-aware и hook его не банит); тесты репозиториев строят схему через `create_all`, не миграцией (риск model↔migration drift → опц. parity-check позже); `watchlists.threshold` default 0.0 + метрики постов default 0 → валидация на границе в task-004/коллектор в task-005.
+
+### Step 5.5 — security · N/A
+Нет auth/секретов/пользовательского ввода; единственный raw SQL — статичный DDL (`CREATE EXTENSION IF NOT EXISTS vector`, DROP в тестах) без интерполяции. SQL-injection проверка проведена в review (clean). Секретов нет → ротировать нечего.
+
+### Step 6 — ship · PR #2 (squash-merged)
+### Step 7 — learnings · см. docs/learnings.md (TASK-002 блок).

@@ -13,6 +13,10 @@ from sqlalchemy.engine import Connection
 
 from trendpulse.config import get_settings
 
+# Importing the models package populates `Base.metadata` with every table, so
+# `target_metadata` reflects the full schema (autogenerate / online migrations).
+from trendpulse.storage.models import Base
+
 config = context.config
 
 if config.config_file_name is not None:
@@ -21,8 +25,7 @@ if config.config_file_name is not None:
 # Inject the runtime DB URL (env-sourced) so the ini stays credential-free.
 config.set_main_option("sqlalchemy.url", get_settings().database_url)
 
-# No ORM metadata yet — set by task-002 (e.g. `from trendpulse.storage import Base`).
-target_metadata = None
+target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
