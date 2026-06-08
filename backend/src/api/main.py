@@ -20,6 +20,7 @@ from api.auth import (
     fastapi_users,
 )
 from api.deps import get_tenant_user_id
+from api.watchlist import router as watchlist_router
 from config import get_settings
 from storage.models.users import User
 
@@ -75,3 +76,7 @@ app.include_router(
 def read_my_tenant(user: User = Depends(current_user)) -> TenantResponse:
     """Protected example route (AC2): 401 without a token, tenant id with one."""
     return {"user_id": get_tenant_user_id(user)}
+
+
+# --- Watchlist CRUD (tenant-scoped, behind current_user). ---
+app.include_router(watchlist_router)
