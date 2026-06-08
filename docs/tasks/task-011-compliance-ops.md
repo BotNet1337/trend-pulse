@@ -1,12 +1,12 @@
 ---
 id: TASK-011
 title: Compliance & ops — 48h retention, GDPR delete-account, rate-limit, observability
-status: planned        # planned → in-progress → review → done
+status: done        # planned → in-progress → review → done
 owner: infra
 created: 2026-06-08
 updated: 2026-06-08
-baseline_commit: ""    # set by executor at ship time
-branch: ""             # set by executor at ship time
+baseline_commit: "1ec4d5566fd070af67957cd9a48c844e04304d69"
+branch: "gsd/phase-011-compliance-ops"
 tags: [infra, compliance, gdpr, retention, rate-limit, observability]
 ---
 
@@ -109,20 +109,27 @@ Compliance-требования зафиксированы в [`../CONVENTIONS.m
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
-baseline_commit: ""
-branch: ""
-lock: ""
+current_step: done
+baseline_commit: "1ec4d5566fd070af67957cd9a48c844e04304d69"
+branch: "gsd/phase-011-compliance-ops"
+lock: "loop-011"
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + runtime + real behavior)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (applicable: privacy + rate-limit + log-hygiene)
-- [ ] 6 ship (confirm plan done → PR)
-- [ ] 7 learnings (auto)
+- [x] 4 verify (G2 — tests + runtime + real behavior)
+- [x] 5 review (auto — HIGH rate-limit per-user keying + MEDIUM proxy-headers/ready-timeout fixed)
+- [x] 5.5 security (REQUIRED — PASS, 0 blocking; no IDOR, no log leak, retention real)
+- [x] 6 ship (PR #13, squash-merged)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план составлен по overview §7, ADR-002 §4 и high-level-arch §5 «Observability»; зависит от task-002 (schema/CASCADE), task-005 (raw-buffer/TTL), task-009 (delivery). Точные имена raw-text сущности/полей и FK-каскадов сверяются по task-002 на шаге locate.)
+
+
+### Step 3 do · 4 verify · 5 review · 5.5 security · loop-011
+- **do (TDD, FLAT):** `compliance/` (retention.purge_expired_raw_content — bulk UPDATE posts SET text=NULL WHERE fetched_at<now-48h; account.delete_user — single DELETE+CASCADE; tasks.purge task hourly beat), `observability/` (JSON logger + forbidden-key hygiene, request middleware, celery signals — aggregates only), `api/rate_limit.py` (slowapi Redis-backed + in-memory fallback + 429 handler), `api/routes/{account(DELETE /account auth+204),ops(GET /ready DB+Redis 200/503)}`. config: RAW_CONTENT_RETENTION_SECONDS/rate-limit/readiness-timeout. scheduler hourly purge; main.py wires limiter+middleware+routes; /health intact. deps slowapi+python-json-logger (typed). RED→GREEN: test_retention_purge.
+- **verify (G2):** ci-fast 227 unit green (mypy strict, compliance+observability в packages). **Полный integration-suite зелёный**: 26 passed (incl. test_account_cascade no-orphan AC3 против реальной БД) / 5 skipped (Redis+ml+telegram env-conditional) / 0 fail. /ready, log-hygiene, retention, rate-limit, GDPR-delete покрыты.
+- **review (opus) → 1 HIGH → fixed (debug cycle 1):** rate-limit per-user keying был мёртв (`request.state.user_id` нигде не ставился → всегда IP-ключ). **FIX:** `rate_limit_key` сам декодит auth-cookie/Bearer JWT (HS256, aud fastapi-users:auth, без БД) → `user:{sub}`, иначе `ip:`; +3 теста (два юзера на одном IP → разные бакеты, anon/invalid → IP). MEDIUM: uvicorn `--proxy-headers --forwarded-allow-ips=*` (api только за nginx → реальный client IP для anon-keying); `/ready` redis-проверка bounded `readiness_check_timeout_seconds`. 
+- **security (opus) PASS, 0 blocking:** нет IDOR на DELETE /account (только current_user.id, за current_user, 401 anon, cascade без orphan); retention реально обнуляет text>48h; нет утечки raw-text/секретов в логи (forbidden-key denylist + middleware без тел + celery без args); /ready без internal-leak; rate-limit не fail-open (in-memory fallback, не spoofable XFF). Долг (LOW, не блок): in-memory fallback множит лимит на реплики; denylist→allowlist для лог-гигиены; dedicated tighter лимит на DELETE; celery _starts leak при SIGKILL.

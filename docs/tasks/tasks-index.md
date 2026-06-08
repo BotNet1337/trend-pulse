@@ -17,5 +17,5 @@ Roadmap: [`../architecture/roadmap.md`](../architecture/roadmap.md). Epic A = Ba
 | [TASK-008](./task-008-scorer.md) | Scorer — velocity/engagement/cross_channel + alert trigger | A | done | backend | 007 | 2026-06-08 |
 | [TASK-009](./task-009-alert-delivery.md) | Alert delivery — Telegram Bot + webhook | A | done | backend | 008, 003 | 2026-06-08 |
 | [TASK-010](./task-010-billing-nowpayments.md) | Billing — крипто (NOWPayments) Free/Pro/Team + limits | A | done | backend | 003, 004 | 2026-06-08 |
-| [TASK-011](./task-011-compliance-ops.md) | Compliance & ops — 48h retention, GDPR, rate-limit, observability | A | planned | infra | 002, 005, 009 | 2026-06-08 |
+| [TASK-011](./task-011-compliance-ops.md) | Compliance & ops — 48h retention, GDPR, rate-limit, observability | A | done | infra | 002, 005, 009 | 2026-06-08 |
 | [TASK-012](./task-012-ops-iac.md) | Ops / IaC — Terraform (внешние сервисы) + Ansible (prod/secrets) | A | done | infra | 001 | 2026-06-08 |
