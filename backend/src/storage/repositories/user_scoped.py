@@ -13,7 +13,7 @@ from collections.abc import Sequence
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from trendpulse.storage.models.base import UserOwnedBase
+from storage.models.base import UserOwnedBase
 
 
 class UserScopedRepository[ModelT: UserOwnedBase]:

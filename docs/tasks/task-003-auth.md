@@ -1,12 +1,12 @@
 ---
 id: TASK-003
 title: Auth — fastapi-users (email/пароль + Google OAuth, JWT + cookie)
-status: planned        # planned → in-progress → review → done
+status: done           # planned → in-progress → review → done
 owner: backend
 created: 2026-06-08
 updated: 2026-06-08
-baseline_commit: ""    # set by executor at ship time
-branch: ""             # set by executor at ship time
+baseline_commit: "9f78843b7155e9efc0ee203934dc5a67f62541ad"
+branch: "gsd/phase-003-auth"
 tags: [backend, auth, oauth, jwt, security]
 ---
 
@@ -105,22 +105,42 @@ TrendPulse (см. [`../product/overview.md`](../product/overview.md) §3) — mu
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
-baseline_commit: ""
-branch: ""
+current_step: done
+baseline_commit: "9f78843b7155e9efc0ee203934dc5a67f62541ad"
+branch: "gsd/phase-003-auth"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + runtime + real behavior)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (REQUIRED — auth, OAuth, JWT, cookie, password hashing, secrets → triggers `trendpulse-security`)
-- [ ] 6 ship (confirm plan done → PR)
-- [ ] 7 learnings (auto)
-debug_runs: []
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + runtime + real behavior)
+- [x] 5 review (auto, adversarial — PASS, 0 blocking)
+- [x] 5.5 security (PASS, 0 blocking; prod-hardening debt → task-012)
+- [x] 6 ship (PR #4, squash-merged)
+- [x] 7 learnings (auto)
+debug_runs:
+  - cycle: 1
+    where: "auth cookie/CSRF over http + integration test fixtures + src flatten"
+    symptom: "verify: register→login→protected 401; google callback OAUTH_INVALID_STATE; oauth_accounts.expires_at int4 overflow; test_repositories/_make_user NOT NULL hashed_password; test_migrations head==0001 & DuplicateTable oauth_accounts; auth_flow schema-missing"
+    root_cause: "CookieTransport secure=True + CSRF cookie secure=True не отправляются по http (локально :80); fastapi-users 15 кладёт CSRF в state (double-submit); тест-мок expires_at 9999999999 > int4; схема users получила hashed_password NOT NULL → старый helper; test_migrations drop-list без oauth_accounts; client-фикстура не зависела от db_engine"
+    fix: "Settings.auth_cookie_secure (True prod / false локально, env+all.yml); CookieTransport.cookie_secure + get_oauth_router(csrf_token_cookie_secure) ← settings; тест прогоняет реальный /authorize для валидного state+CSRF-cookie; expires_at мок → 2000000000; _make_user задаёт hashed_password; test_migrations drop oauth_accounts + head==head(robust); client-фикстура depends_on db_engine. Re-verify: ci-fast 14 ✓, integration 9/9 ✓, AC7 curl через nginx 201/401/204+cookie/200/204/401/400 ✓.
+    note: "Доп. (user-directive в рамках задачи): flatten src/trendpulse → src/ (72 импорта, hatchling sources=[src], mypy mypy_path=src+explicit_package_bases, compose-команды uvicorn api.main / celery -A celery_app). Re-verified зелёным."
 
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план составлен по обновлённому ADR-003 (auth = готовая библиотека `fastapi-users` + `httpx-oauth` Google, JWT + httpOnly cookie, `current_user`-зависимость, тенант-скоуп ADR-002) и overview §3; секреты из `sensitive.env` (ADR-005); зависит от task-002 (data model + multi-tenancy). Ключевое: конфигурируем библиотеку, не катаем свой auth. Стадия 5.5 security обязательна.)
+
+### Step 3 do · 4 verify · loop-20260608-194349
+- **do (TDD):** fastapi-users 15.0.5 + httpx-oauth 0.17 поверх СУЩЕСТВУЮЩЕЙ int-id `User` (`FastAPIUsers[User,int]`, `IntegerIDMixin`); `OAuthAccount` (int FK CASCADE); миграция `0002_auth` (аддитивная, down_revision 0001); `api/auth/{users,backend,oauth,schemas}` + `deps.py` + роутеры в `main.py` + защищённый `/users/me/tenant`; секреты из env с fail-fast (config.py, без дефолтов). `make ci-fast` зелёный (mypy strict, без inline-ignore — pgvector/httpx_oauth через config-override). RED→GREEN: `tests/unit/test_auth.py` (JWT decode/tamper, AC5, AC6 fail-fast).
+- **verify (G2) PASS** (debug-цикл 1, см. debug_runs): integration 9/9 против реальной pgvector (register→login(cookie)→protected 401/200→logout→401 **AC1-3**, Google callback с замоканным обменом + CSRF/state из реального `/authorize` **AC4**, wrong-pass 400 **AC5**); **AC7** реальным curl через nginx: 201 / 401 / 204+cookie / 200 `{"user_id":1}` / 204 / 401 / 400. migration_runner exit 0 (0001+0002).
+- **Доп. (user-directive в рамках задачи):** flatten `src/trendpulse/` → `src/` (плоская раскладка, 72 импорта; hatchling `sources=[src]`; mypy `mypy_path=src`+`explicit_package_bases`; compose `uvicorn api.main` / `celery -A celery_app`). Re-verified зелёным.
+
+### Step 5 review (opus) · PASS 0 blocking
+Конфиг-only auth (не катаем свой); int-id сохранён, FK не сломаны; `current_user` enforce + tenant из user.id; flatten когерентен (нет остаточных `trendpulse.` импортов). Non-blocking: cookie_transport строится на import-time (фабрика была бы чище, MED); async_engine строится при импорте storage и в sync-процессах worker/beat/alembic не нужен (LOW, без коннекта безвреден); active-vs-verified gating — заметка для downstream-роутов.
+
+### Step 5.5 security (opus) · PASS 0 blocking · нечего ротировать
+argon2 (library), HS256 JWT с env-секретом + TTL, httpOnly+SameSite cookie (Secure из настройки), fail-fast секреты, `sensitive.env` gitignored+untracked, нет raw SQL, нет user-enumeration (AC5), tenant из токена. **Prod-hardening долг → task-012:** (1) `group_vars/prod.yml` с `auth_cookie_secure: true` (+csrf cookie) — сейчас committed dev `deploy.env` = false для http :80, код-дефолт True; (2) min-length (≥32) валидатор на `jwt_secret`/`oauth_state_secret` (дев-плейсхолдеры слабые); (3) шифрование `oauth_accounts.access_token/refresh_token` at rest; (4) `associate_by_email=True` (осознанно по Discussion — линковка по Google-verified email; для повышенной строгости — gate на is_verified).
+
+### Step 6 ship · PR #4 (squash-merged).
+### Step 7 learnings · см. docs/learnings.md (TASK-003 блок).
 </content>
 </invoke>

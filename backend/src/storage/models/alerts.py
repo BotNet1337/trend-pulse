@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 
-from trendpulse.storage.models.base import UserOwnedBase, utcnow
+from storage.models.base import UserOwnedBase, utcnow
 
 
 class Alert(UserOwnedBase):

@@ -1,7 +1,7 @@
 """Public storage API: ORM base/models, repositories, session + Redis factories."""
 
-from trendpulse.storage.database import SessionLocal, engine, get_session
-from trendpulse.storage.models import (
+from storage.database import SessionLocal, engine, get_session
+from storage.models import (
     EMBEDDING_DIM,
     Alert,
     Base,
@@ -13,8 +13,8 @@ from trendpulse.storage.models import (
     User,
     Watchlist,
 )
-from trendpulse.storage.redis_client import get_redis_client
-from trendpulse.storage.repositories import (
+from storage.redis_client import get_redis_client
+from storage.repositories import (
     AlertRepository,
     ChannelRepository,
     ClusterRepository,

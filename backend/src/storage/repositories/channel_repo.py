@@ -6,8 +6,8 @@ Channels are shared across tenants and deduped by `(source_kind, handle)`.
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from trendpulse.storage.models.channels import Channel, SourceKind
-from trendpulse.storage.repositories.base import Repository
+from storage.models.channels import Channel, SourceKind
+from storage.repositories.base import Repository
 
 
 class ChannelRepository(Repository[Channel]):

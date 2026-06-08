@@ -9,7 +9,7 @@ Roadmap: [`../architecture/roadmap.md`](../architecture/roadmap.md). Epic A = Ba
 |----|-------|------|--------|-------|------|---------|
 | [TASK-001](./task-001-dev-environment.md) | Dev environment — uv · Docker · `development/Makefile` · ruff/pytest | — | done | infra | — | 2026-06-08 |
 | [TASK-002](./task-002-data-model.md) | Data model + миграции + multi-tenancy (pgvector) | A | done | backend | 001 | 2026-06-08 |
-| [TASK-003](./task-003-auth.md) | Auth — email/пароль + Google OAuth, JWT | A | planned | backend | 002 | 2026-06-08 |
+| [TASK-003](./task-003-auth.md) | Auth — email/пароль + Google OAuth, JWT | A | done | backend | 002 | 2026-06-08 |
 | [TASK-004](./task-004-watchlist-api.md) | Watchlist CRUD API (каналы, топики, alert-config) | A | planned | backend | 002, 003 | 2026-06-08 |
 | [TASK-005](./task-005-collector-telegram.md) | Source abstraction + Telegram collector (пул, FLOOD_WAIT, dedup) | A | planned | backend | 002 | 2026-06-08 |
 | [TASK-006](./task-006-celery-infra.md) | Celery infra — app, beat, per-user queues, locks | A | planned | backend | 002, 005 | 2026-06-08 |

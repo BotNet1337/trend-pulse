@@ -3,7 +3,7 @@
 from sqlalchemy import Float, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from trendpulse.storage.models.base import UserOwnedBase
+from storage.models.base import UserOwnedBase
 
 _TOPIC_MAX = 255
 _LANG_MAX = 16

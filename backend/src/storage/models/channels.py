@@ -10,7 +10,7 @@ from datetime import datetime
 from sqlalchemy import DateTime, Enum, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from trendpulse.storage.models.base import Base, utcnow
+from storage.models.base import Base, utcnow
 
 _HANDLE_MAX = 255
 

@@ -11,7 +11,7 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy import DateTime, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from trendpulse.storage.models.base import UserOwnedBase, utcnow
+from storage.models.base import UserOwnedBase, utcnow
 
 EMBEDDING_DIM = 384
 

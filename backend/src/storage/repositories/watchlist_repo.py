@@ -5,8 +5,8 @@ from collections.abc import Sequence
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from trendpulse.storage.models.watchlists import Watchlist
-from trendpulse.storage.repositories.user_scoped import UserScopedRepository
+from storage.models.watchlists import Watchlist
+from storage.repositories.user_scoped import UserScopedRepository
 
 
 class WatchlistRepository(UserScopedRepository[Watchlist]):
