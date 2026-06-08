@@ -13,3 +13,8 @@ node_modules/
 # Secrets — materialized by `make ansible-unpack`, never committed.
 development/env/sensitive.env
 # NOTE: deploy.env and version.env ARE committed (non-secret).
+
+# Local tooling — not part of the application repo.
+.claude/
+_bmad/
+_bmad-output/
