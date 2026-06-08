@@ -27,6 +27,16 @@ _DEFAULT_BATCH_INTERVAL_SECONDS = 60
 _DEFAULT_SCORER_INTERVAL_SECONDS = 300
 _DEFAULT_BATCH_LOCK_TTL_SECONDS = 600
 
+# Pipeline thresholds + embedding model (task-007). Named, non-secret defaults —
+# never magic literals at the call site (CONVENTIONS). The embedding model is the
+# single source for its name (its vector dim MUST equal storage `EMBEDDING_DIM`,
+# arch §7 "pgvector dimension drift"); `all-MiniLM-L6-v2` → 384 dims. The dedup
+# threshold is the estimated-Jaccard cutoff above which two texts collapse to one
+# (MinHash), and the cluster threshold is the cosine-similarity cutoff for grouping.
+_DEFAULT_EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
+_DEFAULT_DEDUP_SIMILARITY_THRESHOLD = 0.8
+_DEFAULT_CLUSTER_COSINE_THRESHOLD = 0.75
+
 
 class Settings(BaseSettings):
     """Runtime configuration read from the process environment.
@@ -53,6 +63,11 @@ class Settings(BaseSettings):
     batch_interval_seconds: int = _DEFAULT_BATCH_INTERVAL_SECONDS
     scorer_interval_seconds: int = _DEFAULT_SCORER_INTERVAL_SECONDS
     batch_lock_ttl_seconds: int = _DEFAULT_BATCH_LOCK_TTL_SECONDS
+
+    # --- Pipeline (task-007). Non-secret, settable; defaults above. ---
+    embedding_model_name: str = _DEFAULT_EMBEDDING_MODEL_NAME
+    dedup_similarity_threshold: float = _DEFAULT_DEDUP_SIMILARITY_THRESHOLD
+    cluster_cosine_threshold: float = _DEFAULT_CLUSTER_COSINE_THRESHOLD
 
     telegram_api_id: int | None = None
     telegram_api_hash: str | None = None

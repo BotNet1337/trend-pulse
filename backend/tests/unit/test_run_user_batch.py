@@ -43,9 +43,31 @@ def test_run_user_batch_runs_when_acquired() -> None:
     def _acquired(*_args: object, **_kwargs: object) -> Iterator[bool]:
         yield True
 
-    with _patch_redis(), patch.object(tasks, "user_batch_lock", _acquired):
-        # Placeholder body (seam): must not raise.
+    with (
+        _patch_redis(),
+        patch.object(tasks, "user_batch_lock", _acquired),
+        patch.object(tasks, "process_user_batch") as process,
+    ):
+        # When the lock is acquired the pipeline body runs exactly once (task-007).
         tasks.run_user_batch(1)
+
+    process.assert_called_once_with(1)
+
+
+def test_run_user_batch_does_not_run_pipeline_when_locked() -> None:
+    @contextmanager
+    def _locked(*_args: object, **_kwargs: object) -> Iterator[bool]:
+        yield False
+
+    with (
+        _patch_redis(),
+        patch.object(tasks, "user_batch_lock", _locked),
+        patch.object(tasks, "process_user_batch") as process,
+    ):
+        tasks.run_user_batch(1)
+
+    # Locked → the pipeline body is never invoked (task-006 AC2 preserved).
+    process.assert_not_called()
 
 
 def test_run_user_batch_no_op_while_real_lock_held() -> None:

@@ -1,10 +1,11 @@
-# Single application image for api/worker/beat — they differ ONLY by command
-# (set in the per-service compose files). Runtime image carries ONLY core deps:
-# `--no-dev` excludes the `dev` group (pytest/ruff/mypy/pre-commit) and `ml`
-# (torch) is non-default, so neither lands in the shipped image. Dev tooling runs
-# on the host via `make ci`/`uv run`, never in the container.
+# App image for api/beat (lean: core only) and worker (core + `ml`). `--no-dev`
+# always excludes dev tooling (pytest/ruff/mypy). The `ml` group (sentence-
+# transformers/torch) is installed ONLY when INSTALL_ML=true — the worker image
+# needs it for the embed pipeline (task-007); api/beat stay lean (task-001
+# invariant: torch off the api boot path). Build args set per-service in compose.
 ARG PYTHON_VERSION=3.12
 ARG UV_VERSION=0.11.12
+ARG INSTALL_ML=false
 
 # Pinned uv as its own stage — buildkit forbids variable expansion directly in
 # `COPY --from=<image:${tag}>`, so reference the version via a named FROM stage.
@@ -26,13 +27,19 @@ WORKDIR /app
 ENV PATH="/app/.venv/bin:${PATH}"
 ENV PYTHONUNBUFFERED=1
 
+# Re-declare after FROM so the build arg is in scope for the RUN layers.
+# `--group ml` is appended only when INSTALL_ML=true (worker image).
+ARG INSTALL_ML=false
+
 # Layer 1: dependencies only (cached unless lock changes). --frozen requires a
 # committed uv.lock; generate it with `uv lock` before building.
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-install-project --no-dev
+RUN if [ "$INSTALL_ML" = "true" ]; then ML="--group ml"; else ML=""; fi; \
+    uv sync --frozen --no-install-project --no-dev $ML
 
 # Layer 2: source + alembic, then install the project itself.
 COPY src/ src/
 COPY alembic.ini ./
 COPY migrations/ migrations/
-RUN uv sync --frozen --no-dev
+RUN if [ "$INSTALL_ML" = "true" ]; then ML="--group ml"; else ML=""; fi; \
+    uv sync --frozen --no-dev $ML

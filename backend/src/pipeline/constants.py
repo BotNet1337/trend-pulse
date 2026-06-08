@@ -18,3 +18,15 @@ SCORE_TICK_TASK = "pipeline.tasks.score_tick"
 BATCH_QUEUE = "batch"
 # Static scorer queue (ADR-002 §2): a single global tick, not per-tenant.
 SCORE_QUEUE = "score:global"
+
+# --- Pipeline algorithm internals (task-007) — named, never magic literals. ---
+# MinHash permutation count: the dedup accuracy/cost knob (more permutations →
+# tighter Jaccard estimate). 128 is the datasketch default sweet spot.
+MINHASH_NUM_PERM = 128
+# Character-shingle width for MinHash: split text into overlapping k-grams so
+# near-duplicates (small edits) share most shingles. Word-level shingling is too
+# coarse for short posts; 5-char shingles capture token-level overlap robustly.
+MINHASH_SHINGLE_SIZE = 5
+# Topic label length cap when deriving a cluster's `topic` from its first post
+# (matches the `clusters.topic` column width upper bound, storage task-002).
+CLUSTER_TOPIC_MAX_LEN = 255
