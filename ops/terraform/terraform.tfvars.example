@@ -1,0 +1,25 @@
+# Copy to terraform.tfvars (GITIGNORED) and fill in. Secrets (do_token,
+# spaces_*) are best supplied via TF_VAR_* env vars instead of a file.
+# NEVER commit a real terraform.tfvars — only this *.example is tracked.
+
+# --- Credentials (prefer TF_VAR_do_token env var over putting it here) ---
+# do_token          = "dop_v1_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+# spaces_access_id  = "XXXXXXXXXXXXXXXXXXXX"
+# spaces_secret_key = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# --- Placement / sizing ---
+region    = "fra1"
+vps_size  = "s-2vcpu-4gb"
+vps_image = "ubuntu-24-04-x64"
+
+# --- DNS ---
+domain        = "trendpulse.example"
+app_subdomain = "app"
+
+# --- SSH / firewall allowlist (least-privilege — replace with YOUR office/VPN CIDRs) ---
+ssh_key_fingerprints = ["aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99"]
+ssh_allowlist_cidrs  = ["203.0.113.4/32"]
+
+# --- Object storage (optional) ---
+enable_object_storage = false
+object_storage_bucket = "trendpulse-backups"

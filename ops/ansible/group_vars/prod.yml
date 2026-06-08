@@ -1,0 +1,7 @@
+---
+# Production overrides for the `prod` inventory group (ADR-005 §4). Applied on
+# top of all.yml. Non-secret only — secrets stay in the vault.
+# Prod serves over HTTPS (nginx TLS) → the auth cookie MUST be Secure.
+auth_cookie_secure: "true"
+# Prod runs without debug.
+trendpulse_debug: "false"
