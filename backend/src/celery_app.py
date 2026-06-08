@@ -11,6 +11,7 @@ to `celery,batch,score:global`.
 from celery import Celery
 
 from config import get_settings
+from observability.celery_logging import register_celery_logging
 from pipeline.constants import BATCH_QUEUE, RUN_USER_BATCH_TASK, SCORE_QUEUE, SCORE_TICK_TASK
 from scheduler import beat_schedule
 
@@ -20,11 +21,13 @@ celery_app = Celery(
     "trendpulse",
     broker=_settings.redis_url,
     backend=_settings.redis_url,
-    # Tasks live in `pipeline.tasks` + `alerts.tasks`; `include` defers their
-    # import to worker startup, breaking the `celery_app` <-> task-module import
-    # cycle. `alerts.tasks.dispatch_alert` (task-009) is unrouted → it lands on the
-    # default `celery` queue the worker already consumes (no compose change).
-    include=["pipeline.tasks", "alerts.tasks"],
+    # Tasks live in `pipeline.tasks` + `alerts.tasks` + `compliance.tasks`;
+    # `include` defers their import to worker startup, breaking the `celery_app`
+    # <-> task-module import cycle. `alerts.tasks.dispatch_alert` (task-009) and
+    # `compliance.tasks.purge_expired_raw_content` (task-011) are unrouted → they
+    # land on the default `celery` queue the worker already consumes (no compose
+    # change).
+    include=["pipeline.tasks", "alerts.tasks", "compliance.tasks"],
 )
 celery_app.conf.task_serializer = "json"
 celery_app.conf.accept_content = ["json"]
@@ -38,6 +41,11 @@ celery_app.conf.task_routes = {
     RUN_USER_BATCH_TASK: {"queue": BATCH_QUEUE},
     SCORE_TICK_TASK: {"queue": SCORE_QUEUE},
 }
+
+# Structured, aggregate-only task lifecycle logging (task-011): connect the
+# task_prerun/postrun signals so worker logs carry task name/duration/state —
+# never args/return/raw content (overview §7).
+register_celery_logging()
 
 
 @celery_app.task(name="trendpulse.ping")

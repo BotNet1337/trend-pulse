@@ -57,6 +57,22 @@ _DEFAULT_TELEGRAM_API_BASE_URL = "https://api.telegram.org"
 # without billing configured — billing endpoints error cleanly (503) when unset,
 # rather than failing at startup (billing is optional). Secrets are NEVER logged.
 _DEFAULT_NOWPAYMENTS_BASE_URL = "https://api.nowpayments.io/v1"
+
+# Compliance & ops (task-011, overview §7 / ADR-002 §4). Named, non-secret
+# defaults — never magic literals (CONVENTIONS); time is in SECONDS.
+# Raw post `text` must not persist beyond this retention window; the hourly purge
+# sweep NULLs `posts.text` for rows whose ingestion age (`fetched_at`) exceeds it.
+# 48h = 172800s. The purge runs once an hour via Celery Beat.
+_DEFAULT_RAW_CONTENT_RETENTION_SECONDS = 48 * 3600
+_DEFAULT_RETENTION_PURGE_INTERVAL_SECONDS = 3600
+# API rate-limit (slowapi, Redis-backed). The default per-key (authenticated
+# user_id, else client IP) request budget per minute — generous + configurable so
+# it does not throttle normal use, but caps abuse (overview §7). Named, settable.
+_DEFAULT_RATE_LIMIT_PER_MINUTE = 120
+# Bound the readiness probe's dependency checks so `/ready` cannot itself hang on a
+# slow DB/Redis (edge case): a short, finite timeout in seconds.
+_DEFAULT_READINESS_CHECK_TIMEOUT_SECONDS = 2
+
 _DEFAULT_ALERT_HTTP_TIMEOUT_SECONDS = 10
 _DEFAULT_ALERT_MAX_RETRIES = 5
 _DEFAULT_ALERT_RETRY_BACKOFF_SECONDS = 2
@@ -96,6 +112,12 @@ class Settings(BaseSettings):
 
     # --- Scorer (task-008). Non-secret, settable; defaults above. ---
     scorer_recent_window_seconds: int = _DEFAULT_SCORER_RECENT_WINDOW_SECONDS
+
+    # --- Compliance & ops (task-011). Non-secret, settable; defaults above. ---
+    raw_content_retention_seconds: int = _DEFAULT_RAW_CONTENT_RETENTION_SECONDS
+    retention_purge_interval_seconds: int = _DEFAULT_RETENTION_PURGE_INTERVAL_SECONDS
+    rate_limit_per_minute: int = _DEFAULT_RATE_LIMIT_PER_MINUTE
+    readiness_check_timeout_seconds: int = _DEFAULT_READINESS_CHECK_TIMEOUT_SECONDS
 
     # --- Alert delivery (task-009). Non-secret, settable; defaults above. ---
     telegram_api_base_url: str = _DEFAULT_TELEGRAM_API_BASE_URL

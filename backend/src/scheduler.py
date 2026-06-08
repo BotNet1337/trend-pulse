@@ -7,6 +7,7 @@ literals (CONVENTIONS). Kept in its own module so `celery_app` imports it withou
 a cycle; task *names* come from `pipeline.constants` (no `celery_app` import).
 """
 
+from compliance.constants import PURGE_EXPIRED_RAW_CONTENT_TASK
 from config import get_settings
 from pipeline.constants import ENQUEUE_BATCHES_TASK, SCORE_TICK_TASK
 
@@ -23,5 +24,11 @@ beat_schedule: dict[str, dict[str, object]] = {
     "score-tick": {
         "task": SCORE_TICK_TASK,
         "schedule": float(_settings.scorer_interval_seconds),
+    },
+    # Hourly raw-content retention sweep (task-011): NULL `posts.text` past the 48h
+    # window. Lands on the default `celery` queue the worker consumes (no route).
+    "purge-expired-raw-content": {
+        "task": PURGE_EXPIRED_RAW_CONTENT_TASK,
+        "schedule": float(_settings.retention_purge_interval_seconds),
     },
 }

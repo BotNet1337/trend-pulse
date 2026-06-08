@@ -23,6 +23,8 @@ dependencies = [
     "pydantic-settings>=2.6,<3",
     "fastapi-users[sqlalchemy]>=15,<16",
     "httpx-oauth>=0.17,<1",
+    "python-json-logger>=3.1,<5",
+    "slowapi>=0.1.9,<1",
 ]
 
 [build-system]
@@ -88,7 +90,7 @@ python_version = "3.12"
 # config checked the single `trendpulse` package; this preserves that scope —
 # src only, tests excluded). `mypy_path = src` + `explicit_package_bases` make
 # src/ the import root so the flat top-level names resolve without a parent pkg.
-packages = ["api", "alerts", "billing", "collector", "pipeline", "scorer", "storage", "config", "celery_app", "scheduler"]
+packages = ["api", "alerts", "billing", "collector", "compliance", "observability", "pipeline", "scorer", "storage", "config", "celery_app", "scheduler"]
 mypy_path = "src"
 explicit_package_bases = true
 strict = true

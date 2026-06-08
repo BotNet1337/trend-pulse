@@ -11,6 +11,8 @@ from typing import Literal, TypedDict
 
 from fastapi import Depends, FastAPI, Request, status
 from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from api.auth import (
     UserCreate,
@@ -21,14 +23,39 @@ from api.auth import (
     fastapi_users,
 )
 from api.deps import get_tenant_user_id
+from api.rate_limit import limiter, rate_limit_handler
+from api.routes import account_router, ops_router
 from api.watchlist import router as watchlist_router
 from billing.deps import BillingNotConfiguredError
 from billing.limits import PlanLimitExceeded
 from billing.router import router as billing_router
 from config import get_settings
+from observability.logging import configure_logging
+from observability.middleware import log_requests
 from storage.models.users import User
 
+# Structured JSON logging across the api process (task-011): emit machine-parseable
+# logs for ops consumers; the hygiene helper guarantees no raw content is logged.
+configure_logging()
+
 app = FastAPI(title="TrendPulse API")
+
+# --- Rate limiting (task-011): Redis-backed slowapi, key = user_id|IP, default
+# limit from settings. The limiter is attached to app.state (slowapi contract),
+# the middleware enforces the default limit on every request, and the breach
+# handler maps RateLimitExceeded -> 429 JSON. ---
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
+
+# Request-logging middleware (aggregate-only: method/path/status/duration). Added
+# after SlowAPIMiddleware so it wraps the outermost request lifecycle.
+app.middleware("http")(log_requests)
+
+
+@app.exception_handler(RateLimitExceeded)
+async def _rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    """Map a rate-limit breach (slowapi) to a clear 429 JSON body (no leakage)."""
+    return rate_limit_handler(request, exc)
 
 
 @app.exception_handler(PlanLimitExceeded)
@@ -101,3 +128,8 @@ app.include_router(watchlist_router)
 
 # --- Billing (invoice behind current_user; IPN raw-body, no auth). ---
 app.include_router(billing_router)
+
+# --- GDPR account deletion (DELETE /account, behind current_user) + ops
+# readiness probe (GET /ready), task-011. ---
+app.include_router(account_router)
+app.include_router(ops_router)
