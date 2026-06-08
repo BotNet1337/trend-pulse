@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Environment variables
+.env
+.env.local
+.env.docker
+.env.test
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+
+# Migrations (regenerated from schema)
+migrations/
+
+# Data
+data/
+rules/
+
+# Sentry Config File
+.sentryclirc
+
+# Keys
+*.pem
+
+tests/visual/__screenshots__/
+tests/visual/playwright-report/
+tests/visual/.auth/
+test-results/
