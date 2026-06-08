@@ -1,7 +1,7 @@
 ---
 id: TASK-001
 title: Dev + infra environment — 3-app layout, uv backend, per-service compose, nginx, provisioning, env split
-status: in-progress    # planned → in-progress → review → done
+status: done           # planned → in-progress → review → done
 owner: infra
 created: 2026-06-08
 updated: 2026-06-08
@@ -144,18 +144,18 @@ tags: [infra, tooling, docker, compose, nginx, uv, alembic, ansible, ci]
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 6
+current_step: done
 baseline_commit: "c1790601c34b802534b8d8ee6ab0b6ef3724d7fd"
 branch: "gsd/phase-001-dev-environment"
-lock: "loop-20260608-184532"
+lock: ""
 - [x] 1 locate
 - [x] 2 plan (G1 — minimal, approved)
 - [x] 3 do
 - [x] 4 verify
 - [x] 5 review
 - [x] 5.5 security (PASS — 0 blocking; MEDIUM/LOW debt → task-012/prod)
-- [ ] 6 ship
-- [ ] 7 learnings
+- [x] 6 ship (merged to main as 4cf985b)
+- [x] 7 learnings
 debug_runs:
   - cycle: 1
     where: backend/Dockerfile
