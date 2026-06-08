@@ -1,0 +1,28 @@
+# AI Port (https://ai-port.me)
+
+## Summary
+
+AI Port is a streaming-first, multi-model AI chat product in early access.
+
+## Key pages
+
+- Home: https://ai-port.me/
+- Pricing (early access): https://ai-port.me/pricing
+- About / roadmap: https://ai-port.me/about
+- Contact: https://ai-port.me/contact
+
+## Legal
+
+- Privacy Policy: https://ai-port.me/privacy-policy
+- Terms of Service: https://ai-port.me/terms-of-service
+- Cookie Policy: https://ai-port.me/cookie-policy
+- Acceptable Use Policy: https://ai-port.me/acceptable-use-policy
+- Security: https://ai-port.me/security
+- DPA overview: https://ai-port.me/dpa
+- Do Not Sell/Share: https://ai-port.me/do-not-sell-or-share
+
+## Sitemap
+
+https://ai-port.me/sitemap.xml
+
+

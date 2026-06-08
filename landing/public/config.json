@@ -1,0 +1,22 @@
+{
+  "brandName": "PostBolt",
+  "siteUrl": "https://postbolt.org",
+  "domainName": "postbolt.org",
+  "contactEmail": "support@postbolt.org",
+  "topic": "Social",
+  "valueProp": "Social publishing across all your platforms",
+  "ctaText": "Get started",
+  "legal": {
+    "entityName": "Sole Proprietor (FOP) Kharchenko Yaroslav Oleksandrovych",
+    "entityShort": "FOP Kharchenko Y.O.",
+    "address": "Komunalna St 16, Hlukhiv, Sumy Oblast, 41400, Ukraine",
+    "countryCode": "UA",
+    "jurisdiction": "Ukraine",
+    "governingLaw": "the laws of Ukraine",
+    "courts": "the competent courts located in Ukraine",
+    "effectiveDate": "April 8, 2026",
+    "privacyEmail": "support@postbolt.org",
+    "abuseEmail": "support@postbolt.org",
+    "securityEmail": "support@postbolt.org"
+  }
+}

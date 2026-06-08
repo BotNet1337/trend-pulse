@@ -1,0 +1,62 @@
+{
+  "name": "landing",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "cross-env NODE_ENV=development tsx server/main.ts",
+    "build": "npm run sitemap:gen && tsc -p tsconfig.json --noEmit && npm run build:client && npm run build:server",
+    "build:client": "vite build --outDir dist/client",
+    "build:server": "vite build --outDir dist/server --ssr server/ssr/render.tsx",
+    "start": "cross-env NODE_ENV=production tsx server/main.ts",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "sitemap:gen": "cross-env NODE_ENV=production tsx scripts/generate-sitemap.ts",
+    "seo:validate": "cross-env NODE_ENV=production tsx scripts/validate-seo.ts",
+    "content:audit": "cross-env NODE_ENV=production tsx scripts/content-audit.ts",
+    "audit:copy": "cross-env NODE_ENV=production tsx scripts/audit-copy.ts"
+  },
+  "dependencies": {
+    "@fastify/compress": "^8.1.0",
+    "@fastify/middie": "^9.0.3",
+    "@fastify/static": "^8.3.0",
+    "@radix-ui/react-slot": "^1.2.4",
+    "@tanstack/react-router": "^1.136.5",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "dotenv": "^17.2.3",
+    "fastify": "^5.6.2",
+    "lottie-react": "^2.4.1",
+    "lucide-react": "^0.553.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "tailwind-merge": "^3.4.0",
+    "zod": "3.25.75"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@tailwindcss/vite": "^4.1.17",
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react-swc": "^4.2.1",
+    "cross-env": "^10.1.0",
+    "eslint": "^9.39.1",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "globals": "^16.5.0",
+    "pino-pretty": "^13.1.2",
+    "tailwindcss": "^4.1.17",
+    "tsx": "^4.20.6",
+    "tw-animate-css": "^1.4.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.46.3",
+    "vite": "npm:rolldown-vite@7.2.2"
+  },
+  "overrides": {
+    "vite": "npm:rolldown-vite@7.2.2"
+  }
+}
