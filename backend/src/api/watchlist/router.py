@@ -34,9 +34,8 @@ def create_watchlist(
     session: Session = Depends(get_db_session),
 ) -> WatchlistRead:
     """Create one watchlist (single channel) for the caller -> 201 WatchlistRead."""
-    user_id = get_tenant_user_id(user)
     try:
-        return service.create(session, user_id=user_id, data=data)
+        return service.create(session, user=user, data=data)
     except RefValidationError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     except LimitExceededError as exc:

@@ -1,12 +1,12 @@
 ---
 id: TASK-010
 title: Billing — crypto via NOWPayments (Free/Pro/Team) + enforcement лимитов плана
-status: planned        # planned → in-progress → review → done
+status: done        # planned → in-progress → review → done
 owner: backend
 created: 2026-06-08
 updated: 2026-06-08
-baseline_commit: ""    # set by executor at ship time
-branch: ""             # set by executor at ship time
+baseline_commit: "54e97e08e625e844953295a8e8d04fe64512ce5a"
+branch: "gsd/phase-010-billing-nowpayments"
 tags: [backend, billing, crypto, nowpayments, limits, ipn, security]
 ---
 
@@ -116,20 +116,28 @@ TrendPulse (см. [`../product/overview.md`](../product/overview.md), [`../archi
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
-baseline_commit: ""
-branch: ""
-lock: ""
+current_step: done
+baseline_commit: "54e97e08e625e844953295a8e8d04fe64512ce5a"
+branch: "gsd/phase-010-billing-nowpayments"
+lock: "loop-010"
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + runtime + real behavior)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (applicable: IPN HMAC verification + secrets + idempotency/replay — verify `x-nowpayments-sig` HMAC, no trust of body without verification, `order_id`/amount/currency match, idempotency by `payment_id`, NOWPayments API key/IPN secret via env (sensitive.env, ADR-005), IPN endpoint only behind nginx)
-- [ ] 6 ship (confirm plan done → PR)
-- [ ] 7 learnings (auto)
+- [x] 4 verify (G2 — tests + runtime + real behavior)
+- [x] 5 review (auto — HIGH IPN idempotency multi-status bug fixed)
+- [x] 5.5 security (REQUIRED — PASS, 0 blocking; HMAC/no-trust/replay sound)
+- [x] 6 ship (PR #11, squash-merged)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план составлен по эталону task-001; крипто-биллинг следует [ADR-004](../architecture/adr-004-crypto-billing-nowpayments.md) (NOWPayments, invoice+IPN, провайдер за абстракцией) + overview §6 (сети/токены + тарифная таблица) + [ADR-005](../architecture/adr-005-infra-provisioning-and-secrets.md) (секреты в sensitive.env, IPN за nginx); зависит от task-003 (auth/`current_user`) и task-004 (watchlist — первый потребитель `assert_within_limit`). Заменяет отменённую Stripe-версию `task-010-billing-stripe.md` — никакого Stripe.)
+
+
+### Step 3 do · 4 verify · 5 review · 5.5 security · loop-010
+- **do (TDD, FLAT):** `billing/` — plans (Plan/Resource/PLAN_LIMITS overview §6 + prices), limits (`assert_within_limit` единый enforcement + expiry-rollback на Free), gateway (PaymentGateway proto + NowPaymentsGateway: create_invoice httpx + verify_ipn HMAC-SHA512 constant-time), service (invoice + activate_or_extend renewal-safe), webhook (process_ipn: verify→cross-check→idempotency→status-machine), router (/billing/invoice auth, /billing/ipn raw-body no-auth). Миграция 0005 (subscriptions + billing_payments unique payment_id, down 0004). watchlist bridged → `assert_within_limit(Resource.CHANNELS)` (Free 6-й канал → 402). billing в mypy strict. RED→GREEN: test_billing_ipn HMAC.
+- **verify (G2):** billing integration 4 passed (AC3 finished→pro+expires; AC4 invalid sig→4xx no change; AC5 replay no double-extend; AC6 partially_paid no activation); миграция chain 0001→…→0005; **полный integration-suite зелёный** (25 passed / 5 skip Redis+ml+telegram / 0 fail). ci-fast 211.
+- **review (opus) → 1 HIGH → fixed (debug cycle 1):** **idempotency multi-IPN bug** — NOWPayments шлёт несколько IPN с одним payment_id (waiting→confirming→confirmed→finished); промежуточный статус ставил `processed_at` → последующий finished глушился как replay → план не активировался НИКОГДА. **FIX:** idempotency keys на `status == _STATUS_PROCESSED` (активирован), `processed_at` ставится ТОЛЬКО при активации; регресс-тест confirming→finished активирует. Также: честный коммент scorer `_enqueue_delivery` (re-dispatch sweep → task-011).
+- **security (opus) PASS, 0 blocking:** HMAC-SHA512 constant-time перед доверием телу; пустой/unset IPN-secret → 503 (не верифицирует произвольное); план пишется только верифицированным IPN (no client-trust); replay/cross-account по unique payment_id + invoice↔user binding; amount/currency cross-check; секреты env-only, не логируются. Долг (MEDIUM/LOW, не блок): JSON-канонизация vs raw-bytes (availability-риск, нужен реальный IPN-сэмпл для byte-проверки); body-size cap + rate-limit на /billing/* (nginx, task-011); generic error text.
+- **Также (cross-task hardening, surfaced by growing suite):** scorer `_enqueue_delivery` устойчив к недоступному брокеру (не валит scoring); celery integration-тесты скип-гардят Redis; `alerts`+`scorer` добавлены в mypy.packages (были не проверены) + исправлены 3 type-ошибки.

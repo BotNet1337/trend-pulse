@@ -26,6 +26,8 @@ _EXPECTED_TABLES = {
     "clusters",
     "scores",
     "alerts",
+    "subscriptions",
+    "billing_payments",
 }
 
 
@@ -43,6 +45,8 @@ def test_upgrade_head_creates_schema_with_vector_extension() -> None:
     try:
         # Start clean so the migration (not create_all) builds the schema.
         _drop_statements = (
+            "DROP TABLE IF EXISTS billing_payments CASCADE",
+            "DROP TABLE IF EXISTS subscriptions CASCADE",
             "DROP TABLE IF EXISTS oauth_accounts CASCADE",
             "DROP TABLE IF EXISTS alerts CASCADE",
             "DROP TABLE IF EXISTS scores CASCADE",

@@ -23,6 +23,7 @@ from api.watchlist.schemas import (
     WatchlistUpdate,
 )
 from storage.models.channels import Channel, SourceKind
+from storage.models.users import User
 from storage.models.watchlists import Watchlist
 from storage.repositories import ChannelRepository, WatchlistRepository
 
@@ -58,11 +59,14 @@ def _channel_for(session: Session, channel_id: int) -> Channel:
     return channel
 
 
-def create(session: Session, *, user_id: int, data: WatchlistCreate) -> WatchlistRead:
-    """Create one watchlist for the user. Seams: validate_ref (422), limits (402)."""
+def create(session: Session, *, user: User, data: WatchlistCreate) -> WatchlistRead:
+    """Create one watchlist for the user. Seams: limits (402), validate_ref (422).
+
+    The per-plan channel cap is enforced via the single billing entry (ADR-003).
+    """
+    user_id = user.id
     repo = WatchlistRepository()
-    current_count = len(repo.list(session, user_id=user_id))
-    check_watchlist_limits(current_count=current_count, adding=1)
+    check_watchlist_limits(session, user)
 
     channel = _resolve_channel(session, data.channel)
     row = Watchlist(
