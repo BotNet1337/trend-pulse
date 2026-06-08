@@ -11,7 +11,10 @@ services:
       args:
         PYTHON_VERSION: ${PYTHON_VERSION}
         UV_VERSION: ${UV_VERSION}
-    command: celery -A celery_app worker -l info
+    # Consume the default + the batch + scorer queues (TASK-006 routing); without
+    # -Q the worker would only drain `celery` and beat-routed batch/score tasks
+    # would pile up unconsumed.
+    command: celery -A celery_app worker -Q celery,batch,score:global -l info
     restart: unless-stopped
     env_file:
       - ../env/deploy.env

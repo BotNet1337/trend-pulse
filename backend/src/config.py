@@ -18,6 +18,15 @@ _DEFAULT_POSTGRES_PORT = 5432
 # magic literal at the call site (CONVENTIONS). Overridable via JWT_LIFETIME_SECONDS.
 _DEFAULT_JWT_LIFETIME_SECONDS = 3600
 
+# Celery Beat cadence + per-user batch lock TTL (seconds) — named, non-secret
+# defaults sourced from overview §4/§5 and ADR-002, overridable via env. Beat
+# enqueues active-user batches once a minute and the scorer tick every 5 minutes;
+# the batch lock TTL bounds a crashed worker's lock so it cannot deadlock forever
+# (must exceed a typical batch but stay finite). Time is in SECONDS (CONVENTIONS).
+_DEFAULT_BATCH_INTERVAL_SECONDS = 60
+_DEFAULT_SCORER_INTERVAL_SECONDS = 300
+_DEFAULT_BATCH_LOCK_TTL_SECONDS = 600
+
 
 class Settings(BaseSettings):
     """Runtime configuration read from the process environment.
@@ -39,6 +48,11 @@ class Settings(BaseSettings):
     postgres_password: str = ""
 
     redis_url: str = "redis://redis:6379/0"
+
+    # --- Celery scheduling + per-user batch lock (ADR-002). Non-secret, settable. ---
+    batch_interval_seconds: int = _DEFAULT_BATCH_INTERVAL_SECONDS
+    scorer_interval_seconds: int = _DEFAULT_SCORER_INTERVAL_SECONDS
+    batch_lock_ttl_seconds: int = _DEFAULT_BATCH_LOCK_TTL_SECONDS
 
     telegram_api_id: int | None = None
     telegram_api_hash: str | None = None
