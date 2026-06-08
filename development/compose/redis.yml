@@ -1,0 +1,17 @@
+# Redis broker/result backend. On redis_net only; NO published host ports.
+services:
+  redis:
+    image: redis:${REDIS_VERSION}
+    restart: unless-stopped
+    networks:
+      - redis_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+networks:
+  redis_net:
+    external: false

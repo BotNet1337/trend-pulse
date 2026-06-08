@@ -1,0 +1,25 @@
+# One-shot: apply Alembic migrations (`alembic upgrade head`) — the ONLY place
+# migrations run. Uses the shared app image. Idempotent: re-runs against an
+# up-to-date DB exit 0. Runs after pgvector is enabled. postgres_net only.
+services:
+  migration_runner:
+    image: ${APP_IMAGE}
+    build:
+      context: ../../../backend
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION}
+        UV_VERSION: ${UV_VERSION}
+    restart: "no"
+    command: alembic upgrade head
+    env_file:
+      - ../../env/deploy.env
+      - ../../env/sensitive.env
+    networks:
+      - postgres_net
+    depends_on:
+      pg_vector_provisioner:
+        condition: service_completed_successfully
+
+networks:
+  postgres_net:
+    external: false

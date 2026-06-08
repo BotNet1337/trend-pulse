@@ -1,0 +1,16 @@
+# Non-secret defaults — single source of truth for development/env/deploy.env.
+# `make ansible-unpack` renders these into KEY=value form in deploy.env.
+# (task-012 replaces the stub renderer with a real Ansible template task.)
+---
+postgres_db: trendpulse
+postgres_user: trendpulse
+postgres_host: postgres
+postgres_port: "5432"
+# NB: no DATABASE_URL here — the password is secret. The app assembles the DSN
+# from POSTGRES_* parts (POSTGRES_PASSWORD comes from sensitive.env / vault).
+redis_url: "redis://redis:6379/0"
+edge_network: edge
+internal_network: internal
+postgres_network: postgres_net
+redis_network: redis_net
+trendpulse_debug: "false"

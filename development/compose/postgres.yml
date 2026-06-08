@@ -1,0 +1,27 @@
+# PostgreSQL + pgvector. On postgres_net only; NO published host ports
+# (network-design.md §Безопасность). Healthcheck gates the provisioners.
+services:
+  postgres:
+    image: ${PGVECTOR_IMAGE}
+    restart: unless-stopped
+    env_file:
+      - ../env/deploy.env
+      - ../env/sensitive.env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - postgres_net
+    healthcheck:
+      # pg_isready uses POSTGRES_USER/POSTGRES_DB from env_file.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  postgres_data:
+
+networks:
+  postgres_net:
+    external: false

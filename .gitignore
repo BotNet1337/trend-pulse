@@ -1,0 +1,15 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Node (landing/ + frontend/, populated in epics B/C)
+node_modules/
+
+# Secrets — materialized by `make ansible-unpack`, never committed.
+development/env/sensitive.env
+# NOTE: deploy.env and version.env ARE committed (non-secret).

@@ -1,0 +1,15 @@
+# PLACEHOLDER secrets — source of truth for development/env/sensitive.env.
+#
+# In production this file is encrypted with `ansible-vault` and decrypted on
+# `make ansible-unpack`. For task-001 it is a plaintext placeholder so local
+# dev works without the ansible binary; task-012 wires real ansible-vault.
+#
+# NEVER commit real secrets here once vault encryption is in place.
+# sensitive.env (the rendered output) is gitignored.
+---
+postgres_password: trendpulse
+jwt_secret: change-me-dev-only
+nowpayments_api_key: ""
+nowpayments_ipn_secret: ""
+telegram_api_id: "0"
+telegram_api_hash: ""

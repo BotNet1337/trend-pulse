@@ -7,7 +7,7 @@ Roadmap: [`../architecture/roadmap.md`](../architecture/roadmap.md). Epic A = Ba
 
 | ID | Title | Epic | Status | Owner | Deps | Updated |
 |----|-------|------|--------|-------|------|---------|
-| [TASK-001](./task-001-dev-environment.md) | Dev environment — uv · Docker · `development/Makefile` · ruff/pytest | — | planned | infra | — | 2026-06-08 |
+| [TASK-001](./task-001-dev-environment.md) | Dev environment — uv · Docker · `development/Makefile` · ruff/pytest | — | in-progress | infra | — | 2026-06-08 |
 | [TASK-002](./task-002-data-model.md) | Data model + миграции + multi-tenancy (pgvector) | A | planned | backend | 001 | 2026-06-08 |
 | [TASK-003](./task-003-auth.md) | Auth — email/пароль + Google OAuth, JWT | A | planned | backend | 002 | 2026-06-08 |
 | [TASK-004](./task-004-watchlist-api.md) | Watchlist CRUD API (каналы, топики, alert-config) | A | planned | backend | 002, 003 | 2026-06-08 |

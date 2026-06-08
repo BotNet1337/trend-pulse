@@ -1,0 +1,49 @@
+# FastAPI service. Builds the shared app image (tagged APP_IMAGE) that
+# worker/beat/migration_runner reuse. NOT in edge and NO published ports —
+# reachable only via nginx (network-design.md §2). Starts only after BOTH
+# provisioners complete successfully.
+services:
+  api:
+    image: ${APP_IMAGE}
+    build:
+      context: ../../backend
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION}
+        UV_VERSION: ${UV_VERSION}
+    command: uvicorn trendpulse.api.main:app --host 0.0.0.0 --port 8000
+    restart: unless-stopped
+    env_file:
+      - ../env/deploy.env
+      - ../env/sensitive.env
+    networks:
+      - internal
+      - postgres_net
+      - redis_net
+    # Pure /health probe (no backing-service call) — lets nginx wait for real
+    # readiness (service_healthy), not just process start, avoiding cold-start 502s.
+    # Uses stdlib urllib so no extra packages/curl are baked into the image.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import urllib.request,sys;
+          sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    depends_on:
+      redis:
+        condition: service_healthy
+      pg_vector_provisioner:
+        condition: service_completed_successfully
+      migration_runner:
+        condition: service_completed_successfully
+
+networks:
+  internal:
+    external: false
+  postgres_net:
+    external: false
+  redis_net:
+    external: false

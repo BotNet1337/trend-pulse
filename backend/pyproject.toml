@@ -1,0 +1,76 @@
+[project]
+name = "trendpulse"
+version = "0.1.0"
+description = "TrendPulse backend — personal viral-content detector for Telegram (FastAPI + Celery + pgvector)"
+requires-python = "==3.12.*"
+# Core deps — MUST allow api/worker/beat to boot WITHOUT the ML stack (torch).
+# The heavy embedding stack (sentence-transformers → torch ~2GB) lives in the
+# opt-in `ml` dependency-group below, never on the critical boot path.
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.32,<1",
+    "celery[redis]>=5.4,<6",
+    "redis>=5.2,<6",
+    "sqlalchemy>=2.0,<3",
+    "pgvector>=0.3,<1",
+    "psycopg[binary]>=3.2,<4",
+    "alembic>=1.14,<2",
+    "telethon>=1.37,<2",
+    "datasketch>=1.6,<2",
+    "imagehash>=4.3,<5",
+    "pillow>=11,<12",
+    "pydantic>=2.9,<3",
+    "pydantic-settings>=2.6,<3",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/trendpulse"]
+
+[dependency-groups]
+# PEP 735 dependency-groups. `uv sync` installs groups listed in
+# [tool.uv] default-groups below. `ml` is intentionally NOT a default group so
+# torch stays off the api/worker image's critical boot path; install it
+# explicitly with `uv sync --group ml` (wired into the worker in a later task).
+ml = [
+    "sentence-transformers>=3.3,<4",
+]
+dev = [
+    "pytest>=8.3,<9",
+    "httpx>=0.27,<1",
+    "ruff>=0.8,<1",
+    "mypy>=1.13,<2",
+    "pre-commit>=4,<5",
+    "celery-types>=0.22",
+]
+
+[tool.uv]
+# Only `dev` is synced by default → CI tooling (ruff/mypy/pytest) is present and
+# the api/worker image (built via `uv sync --frozen`) stays lean (no torch).
+# `ml` is opt-in: `uv sync --group ml`.
+default-groups = ["dev"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "TID"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: tests that require live infra (postgres/redis) on a running stack",
+]
+addopts = "--strict-markers -ra"
+
+[tool.mypy]
+python_version = "3.12"
+packages = ["trendpulse"]
+mypy_path = "src"
+strict = true
+warn_unused_ignores = true

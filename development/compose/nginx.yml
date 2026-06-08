@@ -1,0 +1,27 @@
+# Edge reverse-proxy. The ONLY service that publishes host ports (network-design
+# §1). On edge (public) + internal (to reach api). Waits for api to start.
+services:
+  nginx:
+    image: nginx:${NGINX_VERSION}
+    restart: unless-stopped
+    # Only nginx publishes host ports (edge). 443 is published on prod TOGETHER
+    # with the TLS `listen 443 ssl` block in nginx.conf + mounted certs (ops/);
+    # locally there are no certs and nginx.conf listens on 80 only, so publishing
+    # 443 here is dead and would collide with any other host service on 443.
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      # - "443:443"   # enable on prod alongside TLS certs (ADR-005 / ops/terraform)
+    volumes:
+      - ../provisioning/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - edge
+      - internal
+    depends_on:
+      api:
+        condition: service_healthy
+
+networks:
+  edge:
+    external: false
+  internal:
+    external: false

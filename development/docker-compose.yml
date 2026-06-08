@@ -1,0 +1,36 @@
+# Top compose file — single orchestration surface assembled from per-service and
+# provisioning compose files via `include:`. Networks are declared here (and
+# re-declared in each fragment for standalone validity); see network-design.md.
+#
+# Network segmentation:
+#   edge        — public (nginx only publishes 80/443)
+#   internal    — nginx ↔ api (internal:true, no egress)
+#   postgres_net— postgres + api/worker/beat + provisioners (internal:true)
+#   redis_net   — redis + api/worker/beat (internal:true)
+#
+# Invoked exclusively via the root Makefile with:
+#   docker compose --env-file development/version.env -f development/docker-compose.yml ...
+# so ${PGVECTOR_IMAGE}/${REDIS_VERSION}/${APP_IMAGE}/... interpolate from version.env.
+
+include:
+  - compose/postgres.yml
+  - compose/redis.yml
+  - provisioning/pg_vector_provisioner/docker-compose.yml
+  - provisioning/migration_runner/docker-compose.yml
+  - compose/api.yml
+  - compose/worker.yml
+  - compose/beat.yml
+  - compose/nginx.yml
+
+networks:
+  edge:
+    driver: bridge
+  internal:
+    driver: bridge
+    internal: true
+  postgres_net:
+    driver: bridge
+    internal: true
+  redis_net:
+    driver: bridge
+    internal: true

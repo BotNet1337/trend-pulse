@@ -1,0 +1,32 @@
+# Celery worker. Same app image as api (differs only by command). On
+# postgres_net + redis_net; NOT in edge; NO published ports. Declares the same
+# `build` so `make build` produces the shared image even if api isn't built first.
+services:
+  worker:
+    image: ${APP_IMAGE}
+    build:
+      context: ../../backend
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION}
+        UV_VERSION: ${UV_VERSION}
+    command: celery -A trendpulse.celery_app worker -l info
+    restart: unless-stopped
+    env_file:
+      - ../env/deploy.env
+      - ../env/sensitive.env
+    networks:
+      - postgres_net
+      - redis_net
+    depends_on:
+      redis:
+        condition: service_healthy
+      pg_vector_provisioner:
+        condition: service_completed_successfully
+      migration_runner:
+        condition: service_completed_successfully
+
+networks:
+  postgres_net:
+    external: false
+  redis_net:
+    external: false

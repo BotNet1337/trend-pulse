@@ -1,11 +1,11 @@
 ---
 id: TASK-001
 title: Dev + infra environment — 3-app layout, uv backend, per-service compose, nginx, provisioning, env split
-status: planned        # planned → in-progress → review → done
+status: in-progress    # planned → in-progress → review → done
 owner: infra
 created: 2026-06-08
 updated: 2026-06-08
-baseline_commit: ""    # repo not yet git-initialized — see Discussion (git init is step 0)
+baseline_commit: "c1790601c34b802534b8d8ee6ab0b6ef3724d7fd"
 branch: ""             # set by executor at ship time
 tags: [infra, tooling, docker, compose, nginx, uv, alembic, ansible, ci]
 ---
@@ -144,20 +144,61 @@ tags: [infra, tooling, docker, compose, nginx, uv, alembic, ansible, ci]
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
-baseline_commit: ""
-branch: ""
-lock: ""
+current_step: 6
+baseline_commit: "c1790601c34b802534b8d8ee6ab0b6ef3724d7fd"
+branch: "gsd/phase-001-dev-environment"
+lock: "loop-20260608-184532"
 - [x] 1 locate
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do
-- [ ] 4 verify
-- [ ] 5 review
-- [ ] 5.5 security (applicable: secrets/env handling (.env split, no creds in images), network isolation)
+- [x] 3 do
+- [x] 4 verify
+- [x] 5 review
+- [x] 5.5 security (PASS — 0 blocking; MEDIUM/LOW debt → task-012/prod)
 - [ ] 6 ship
 - [ ] 7 learnings
-debug_runs: []
+debug_runs:
+  - cycle: 1
+    where: backend/Dockerfile
+    symptom: "make build → 'variable expansion is not supported for --from' (COPY --from=ghcr.io/astral-sh/uv:${UV_VERSION})"
+    root_cause: "buildkit forbids variable interpolation directly in COPY --from image ref"
+    fix: "ввёл отдельный stage `FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv` и COPY --from=uv; rebuild → exit 0 (образ 1.16GB, без torch)"
+  - cycle: 2
+    where: development/compose/nginx.yml
+    symptom: "make up → nginx 'Bind for 0.0.0.0:443 failed: port is already allocated'"
+    root_cause: "host-порт 443 занят другим проектом (micropich-nginx); наш nginx.conf слушает только 80 (443 ssl закомментирован как prod-only) → публикация 443 локально мертва и конфликтна"
+    fix: "публикуем только ${HTTP_PORT:-80}:80; 443 включается на prod вместе с TLS-блоком+сертами (ADR-005/ops). Соответствует edge-case задачи."
+  - cycle: 3
+    where: "backend/Dockerfile + config.py + compose (api/worker/beat/nginx) + nginx.conf"
+    symptom: "review-стадия: 1 HIGH (dev-группа запекается в runtime-образ) + MEDIUM (пароль БД в коде/committed deploy.env; нет api healthcheck → 502-гонка; redis не в depends_on)"
+    root_cause: "uv sync --frozen с default-groups=[dev] ставит dev-инструменты в образ; database_url с литералом-паролем; nginx depends_on api без service_healthy; redis вне старт-ордера app"
+    fix: "Dockerfile: uv sync --frozen --no-dev (оба слоя) → pytest отсутствует в образе (подтв. ModuleNotFoundError), core импортируется. config.py: database_url собирается из POSTGRES_* (пароль только из sensitive.env), убран DATABASE_URL из all.yml/deploy.env. api: healthcheck (stdlib urllib /health); nginx depends_on api condition: service_healthy; redis: service_healthy в depends_on api/worker/beat. nginx.conf: server_tokens off. Re-verify PASS (api healthy, nginx ждёт healthy, curl 200)."
 
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план приведён в соответствие с ADR-005 (root Makefile, per-service compose + include, provisioning, env split из Ansible, ops-скелет) и network-design.md (сегментация сетей, только nginx наружу, старт-ордер). Backend-эталон — /Users/macbookpro16/work/ma/prediction. Depends on: — (foundation).)
+
+### Step 3 — do (TDD) · loop-20260608-184532
+- **RED→GREEN:** `tests/unit/test_health.py` написан первым (AC1), затем минимальный `api/main.py` (`GET /health` → `{"status":"ok"}`, pure, typed `HealthResponse`). `make ci-fast` зелёный: ruff format ✓ · ruff check ✓ · mypy strict (6 файлов) ✓ · pytest 1 passed.
+- **Создано:** backend (pyproject `==3.12.*`, hatchling src-layout, ruff/mypy-strict/pytest; `config.py` pydantic-settings; `celery_app.py`+`ping`; `scheduler.py`; alembic-скаффолд env.py/ini/versions; Dockerfile multi-stage uv параметризован PYTHON/UV_VERSION; `uv.lock`). development (version.env с пинами + APP_IMAGE; per-service compose postgres/redis/api/worker/beat/nginx; top docker-compose.yml через include + сети edge/internal/postgres_net/redis_net с internal:true; nginx.conf reverse-proxy+security-headers; pg_vector_provisioner + migration_runner one-shot; deploy.env; ansible-unpack.sh stub). ops/ скелет (terraform README+.gitkeep, ansible inventory/group_vars/vault/README). landing+frontend .gitkeep. Root Makefile (16 таргетов) + .gitignore.
+- **Инварианты подтверждены статически:** только nginx имеет `ports:`; `docker compose config` валиден (8 сервисов, сети мёржатся, EXIT 0); `ml` (sentence-transformers→torch) НЕ в default-groups → не тянется в app-образ; кэши/`sensitive.env` под .gitignore (не staged).
+- **Решение:** `ansible-unpack` на task-001 — dependency-free stub-рендерер `key: value` YAML → env (реальный ansible-vault в task-012). `default-groups=["dev"]` (CI-инструменты доступны; ml — opt-in `--group ml`).
+
+### Step 4 — verify (G2, реальная behavioral) · loop-20260608-184532 · PASS
+Все 8 AC подтверждены на живом стеке (2 debug-цикла, см. debug_runs):
+- **AC1/AC7** — `make ci-fast` зелёный (ruff format ✓ · ruff check ✓ · mypy strict 6 файлов ✓ · pytest 1 passed); health RED→GREEN.
+- **AC2** — `make ansible-unpack` → `development/env/deploy.env` + `sensitive.env` (mode 600, gitignored).
+- **AC3** — `make dev-infra-up`: postgres+redis healthy; `pg_vector_provisioner` exit 0; `migration_runner` exit 0 (`alembic upgrade head`); `SELECT extname FROM pg_extension WHERE extname='vector'` → `vector`.
+- **AC4** — `make up`+`make ps`: nginx/api/worker/beat/postgres/redis все Up (postgres/redis healthy); api-лог `Application startup complete.`; worker-лог `celery@… ready.`; beat `Starting…`.
+- **AC5** — `curl -s http://localhost/health` → `200 {"status":"ok"}` (через nginx→api:8000). Прямой `http://localhost:8000` с хоста → недоступен (000) — подтверждает «только через nginx».
+- **AC6** — изоляция портов: только `nginx` публикует `0.0.0.0:80->80`; api/worker/beat без `ports`; postgres/redis — только internal `5432/tcp`/`6379/tcp` (без host-маппинга).
+- **AC8** — `make help` перечисляет все таргеты; все команды работают из корня `apps/trendPulse` без `-C development`.
+Стек свёрнут `make down` (гигиена ресурсов).
+
+### Step 5 — review (adversarial, opus, ≠ do) · loop-20260608-184532
+Вердикт: changes-required → 1 HIGH + 3 MEDIUM устранены в debug-цикле 3 (см. debug_runs), re-verify PASS.
+- **HIGH (исправлено):** runtime-образ запекал dev-группу → `--no-dev`; подтверждено `pytest` отсутствует в образе, core импортируется.
+- **MEDIUM (исправлено):** пароль БД вне кода/committed-env (только sensitive.env); api healthcheck + nginx `service_healthy` (устранена 502-гонка); redis в depends_on app.
+- **Отложено (non-blocking, в learnings/будущие задачи):** ruff-pre-commit rev vs CI-версия (LOW); worker на internal:true-сетях не имеет egress → **task-002** (Telethon/model pull) потребует egress-сеть или build-time model cache (LOW, важно для следующей задачи); redis без requirepass (LOW, defense-in-depth, prod-hardening).
+
+### Step 5.5 — security (security-reviewer, opus) · PASS
+0 блокирующих (CRITICAL/HIGH). Секреты не утекают: `sensitive.env` gitignored + не tracked + mode 600; в образ секреты не запекаются (build-args только версии); изоляция сетей корректна (только nginx наружу; postgres/redis на internal:true без host-портов); `ansible-unpack.sh` injection-safe. Нечего ротировать. Долг (MEDIUM/LOW) → **task-012**: реальный ansible-vault (vault.yml сейчас plaintext-placeholder), pre-commit secret-scan, redis requirepass, CSP когда появятся HTML-ответы. Часть (пароль БД из кода/deploy.env) уже закрыта в цикле 3.

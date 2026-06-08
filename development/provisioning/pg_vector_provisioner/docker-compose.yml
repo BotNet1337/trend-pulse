@@ -1,0 +1,27 @@
+# One-shot: enable the pgvector extension once postgres is healthy, before
+# migrations run. Idempotent (IF NOT EXISTS) → re-runs exit 0. postgres_net only.
+services:
+  pg_vector_provisioner:
+    image: ${PGVECTOR_IMAGE}
+    restart: "no"
+    env_file:
+      - ../../env/deploy.env
+      - ../../env/sensitive.env
+    # PGPASSWORD is read from sensitive.env (POSTGRES_PASSWORD mirrored there).
+    command:
+      - sh
+      - -c
+      - >-
+        PGPASSWORD=$${POSTGRES_PASSWORD}
+        psql -h postgres -U $${POSTGRES_USER} -d $${POSTGRES_DB}
+        -v ON_ERROR_STOP=1
+        -c "CREATE EXTENSION IF NOT EXISTS vector;"
+    networks:
+      - postgres_net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+networks:
+  postgres_net:
+    external: false
