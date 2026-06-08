@@ -9,7 +9,8 @@ OAuth); user-facing routes sit behind the `current_user` dependency (ADR-002).
 
 from typing import Literal, TypedDict
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request, status
+from fastapi.responses import JSONResponse
 
 from api.auth import (
     UserCreate,
@@ -21,10 +22,27 @@ from api.auth import (
 )
 from api.deps import get_tenant_user_id
 from api.watchlist import router as watchlist_router
+from billing.deps import BillingNotConfiguredError
+from billing.limits import PlanLimitExceeded
+from billing.router import router as billing_router
 from config import get_settings
 from storage.models.users import User
 
 app = FastAPI(title="TrendPulse API")
+
+
+@app.exception_handler(PlanLimitExceeded)
+async def _plan_limit_handler(_: Request, exc: PlanLimitExceeded) -> JSONResponse:
+    """Map a plan-limit breach to its HTTP code hint: 402 (quota) / 403 (feature)."""
+    return JSONResponse(status_code=exc.code, content={"detail": str(exc)})
+
+
+@app.exception_handler(BillingNotConfiguredError)
+async def _billing_unconfigured_handler(_: Request, exc: BillingNotConfiguredError) -> JSONResponse:
+    """Billing endpoints hit without NOWPayments credentials → 503 (not a 500)."""
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content={"detail": str(exc)}
+    )
 
 
 class HealthResponse(TypedDict):
@@ -80,3 +98,6 @@ def read_my_tenant(user: User = Depends(current_user)) -> TenantResponse:
 
 # --- Watchlist CRUD (tenant-scoped, behind current_user). ---
 app.include_router(watchlist_router)
+
+# --- Billing (invoice behind current_user; IPN raw-body, no auth). ---
+app.include_router(billing_router)

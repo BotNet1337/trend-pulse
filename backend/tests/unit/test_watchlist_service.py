@@ -7,13 +7,23 @@ import pytest
 
 from api.watchlist import service
 from api.watchlist.exceptions import LimitExceededError, RefValidationError
-from api.watchlist.limits import DEFAULT_PLAN_MAX_WATCHLISTS, check_watchlist_limits
 from api.watchlist.refs import validate_ref
 from api.watchlist.schemas import (
     AlertConfig,
     ChannelRef,
     WatchlistCreate,
 )
+from storage.models.users import User
+
+# Free-plan channel cap (overview §6) — used to size the mocked usage in tests.
+_FREE_CHANNELS_CAP = 5
+
+
+def _user(user_id: int = 1, plan: str = "free") -> User:
+    user = User()
+    user.id = user_id
+    user.plan = plan
+    return user
 
 
 def _create_data(handle: str = "@chan_name") -> WatchlistCreate:
@@ -24,16 +34,27 @@ def _create_data(handle: str = "@chan_name") -> WatchlistCreate:
     )
 
 
-# --- limits seam ---
+# --- limits seam (now bridged to billing.assert_within_limit, ADR-003) ---
 
 
-def test_check_limits_allows_up_to_cap() -> None:
-    check_watchlist_limits(current_count=DEFAULT_PLAN_MAX_WATCHLISTS - 1, adding=1)
+def test_check_limits_allows_below_cap(monkeypatch: pytest.MonkeyPatch) -> None:
+    from api.watchlist import limits
+
+    # Mock the single billing entry so this stays DB-free; below-cap → no raise.
+    monkeypatch.setattr(limits, "assert_within_limit", lambda session, user, resource: None)
+    limits.check_watchlist_limits(MagicMock(), _user())
 
 
-def test_check_limits_raises_over_cap() -> None:
+def test_check_limits_raises_over_cap(monkeypatch: pytest.MonkeyPatch) -> None:
+    from api.watchlist import limits
+    from billing import PlanLimitExceeded
+
+    def _raise(session: Any, user: Any, resource: Any) -> None:
+        raise PlanLimitExceeded("channels limit reached", code=402)
+
+    monkeypatch.setattr(limits, "assert_within_limit", _raise)
     with pytest.raises(LimitExceededError):
-        check_watchlist_limits(current_count=DEFAULT_PLAN_MAX_WATCHLISTS, adding=1)
+        limits.check_watchlist_limits(MagicMock(), _user())
 
 
 # --- validate_ref seam (stub-tolerant: format-only when no collector) ---
@@ -85,13 +106,18 @@ def test_update_returns_none_for_other_tenant(monkeypatch: pytest.MonkeyPatch) -
 
 def test_create_raises_over_limit(monkeypatch: pytest.MonkeyPatch) -> None:
     repo = MagicMock()
-    repo.list.return_value = [object()] * DEFAULT_PLAN_MAX_WATCHLISTS
+    repo.list.return_value = [object()] * _FREE_CHANNELS_CAP
     monkeypatch.setattr(service, "WatchlistRepository", lambda: repo)
     channel_repo = MagicMock()
     monkeypatch.setattr(service, "ChannelRepository", lambda: channel_repo)
 
+    def _raise(session: Any, user: Any) -> None:
+        raise LimitExceededError("channels limit reached")
+
+    monkeypatch.setattr(service, "check_watchlist_limits", _raise)
+
     with pytest.raises(LimitExceededError):
-        service.create(MagicMock(), user_id=1, data=_create_data())
+        service.create(MagicMock(), user=_user(), data=_create_data())
     channel_repo.get_or_create.assert_not_called()
 
 
@@ -99,19 +125,21 @@ def test_create_raises_ref_validation_error(monkeypatch: pytest.MonkeyPatch) -> 
     repo = MagicMock()
     repo.list.return_value = []
     monkeypatch.setattr(service, "WatchlistRepository", lambda: repo)
+    monkeypatch.setattr(service, "check_watchlist_limits", lambda session, user: None)
     # Force the seam to reject the ref regardless of format.
     monkeypatch.setattr(service, "validate_ref", lambda ref: False)
     channel_repo = MagicMock()
     monkeypatch.setattr(service, "ChannelRepository", lambda: channel_repo)
 
     with pytest.raises(RefValidationError):
-        service.create(MagicMock(), user_id=1, data=_create_data())
+        service.create(MagicMock(), user=_user(), data=_create_data())
     channel_repo.get_or_create.assert_not_called()
 
 
 def test_create_inserts_and_maps_fields(monkeypatch: pytest.MonkeyPatch) -> None:
     repo = MagicMock()
     repo.list.return_value = []
+    monkeypatch.setattr(service, "check_watchlist_limits", lambda session, user: None)
 
     def _create(session: Any, entity: Any) -> Any:
         entity.id = 42  # simulate flush assigning a PK
@@ -128,7 +156,7 @@ def test_create_inserts_and_maps_fields(monkeypatch: pytest.MonkeyPatch) -> None
     channel_repo.get_or_create.return_value = channel
     monkeypatch.setattr(service, "ChannelRepository", lambda: channel_repo)
 
-    result = service.create(MagicMock(), user_id=3, data=_create_data())
+    result = service.create(MagicMock(), user=_user(3), data=_create_data())
     assert result.id == 42
     assert result.user_id == 3
     assert result.channel.handle == "@chan_name"

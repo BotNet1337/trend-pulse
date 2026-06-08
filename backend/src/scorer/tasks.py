@@ -258,7 +258,15 @@ def _enqueue_delivery(alert_id: int) -> None:
     """
     from alerts.tasks import dispatch_alert
 
-    dispatch_alert.apply_async(args=(alert_id,))
+    try:
+        dispatch_alert.apply_async(args=(alert_id,))
+    except Exception:
+        # Broker unreachable / enqueue failure must NOT abort scoring (the alert row
+        # is already committed). Logged, not swallowed. NOTE: the scorer is
+        # idempotent (won't recreate the alert), so nothing currently re-enqueues a
+        # 'pending' alert whose enqueue failed — a pending-alert re-dispatch sweep is
+        # tracked for the ops/retention work (task-011).
+        logger.warning("delivery enqueue failed for alert_id=%s (stays pending)", alert_id)
 
 
 def score_recent_clusters() -> int:

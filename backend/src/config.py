@@ -51,6 +51,12 @@ _DEFAULT_SCORER_RECENT_WINDOW_SECONDS = 3600
 # exponential backoff starting at `alert_retry_backoff_seconds`, capped at
 # `alert_retry_backoff_max_seconds`, after which the alert is marked `failed`.
 _DEFAULT_TELEGRAM_API_BASE_URL = "https://api.telegram.org"
+# Billing — NOWPayments (task-010, ADR-004). The API base is the single source for
+# the URL (non-secret, not a magic literal at the call site). The API key + IPN
+# secret are secrets from sensitive.env; they DEFAULT to empty so the app boots
+# without billing configured — billing endpoints error cleanly (503) when unset,
+# rather than failing at startup (billing is optional). Secrets are NEVER logged.
+_DEFAULT_NOWPAYMENTS_BASE_URL = "https://api.nowpayments.io/v1"
 _DEFAULT_ALERT_HTTP_TIMEOUT_SECONDS = 10
 _DEFAULT_ALERT_MAX_RETRIES = 5
 _DEFAULT_ALERT_RETRY_BACKOFF_SECONDS = 2
@@ -97,6 +103,12 @@ class Settings(BaseSettings):
     alert_max_retries: int = _DEFAULT_ALERT_MAX_RETRIES
     alert_retry_backoff_seconds: int = _DEFAULT_ALERT_RETRY_BACKOFF_SECONDS
     alert_retry_backoff_max_seconds: int = _DEFAULT_ALERT_RETRY_BACKOFF_MAX_SECONDS
+
+    # --- Billing — NOWPayments (task-010, ADR-004). Secrets from sensitive.env;
+    # empty defaults so the app boots without billing configured (endpoints 503). ---
+    nowpayments_api_key: str = ""
+    nowpayments_ipn_secret: str = ""
+    nowpayments_base_url: str = _DEFAULT_NOWPAYMENTS_BASE_URL
 
     telegram_api_id: int | None = None
     telegram_api_hash: str | None = None

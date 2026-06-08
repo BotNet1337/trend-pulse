@@ -40,12 +40,16 @@ def _redis_or_skip() -> redis_lib.Redis:
 
 
 def test_run_user_batch_delay_json_serializable(eager: None) -> None:
-    # JSON serializer rejects non-serializable args at apply time; an int passes.
+    # Eager execution runs the body, which acquires the per-user Redis lock — needs
+    # a reachable Redis. JSON serializer rejects non-serializable args; an int passes.
+    _redis_or_skip()
     result = tasks.run_user_batch.delay(1)
     assert result.get(timeout=5) is None
 
 
 def test_score_tick_delay(eager: None) -> None:
+    # Eager body scores clusters + enqueues delivery — touches Redis; skip if absent.
+    _redis_or_skip()
     result = tasks.score_tick.delay()
     assert result.get(timeout=5) is None
 

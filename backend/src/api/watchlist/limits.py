@@ -1,24 +1,29 @@
-"""Plan-limit seam for watchlists (full per-plan enforcement is task-010).
+"""Plan-limit seam for watchlists — now bridged to the single billing enforcement.
 
-User decision (overrides the task doc's "5 channels"): the plan limit is the max
-number of WATCHLISTS a user may own under the default (Free) plan. Creating one
-beyond the cap raises `LimitExceededError`, which the router maps to 402.
+Task-004 shipped a standalone count check (a fixed Free cap of 5). Task-010 makes
+the real per-plan cap apply by delegating to `billing.assert_within_limit`
+(ADR-003: plan-gating in ONE place). The watchlist router keeps its 402 mapping;
+`billing.PlanLimitExceeded(code=402)` for an over-quota channel cap is translated to
+`LimitExceededError` here so the router's existing handler is unchanged.
 
-This is a basic count check against a single default cap; per-plan counters and
-atomic enforcement (race on concurrent POSTs at the boundary) are task-010.
+Channels cap per plan (overview §6): Free 5 → the 6th create is 402; Pro 100;
+Team 500. One watchlist row = one channel (the task-004 single-channel decision).
 """
 
+from sqlalchemy.orm import Session
+
 from api.watchlist.exceptions import LimitExceededError
-
-# Free-plan cap: max watchlists per user (overview §6, reinterpreted per the
-# one-row-per-watchlist decision). Named constant, not a magic literal.
-DEFAULT_PLAN_MAX_WATCHLISTS = 5
+from billing import PlanLimitExceeded, Resource, assert_within_limit
+from storage.models.users import User
 
 
-def check_watchlist_limits(*, current_count: int, adding: int = 1) -> None:
-    """Raise `LimitExceededError` if `current_count + adding` exceeds the plan cap."""
-    if current_count + adding > DEFAULT_PLAN_MAX_WATCHLISTS:
-        raise LimitExceededError(
-            f"watchlist limit reached: the default plan allows "
-            f"{DEFAULT_PLAN_MAX_WATCHLISTS} watchlists"
-        )
+def check_watchlist_limits(session: Session, user: User) -> None:
+    """Raise `LimitExceededError` if creating one more channel breaches the plan.
+
+    Delegates to the single billing enforcement entry (ADR-003); the billing
+    quota error (402) is re-raised as the watchlist domain error the router maps.
+    """
+    try:
+        assert_within_limit(session, user, Resource.CHANNELS)
+    except PlanLimitExceeded as exc:
+        raise LimitExceededError(str(exc)) from exc

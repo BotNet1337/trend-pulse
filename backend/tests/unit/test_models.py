@@ -47,6 +47,8 @@ def test_all_models_share_base_metadata() -> None:
         "clusters",
         "scores",
         "alerts",
+        "subscriptions",
+        "billing_payments",
     }
 
 

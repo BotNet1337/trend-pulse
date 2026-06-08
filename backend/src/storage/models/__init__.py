@@ -11,6 +11,7 @@ from storage.models.channels import Channel, SourceKind
 from storage.models.clusters import EMBEDDING_DIM, Cluster
 from storage.models.posts import Post
 from storage.models.scores import Score
+from storage.models.subscriptions import BillingPayment, Subscription
 from storage.models.users import OAuthAccount, User
 from storage.models.watchlists import Watchlist
 
@@ -18,12 +19,14 @@ __all__ = [
     "EMBEDDING_DIM",
     "Alert",
     "Base",
+    "BillingPayment",
     "Channel",
     "Cluster",
     "OAuthAccount",
     "Post",
     "Score",
     "SourceKind",
+    "Subscription",
     "User",
     "Watchlist",
 ]
