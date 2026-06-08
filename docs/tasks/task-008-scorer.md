@@ -1,12 +1,12 @@
 ---
 id: TASK-008
 title: Scorer — velocity/engagement/cross_channel viral score + alert trigger
-status: planned        # planned → in-progress → review → done
+status: done        # planned → in-progress → review → done
 owner: backend
 created: 2026-06-08
 updated: 2026-06-08
-baseline_commit: ""    # set by executor at ship time
-branch: ""             # set by executor at ship time
+baseline_commit: "f75c9294ec268c8abb6be97c96633ce66fbfe608"
+branch: "gsd/phase-008-scorer"
 tags: [backend, scorer, scoring, alerts, celery]
 ---
 
@@ -97,20 +97,30 @@ Scorer обязан быть **платформо-независимым**: ра
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
-baseline_commit: ""
-branch: ""
-lock: ""
+current_step: done
+baseline_commit: "f75c9294ec268c8abb6be97c96633ce66fbfe608"
+branch: "gsd/phase-008-scorer"
+lock: "loop-008"
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + runtime + real behavior)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (N/A — pure compute over own-tenant data; no secrets/auth/input/raw SQL touched)
-- [ ] 6 ship (confirm plan done → PR)
-- [ ] 7 learnings (auto)
+- [x] 4 verify (G2 — tests + runtime + real behavior)
+- [x] 5 review (auto — PASS, 0 blocking; 2 LOW fixed)
+- [x] 5.5 security (N/A — pure compute, own-tenant)
+- [x] 6 ship (PR #9, squash-merged)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план составлен по overview §4 «Scorer» + high-level-architecture §3–§4 + ADR-001; depends on task-007 (кластеры), task-006 (beat/Celery), task-002 (schema clusters/alerts), task-004 (alert-config). Scorer платформо-независим над нормализованными `PostMetrics`; security 5.5 = N/A, чистый compute над данными своего тенанта.)
+
+
+### Step 3 do · 4 verify · 5 review · loop-008
+- **do (TDD, FLAT):** `scorer/score.py` pure `compute_viral_score` (overview §4: weights 0.4/0.35/0.25; velocity=log1p(Δch)/Δh; engagement=(views+fwd·3+react·2)/channel_avg; cross_channel=unique/watched; named consts; zero-div guards). `scorer/tasks.py` `score_recent_clusters` (per-user fresh clusters → score → topic+threshold → idempotent Alert). Wired into existing `score_tick` seam (no competing task). Idempotency: unique `alerts(user_id,cluster_id)` (migration 0003, down_revision 0002) + savepoint/begin_nested insert (IntegrityError → no-op, prior work preserved). RED→GREEN: test_score AC1 hand-verified 4.381960808726313. ci-fast 139 unit green (mypy strict). AC2 platform-independent (score+tasks no collector import).
+- **verify (G2):** integration 3 passed — AC4+AC6 (ровно один alert, идемпотентно при повторном тике), AC3 (≤ threshold → нет), AC5 (topic-mismatch → нет); migration chain 0001→0002→0003 PASS.
+- **review (opus) PASS 0 blocking.** 2 LOW исправлены (убран мёртвый `default_alert_threshold`; AC2-тест расширен на `scorer.tasks`). MEDIUM (документированные footguns, не блок):
+  - **scoring per-TOPIC, не per-CLUSTER** (нет post↔cluster FK) → несколько свежих кластеров одной темы получают одинаковый score и каждый >порога даёт свой alert. **→ task-009 (alert delivery) должен rate-limit'ить; future: post↔cluster FK для точного score.**
+  - `channel_avg` = среднее по текущему окну, не исторический baseline (engagement не «спайк-vs-норма») → future: trailing-baseline.
+  - `Score`-строки append-only без upsert → растут каждый тик; ретенция/индекс → task-011.
+- **security 5.5:** N/A (pure compute, own-tenant, no secret/auth/input/raw SQL).

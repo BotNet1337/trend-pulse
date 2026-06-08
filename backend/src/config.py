@@ -37,6 +37,13 @@ _DEFAULT_EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 _DEFAULT_DEDUP_SIMILARITY_THRESHOLD = 0.8
 _DEFAULT_CLUSTER_COSINE_THRESHOLD = 0.75
 
+# Scorer (task-008). Named, non-secret defaults — never magic literals (CONVENTIONS).
+# A cluster is "fresh"/scoreable if updated within this window (seconds); the scorer
+# tick (every `scorer_interval_seconds`) only scores clusters inside it. The alert
+# threshold is ALWAYS the user's per-topic watchlist `threshold` (NOT-NULL), so no
+# global default threshold is needed.
+_DEFAULT_SCORER_RECENT_WINDOW_SECONDS = 3600
+
 
 class Settings(BaseSettings):
     """Runtime configuration read from the process environment.
@@ -68,6 +75,9 @@ class Settings(BaseSettings):
     embedding_model_name: str = _DEFAULT_EMBEDDING_MODEL_NAME
     dedup_similarity_threshold: float = _DEFAULT_DEDUP_SIMILARITY_THRESHOLD
     cluster_cosine_threshold: float = _DEFAULT_CLUSTER_COSINE_THRESHOLD
+
+    # --- Scorer (task-008). Non-secret, settable; defaults above. ---
+    scorer_recent_window_seconds: int = _DEFAULT_SCORER_RECENT_WINDOW_SECONDS
 
     telegram_api_id: int | None = None
     telegram_api_hash: str | None = None
