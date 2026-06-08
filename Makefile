@@ -7,9 +7,14 @@
 COMPOSE := docker compose --env-file development/version.env -f development/docker-compose.yml
 UV      := uv run --directory backend
 INFRA   := postgres redis pg_vector_provisioner migration_runner
+# IaC dirs (ADR-005 §5). Ansible runs with cwd = ops/ansible so ansible.cfg +
+# .vault-pass (gitignored dev vault password) resolve relative to it.
+ANSIBLE_DIR := ops/ansible
+TF_DIR      := ops/terraform
 
 .PHONY: help up dev-up dev-infra-up down build logs ps restart sh migrate \
-        ansible-unpack lint fmt typecheck test test-integration ci ci-fast
+        ansible-unpack tf-validate ansible-lint ansible-check \
+        lint fmt typecheck test test-integration ci ci-fast
 
 # Default target: list everything.
 help:
@@ -28,6 +33,10 @@ help:
 	@echo "    sh               open a shell in the api container"
 	@echo "    migrate          run migration_runner (alembic upgrade head)"
 	@echo "    ansible-unpack   render development/env/{deploy,sensitive}.env from ops/ansible"
+	@echo "  IaC (ops/ — Terraform + Ansible, ADR-005 §5):"
+	@echo "    tf-validate      terraform init -backend=false + validate (ops/terraform)"
+	@echo "    ansible-lint     ansible-lint over ops/ansible"
+	@echo "    ansible-check    ansible-playbook --syntax-check + --check (dry-run)"
 	@echo "  Dev / CI (uv run in backend/):"
 	@echo "    fmt              ruff format"
 	@echo "    lint             ruff check"
@@ -69,7 +78,23 @@ migrate:
 	$(COMPOSE) up --no-deps migration_runner
 
 ansible-unpack:
-	sh development/scripts/ansible-unpack.sh
+	cd $(ANSIBLE_DIR) && ANSIBLE_CONFIG=ansible.cfg ansible-playbook playbooks/unpack-env.yml --vault-password-file .vault-pass
+
+# --- IaC (ops/ — Terraform + Ansible) ---
+# validate without touching the remote backend (AC2; -backend=false). init
+# fetches provider schemas; needs network the first time.
+tf-validate:
+	terraform -chdir=$(TF_DIR) init -backend=false
+	terraform -chdir=$(TF_DIR) validate
+
+ansible-lint:
+	ansible-lint $(ANSIBLE_DIR)
+
+# Dry-run: syntax-check the whole site, plus a localhost --check of unpack-env
+# (the only play that runs without a real host).
+ansible-check:
+	cd $(ANSIBLE_DIR) && ANSIBLE_CONFIG=ansible.cfg ansible-playbook site.yml --syntax-check --vault-password-file .vault-pass
+	cd $(ANSIBLE_DIR) && ANSIBLE_CONFIG=ansible.cfg ansible-playbook playbooks/unpack-env.yml --check --vault-password-file .vault-pass
 
 # --- Dev / CI ---
 fmt:

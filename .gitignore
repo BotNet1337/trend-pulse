@@ -12,7 +12,22 @@ node_modules/
 
 # Secrets — materialized by `make ansible-unpack`, never committed.
 development/env/sensitive.env
-# NOTE: deploy.env and version.env ARE committed (non-secret).
+# deploy.env is now Ansible-materialized (single source of truth = group_vars);
+# never commit it (avoids two sources of truth). version.env stays committed.
+development/env/deploy.env
+
+# Ansible vault password (dev) — NEVER committed. The vault file itself is
+# committed only in encrypted form.
+ops/ansible/.vault-pass
+*.vault-pass
+
+# Terraform — local state, plugins, and tfvars (may carry secrets).
+ops/terraform/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
 
 # Local tooling — not part of the application repo.
 .claude/

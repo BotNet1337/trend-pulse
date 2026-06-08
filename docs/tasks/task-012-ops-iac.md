@@ -1,12 +1,12 @@
 ---
 id: TASK-012
 title: Ops / IaC — Terraform (внешние сервисы) + Ansible (prod-настройки/дефолты + доставка секретов)
-status: planned        # planned → in-progress → review → done
+status: done        # planned → in-progress → review → done
 owner: infra
 created: 2026-06-08
 updated: 2026-06-08
-baseline_commit: ""    # set by executor at ship time
-branch: ""             # set by executor at ship time
+baseline_commit: "40c932904e13d93d4ccd818f5b247e8f1abf5c20"
+branch: "gsd/phase-012-ops-iac"
 tags: [ops, iac, terraform, ansible, secrets]
 ---
 
@@ -102,20 +102,27 @@ tags: [ops, iac, terraform, ansible, secrets]
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
-baseline_commit: ""
-branch: ""
-lock: ""
+current_step: done
+baseline_commit: "40c932904e13d93d4ccd818f5b247e8f1abf5c20"
+branch: "gsd/phase-012-ops-iac"
+lock: "loop-012"
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [ ] 3 do (TDD: failing check → minimal IaC)
-- [ ] 4 verify (G2 — validate/lint/check + materialized env + real behavior)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (applicable: secret management (vault), IaC least-privilege, no plaintext secrets, edge firewall)
-- [ ] 6 ship (confirm plan done → PR)
-- [ ] 7 learnings (auto)
+- [x] 4 verify (G2 — validate/lint/check + materialized env + real behavior)
+- [x] 5 review (auto — 2 HIGH deploy.yml source/version.env delivery fixed)
+- [x] 5.5 security (REQUIRED — PASS, 0 blocking; vault encrypted, firewall least-priv)
+- [x] 6 ship (PR #12, squash-merged)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план составлен по ADR-005 §4/§5 и network-design; реализует скелет `ops/` из task-001. Зависит от task-001 — root `Makefile`, `development/env/`, объявленный таргет `ansible-unpack`.)
+
+
+### Step 3 do · 4 verify · 5 review · 5.5 security · loop-012
+- **do (ops/ only):** ops/terraform (digitalocean provider: versions/main/backend(remote, init-time creds)/variables(sensitive=true)/outputs/vps/firewall/dns/object_storage + tfvars.example + .gitignore); ops/ansible (ansible.cfg, inventory, site.yml, playbooks provision/deploy/unpack-env, group_vars all+prod, roles/env, **ansible-vault ENCRYPTED** vault, requirements.yml, README). Root Makefile: ansible-unpack → ansible-playbook unpack-env.yml (--vault-password-file .vault-pass) + tf-validate/ansible-lint/ansible-check helpers in `make help`. Stub `ansible-unpack.sh` + plaintext vault.yml removed. `deploy.env` git-untracked (теперь Ansible-материализуется).
+- **verify (G2):** AC2 `terraform validate` Success; AC3 ansible-lint production-profile clean; AC4 `--syntax-check`/`--check` pass; AC5 `make ansible-unpack` → deploy.env (12) + sensitive.env (10) непустые, **env-контракт = superset** прежних ключей (+TELEGRAM_POOL_SESSIONS, 0 потеряно); AC6 vault `$ANSIBLE_VAULT;1.1;AES256`, `.vault-pass`/sensitive.env/deploy.env gitignored, нет plaintext-секретов; AC7 firewall 443/80-redirect/SSH-allowlist (зеркало network-design); AC8 make help. Backend ci-fast не затронут (211).
+- **review (opus) → 2 HIGH → fixed (debug cycle 1):** `deploy.yml` не доставлял app-source/version.env на VPS → prod compose-up некогерентен. **FIX:** `pre_tasks` git-clone `{{ app_repo_url }}@{{ app_version }}` → app_dir; `docker_compose_v2 env_files=[version.env]` (image-tag интерполяция). ansible-lint/syntax по-прежнему чисты. LOW (prod.yml trendpulse_debug) — оставлен как explicit prod re-assert.
+- **security (opus) PASS, 0 blocking:** vault только зашифрованным blob'ом; нет plaintext в .tf/.tfvars/group_vars/Makefile; `.vault-pass` (только путь в ansible.cfg) gitignored+untracked; TF secrets sensitive=true, backend creds init-time, tfstate/tfvars gitignored, outputs без секретов; firewall least-priv (SSH default 127.0.0.1/32, не 0.0.0.0/0); sensitive.env 0600; **prod.yml `auth_cookie_secure=true` — закрыл prod-долг task-009**; Spaces ACL private; SSH key-auth. Нечего ротировать. INFO: egress 0.0.0.0/0 (приемлемо для пакетов/ACME).

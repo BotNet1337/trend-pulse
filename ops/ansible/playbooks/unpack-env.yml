@@ -1,0 +1,21 @@
+---
+# Materialize development/env/{deploy.env,sensitive.env} from group_vars + the
+# decrypted vault (ADR-005 §4). Runs on localhost — `make ansible-unpack` calls
+# this. Vault is loaded via vars_files; the password comes from --vault-password-file
+# (.vault-pass) or ANSIBLE_VAULT_PASSWORD_FILE. A wrong/missing password fails here
+# (edge case) rather than silently emitting an empty sensitive.env.
+- name: Render env files from Ansible (single source of truth)
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  vars_files:
+    # Non-secret defaults. Loaded explicitly because group_vars/ lives at the
+    # ansible root, not adjacent to this playbook in playbooks/.
+    - ../group_vars/all.yml
+    - ../vault/sensitive.vault.yml
+  vars:
+    # Repo root = three levels up from this playbook
+    # (playbooks/ -> ansible/ -> ops/ -> apps/trendPulse).
+    env_dir: "{{ playbook_dir }}/../../../development/env"
+  roles:
+    - role: env

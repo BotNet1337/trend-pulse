@@ -1,0 +1,21 @@
+---
+# Render the two env files from group_vars (non-secret) + the decrypted vault
+# (secret). Templates resolve from roles/env/templates/ — no relative paths
+# (ADR-005 §4). The caller decrypts the vault via vars_files + vault password.
+- name: Ensure env directory exists
+  ansible.builtin.file:
+    path: "{{ env_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Render deploy.env (non-secret) from group_vars
+  ansible.builtin.template:
+    src: deploy.env.j2
+    dest: "{{ env_dir }}/deploy.env"
+    mode: "0644"
+
+- name: Render sensitive.env (secrets) from decrypted vault
+  ansible.builtin.template:
+    src: sensitive.env.j2
+    dest: "{{ env_dir }}/sensitive.env"
+    mode: "{{ env_sensitive_mode }}"

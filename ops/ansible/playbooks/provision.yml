@@ -1,0 +1,30 @@
+---
+# Provision the VPS host (configure step, after Terraform created it): system
+# packages + Docker engine + compose plugin. Targets the `prod` group; a no-op
+# locally where Docker is already present. Idempotent.
+- name: Provision VPS host (Docker + system packages)
+  hosts: prod
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Install base system packages
+      ansible.builtin.package:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+          - ufw
+        state: present
+
+    - name: Install Docker engine + compose plugin
+      ansible.builtin.package:
+        name:
+          - docker.io
+          - docker-compose-plugin
+        state: present
+
+    - name: Ensure Docker service is running and enabled
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true

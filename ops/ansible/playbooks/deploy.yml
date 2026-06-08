@@ -1,0 +1,40 @@
+---
+# Deploy the TrendPulse stack onto the provisioned VPS (configure step): ship
+# the env files (rendered from group_vars + decrypted vault) to the host, then
+# bring the stack up. Targets the `prod` group. Same env contract as local
+# (ADR-005 §4 — one source of truth for local and prod).
+- name: Deploy TrendPulse stack
+  hosts: prod
+  become: true
+  gather_facts: true
+  vars_files:
+    - ../vault/sensitive.vault.yml
+  vars:
+    app_dir: /opt/trendpulse
+    env_dir: "/opt/trendpulse/development/env"
+  pre_tasks:
+    # Ship the application source (compose files, provisioning, version.env) to the
+    # host BEFORE rendering env + compose-up — on a fresh droplet the compose
+    # project does not exist otherwise. Pinned to app_version for reproducibility.
+    - name: Check out the application source on the host
+      ansible.builtin.git:
+        repo: "{{ app_repo_url }}"
+        dest: "{{ app_dir }}"
+        version: "{{ app_version }}"
+        single_branch: true
+        depth: 1
+  roles:
+    # Renders deploy.env + sensitive.env into {{ app_dir }}/development/env (env_dir),
+    # i.e. into the checked-out tree so the compose `env_file:` paths resolve.
+    - role: env
+  tasks:
+    - name: Bring up the stack via compose
+      community.docker.docker_compose_v2:
+        project_src: "{{ app_dir }}/development"
+        files:
+          - docker-compose.yml
+        # version.env supplies image-tag interpolation (${PGVECTOR_IMAGE} etc.),
+        # mirroring local `docker compose --env-file development/version.env`.
+        env_files:
+          - "{{ app_dir }}/development/version.env"
+        state: present

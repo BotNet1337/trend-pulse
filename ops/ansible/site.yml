@@ -1,0 +1,10 @@
+---
+# Top-level playbook — imports provision (host setup) then deploy (stack + env).
+# unpack-env.yml is intentionally NOT imported here: it is a localhost-only
+# convenience (`make ansible-unpack`) and would re-run on every prod play.
+# Run order mirrors the provision (TF) → configure (Ansible) boundary.
+- name: Provision host
+  ansible.builtin.import_playbook: playbooks/provision.yml
+
+- name: Deploy stack
+  ansible.builtin.import_playbook: playbooks/deploy.yml

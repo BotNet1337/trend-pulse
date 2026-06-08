@@ -1,0 +1,6 @@
+---
+# Where the rendered env files land. Overridden per play:
+#   - unpack-env.yml (localhost): repo development/env/
+#   - deploy.yml (prod): /opt/trendpulse/development/env/
+env_dir: "{{ playbook_dir }}/../../../development/env"
+env_sensitive_mode: "0600"
