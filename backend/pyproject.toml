@@ -74,3 +74,9 @@ packages = ["trendpulse"]
 mypy_path = "src"
 strict = true
 warn_unused_ignores = true
+
+# pgvector ships without a py.typed marker / stubs; treat its imports as untyped
+# at the boundary instead of scattering `# type: ignore` (CONVENTIONS: no ignores).
+[[tool.mypy.overrides]]
+module = "pgvector.*"
+ignore_missing_imports = true
