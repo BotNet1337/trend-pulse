@@ -1,6 +1,8 @@
 # Celery worker. Same app image as api (differs only by command). On
-# postgres_net + redis_net; NOT in edge; NO published ports. Declares the same
-# `build` so `make build` produces the shared image even if api isn't built first.
+# postgres_net + redis_net + egress; NOT in edge; NO published ports. Declares the
+# same `build` so `make build` produces the shared image even if api isn't built
+# first. `egress` (non-internal) is the ONLY internet route — the Telegram
+# collector (TASK-005) needs MTProto access; api/db/redis stay isolated.
 services:
   worker:
     image: ${APP_IMAGE}
@@ -17,6 +19,7 @@ services:
     networks:
       - postgres_net
       - redis_net
+      - egress
     depends_on:
       redis:
         condition: service_healthy
@@ -29,4 +32,6 @@ networks:
   postgres_net:
     external: false
   redis_net:
+    external: false
+  egress:
     external: false

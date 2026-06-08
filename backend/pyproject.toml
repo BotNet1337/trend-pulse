@@ -48,6 +48,7 @@ dev = [
     "pytest>=8.3,<9",
     "pytest-asyncio>=0.24,<1",
     "aiosqlite>=0.20,<1",
+    "fakeredis>=2.26,<3",
     "httpx>=0.27,<1",
     "ruff>=0.8,<1",
     "mypy>=1.13,<2",
@@ -87,7 +88,7 @@ python_version = "3.12"
 # config checked the single `trendpulse` package; this preserves that scope —
 # src only, tests excluded). `mypy_path = src` + `explicit_package_bases` make
 # src/ the import root so the flat top-level names resolve without a parent pkg.
-packages = ["api", "storage", "config", "celery_app", "scheduler"]
+packages = ["api", "collector", "storage", "config", "celery_app", "scheduler"]
 mypy_path = "src"
 explicit_package_bases = true
 strict = true
@@ -113,4 +114,12 @@ ignore_missing_imports = true
 # fully typed (ships py.typed) and is NOT listed here.
 [[tool.mypy.overrides]]
 module = "httpx_oauth.*"
+ignore_missing_imports = true
+
+# telethon ships without type stubs / py.typed; scope the missing-import allowance
+# to it (it is referenced only lazily inside the collector) instead of inline
+# `# type: ignore` (CONVENTIONS: no ignores). The platform-independent core
+# (collector/base.py) never imports it.
+[[tool.mypy.overrides]]
+module = "telethon.*"
 ignore_missing_imports = true

@@ -42,6 +42,10 @@ class Settings(BaseSettings):
 
     telegram_api_id: int | None = None
     telegram_api_hash: str | None = None
+    # Comma-separated pool StringSession strings (technical accounts) from env
+    # TELEGRAM_POOL_SESSIONS. Secret — supplied via sensitive.env; NEVER a user
+    # session_string (overview §2/§7). Parsed via `telegram_pool_sessions()`.
+    telegram_pool_sessions: str = ""
 
     # --- Auth secrets (fastapi-users + httpx-oauth, ADR-003). ---
     # NO defaults on the SECRET fields → a missing env var fails fast at startup
@@ -66,6 +70,14 @@ class Settings(BaseSettings):
             f"{_POSTGRES_DRIVER}://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
+
+
+def telegram_pool_sessions(settings: Settings) -> list[str]:
+    """Parse `telegram_pool_sessions` (comma-separated) into a list of sessions.
+
+    Empty entries are stripped. Returns `[]` when unset. Secrets are never logged.
+    """
+    return [s.strip() for s in settings.telegram_pool_sessions.split(",") if s.strip()]
 
 
 @lru_cache

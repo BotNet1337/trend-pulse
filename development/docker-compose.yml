@@ -34,3 +34,7 @@ networks:
   redis_net:
     driver: bridge
     internal: true
+  # Egress for the Celery worker ONLY (collector → Telegram/MTProto needs the
+  # internet). NOT internal:true. api/postgres/redis stay isolated (TASK-005).
+  egress:
+    driver: bridge

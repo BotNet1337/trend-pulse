@@ -1,12 +1,12 @@
 ---
 id: TASK-005
 title: Source abstraction + Telegram collector — SourceCollector port, Telethon pool, cross-tenant dedup
-status: planned        # planned → in-progress → review → done
+status: done           # planned → in-progress → review → done
 owner: backend
 created: 2026-06-08
 updated: 2026-06-08
-baseline_commit: ""    # set by executor at do-start
-branch: ""             # set by executor at ship time
+baseline_commit: "73d2bbfb4c0b3fb623ac0113dd5cade00fb8b183"
+branch: "gsd/phase-005-collector-telegram"
 tags: [backend, collector, telegram, telethon, redis, source-abstraction, multi-tenancy, adr-001, adr-002]
 ---
 
@@ -111,20 +111,40 @@ tags: [backend, collector, telegram, telethon, redis, source-abstraction, multi-
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
-baseline_commit: ""
-branch: ""
+current_step: done
+baseline_commit: "73d2bbfb4c0b3fb623ac0113dd5cade00fb8b183"
+branch: "gsd/phase-005-collector-telegram"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + runtime + real behavior)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (applicable: secrets + compliance — pool creds via env, no user session_string, public-only, 48h retention buffer)
-- [ ] 6 ship (confirm plan done → PR)
-- [ ] 7 learnings (auto)
-debug_runs: []
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + runtime + real behavior)
+- [x] 5 review (auto, adversarial — PASS; 1 HIGH lifecycle leak fixed)
+- [x] 5.5 security (PASS, 0 blocking — secrets env-only, no user session, public-only, 48h TTL)
+- [x] 6 ship (PR #6, squash-merged)
+- [x] 7 learnings (auto)
+debug_runs:
+  - cycle: 1
+    where: "collector/telegram/{account_pool,reader}.py + live integration test"
+    symptom: "review HIGH: pool clients connect() on acquire but never disconnect() → socket/session leak in long-lived worker; live test emitted 'coroutine ignored GeneratorExit'"
+    fix: "AccountPool.aclose() disconnects all clients (best-effort, logged); TelegramCollector.aclose() + async context manager; live integration test wraps usage in `async with`. +2 unit tests (aclose disconnects all; __aexit__ disconnects). Re-verify: ci-fast 76 passed; live integration 2 passed, no GeneratorExit warning." 
 
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
+: <!-- HALT --> Луп остановлен на TASK-005 (правило: нужен секрет/решение). AC3 (живое чтение реального публичного канала, G2) требует реальных пул-кредов `TELEGRAM_API_ID/API_HASH` + session-строк 3–10 технических аккаунтов, и egress-сети для worker (сейчас worker только в internal:true сетях — нет интернета). Пользователь предоставит креды; инструкция по получению — в ответе ассистента. Остальные AC (1,2,4,5,6,7,8) реализуемы/проверяемы без сети. После получения кредов: создать ветку gsd/phase-005-collector-telegram, реализовать, верифицировать вкл. живой AC3, ship.
+
+### Step 3 do · 4 verify · loop-20260608-resume-005 · PASS
+- **do (TDD, FLAT layout `backend/src/collector/`):** платформо-независимый порт ADR-001 (`base.py`: SourceKind/SourceRef/PostMetrics/RawPost/SourceCollector — без telethon), `registry` (TELEGRAM зарегистрирован lazy, TWITTER future), `errors`, `constants` (RAW_POST_TTL_SECONDS=172800, backoff, POOL_MIN/MAX), `telegram/{client,account_pool,dedup,mapper,reader}`, `buffer` (Redis ключ по источнику + TTL≤48h). config: `telegram_pool_sessions`. RED→GREEN: `test_mapper.py` (ModuleNotFound→7 passed). ci-fast зелёный (mypy strict 50 файлов; 74 unit). telethon lazy-import, no-user-session подтверждён, секреты не логируются.
+- **USER-DECISION:** `POOL_MIN=1` (старт с одной dev-сессией; вернуть к 3 при полном пуле). POOL_MAX=10.
+- **verify (G2):** AC1 mapper (unit) · AC2 validate_ref True/False (unit+live) · **AC3 живое чтение `@telegram`** — integration 2 passed (с реальной пул-сессией) + прямой прогон `TelegramCollector.read()` отдал RawPost'ы с норм. метриками (views/fwd/reactions) и tz-aware UTC · AC4 FLOOD_WAIT backoff+ротация (unit, mock) · AC5 cross-tenant dedup (unit) · AC6 buffer TTL (fakeredis) · AC7 registry · AC8 no-user-session. ci-fast 74 passed.
+- **EGRESS:** добавлена не-internal сеть `egress` только для `worker` (collector→MTProto). compose config валиден; изоляция сохранена (api/postgres/redis без egress).
+- **Known (для review):** live integration-тест даёт варнинг `coroutine ignored GeneratorExit` — Telethon-клиент пула не дисконнектится в тесте/после read (lifecycle клиентов пула). Некритично (тест passed), но review оценит как возможный resource-leak.
+
 (initial — план составлен по ADR-001 (source abstraction) + ADR-002 (cross-tenant dedup/retention) + overview §2/§7; depends on task-002. Это мульти-источниковый шов: контракт `RawPost`/`SourceCollector` фиксируется здесь и потребляется task-007/008.)
+
+
+### Step 5 review (opus) · PASS · Step 5.5 security (opus) · PASS — both 0 blocking
+- **review:** ADR-001 platform-independence clean (base.py no telethon, frozen models, telethon lazy in telegram/**); dedup/48h-TTL/FLOOD_WAIT-rotation/named-constants/pure-mapper correct; egress worker-only (api/pg/redis isolated). 1 **HIGH** (client connection leak) → FIXED in debug cycle 1 (aclose + context manager). Non-blocking left: MEDIUM flood mid-iteration re-yields already-emitted msgs (absorbed by external_id dedup; documented), INFO ADR-001 model divergence (author Optional, fetched_at omitted, since Optional — intentional).
+- **security:** secrets (api_id/hash/sessions) env-only, never logged (held in factory closure, not in _Account/repr); sensitive.env gitignored+untracked; no user session_string; public-channel read-only; 48h TTL (172800s); egress worker-only; pure mapper, no eval/SSRF. **Action item (NOT blocking, user's):** rotate `TELEGRAM_API_HASH` — it was shared in plaintext chat earlier (NOT committed to git). Pool StringSession not tracked. **POOL_MIN=1** is a documented bootstrap concession → raise to 3 when full pool provisioned.
+
+### Step 6 ship · PR #6 (squash-merged). Step 7 learnings · docs/learnings.md (TASK-005).
