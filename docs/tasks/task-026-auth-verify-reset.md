@@ -1,11 +1,11 @@
 ---
 id: TASK-026
 title: Auth completeness — email verification + reset-password (backend routers + email + frontend enable)
-status: planned             # planned → in-progress → review → done
+status: done                # planned → in-progress → review → done
 owner: backend
 created: 2026-06-09
 updated: 2026-06-09
-baseline_commit: ""
+baseline_commit: "816d30d4d5f659f10520995ea11a3ce00e9f89b7"
 branch: "gsd/phase-026-auth-verify-reset"
 tags: [epic-d, backend, frontend, auth, security]
 ---
@@ -106,23 +106,30 @@ Frontend (C2, [task-014](./task-014-auth-flow-ui.md)) уже содержит с
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
-baseline_commit: ""
+current_step: done
+baseline_commit: "816d30d4d5f659f10520995ea11a3ce00e9f89b7"
 branch: "gsd/phase-026-auth-verify-reset"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + real behavior через стек)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (если применимо)
-- [ ] 6 ship (PR, squash-merged)
-- [ ] 7 learnings (auto)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + real behavior через стек)
+- [x] 5 review (auto, adversarial)
+- [x] 5.5 security (opus — обязательна; enumeration, токены, deeplink)
+- [x] 6 ship (PR, squash-merged)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план по эталону task-016/017 и контексту Epic D: завершить auth — смонтировать fastapi-users verify/reset-роутеры в api/main.py (секреты уже в users.py), on-after-хуки UserManager шлют брендированные письма через email-модуль+templates (task-025), deeplink на фронт-страницы; включить ранее скрытые frontend `pages/auth/{forgot-password,reset-password,confirm-email}` (task-014) и подключить к реальным эндпоинтам. Опц. gate associate_by_email на is_verified (learnings task-003). deps: 003 (auth-ядро/fastapi-users), 014 (auth-UI/скрытые страницы), 025 (email-инфра — hard-dep). Security 5.5 ОБЯЗАТЕЛЬНА: no-enumeration на forgot-password, токены/PII не в логах, токены одноразовые. locate+plan выполнены этим планированием — executor стартует с «3 do».)
+
+
+
+### do+verify+review+security (loop-026, 2026-06-09)
+**do/verify:** смонтированы `get_verify_router(UserRead)`+`get_reset_password_router()` (prefix /auth); UserManager-хуки `on_after_register`(auto request_verify)/`on_after_request_verify`/`on_after_forgot_password` шлют письма через `notifications.email.send_templated_email` (sync) обёрнутый в `asyncio.to_thread` + best-effort try/except (логируется ТОЛЬКО user.id); deeplink из `settings.frontend_base_url` (+`quote(email)`), пути/subject/TTL — именованные константы; `config.frontend_base_url`(dev http://localhost, prod https через base_url в ansible). Фронт sign-in раскрыл forgot-ссылку (страницы forgot/reset/confirm уже работали — не переписаны). gen.types/openapi регенерены (+4 auth-роута). G2 за nginx через mailpit: register→verify-письмо→`/auth/verify`→**is_verified=true**; forgot(202)→reset-письмо→reset→login новым(204)/старым(400); no-enumeration (existing/ghost оба 202+null); токены/PII НЕ в логах (grep чисто). integration 7/7 + 68 passed; ci-fast 297; test-cov 82.27%; frontend 128 unit+build.
+**review (opus): 0 CRIT/HIGH/MEDIUM, APPROVE** — event-loop не блокируется (to_thread), best-effort, None-request ок, токены библиотечные, no-enum нативный, scope чист. LOW: orphan `verify_email_path` в all.yml → **удалён**; broad `except Exception` в best-effort → ОСТАВЛЕН осознанно (письмо не должно ломать auth; warning-лог даёт детектируемость).
+**security (opus, обязательна): 0 блокеров** — enumeration защищён (единообразный 202 + out-of-band send, нет timing-канала); токены из jwt_secret (env), одноразовые (reset инвалидируется password-fingerprint, TTL 1ч), verify-аудиенс ≠ сессия; deeplink без open-redirect (base_url из settings, email через quote); frontend не хранит/не логирует token, авто-POST не CSRF-уязвим. Follow-up (LOW, не блокеры): (1) `Referrer-Policy: no-referrer` на auth-страницах (token в query); (2) OAuth `associate_by_email` gate на `is_verified` (pre-existing, learnings task-003 — теперь verify работает, проще добавить); (3) сузить best-effort except — опц.
 
 ### Подсказки исполнителю (initial)
 - **Монтаж:** в `api/main.py` рядом с существующими auth-include — `app.include_router(fastapi_users.get_verify_router(UserRead), prefix="/auth", tags=["auth"])` и `app.include_router(fastapi_users.get_reset_password_router(), prefix="/auth", tags=["auth"])`. Сверить сигнатуры с версией fastapi-users в проекте.

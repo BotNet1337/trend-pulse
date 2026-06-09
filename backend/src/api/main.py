@@ -148,6 +148,23 @@ app.include_router(
     prefix="/auth/google",
     tags=["auth"],
 )
+# --- Email verification routers (TASK-026): POST /auth/request-verify-token +
+# POST /auth/verify. Secrets already configured in UserManager.__init__.
+# on_after_request_verify hook sends branded verify-email via notifications.email.
+app.include_router(
+    fastapi_users.get_verify_router(UserRead),
+    prefix="/auth",
+    tags=["auth"],
+)
+# --- Reset-password routers (TASK-026): POST /auth/forgot-password +
+# POST /auth/reset-password. on_after_forgot_password hook sends reset-email.
+# no-enumeration: fastapi-users returns a uniform response for forgot-password
+# regardless of whether the email exists (AC3 / security invariant).
+app.include_router(
+    fastapi_users.get_reset_password_router(),
+    prefix="/auth",
+    tags=["auth"],
+)
 
 
 @app.get("/users/me/tenant")

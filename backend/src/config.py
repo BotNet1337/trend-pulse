@@ -99,6 +99,13 @@ _DEFAULT_PENDING_RESWEEP_INTERVAL_SECONDS = 300
 _DEFAULT_PENDING_RESWEEP_MAX_BATCH = 500
 _DEFAULT_CELERY_PING_TIMEOUT_SECONDS = 2
 
+# Auth deeplink base URL (TASK-026). Named, non-secret default — never a magic
+# literal at the call site (CONVENTIONS). Dev default → nginx on :80 (same-host
+# compose stack); overridden in prod to the HTTPS domain via deploy.env /
+# FRONTEND_BASE_URL env var.  The value is used by UserManager hooks to build
+# verify/reset deeplinks that point at the frontend pages.
+_DEFAULT_FRONTEND_BASE_URL = "http://localhost"
+
 # Email — templates service + SMTP transport (TASK-025). Named, non-secret
 # defaults — never magic literals (CONVENTIONS). Dev defaults point to the
 # local compose services (templates:3100, mailpit:1025). SMTP credentials are
@@ -204,6 +211,12 @@ class Settings(BaseSettings):
     # default (prod) to avoid exposing the full API schema externally.  Dev enables via
     # env `SWAGGER_ENABLE=true`; prod must NOT set this flag.
     swagger_enable: bool = False
+
+    # --- Auth deeplink (TASK-026). Non-secret; prod MUST set FRONTEND_BASE_URL to
+    # the HTTPS domain (e.g. https://app.trendpulse.io) via deploy.env / ansible
+    # group_vars. Dev default → same-host nginx on :80.  Value is used by
+    # UserManager hooks to build verify/reset deeplinks for frontend pages. ---
+    frontend_base_url: str = _DEFAULT_FRONTEND_BASE_URL
 
     # --- Email — templates service + SMTP transport (TASK-025). ---
     # Templates service URL — non-secret, from deploy.env; dev → compose service.
