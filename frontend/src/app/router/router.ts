@@ -17,6 +17,7 @@ import {
   SignInPage,
   SignUpPage,
 } from '@/pages';
+import { AuthGuard } from './auth-guard';
 import { paths } from './path';
 
 export type RouterContext = {
@@ -33,6 +34,8 @@ const anonymousLayoutRoute = createRoute({
   id: 'anonymous',
   component: AnonymousLayout,
   beforeLoad: ({ context }) => {
+    // Fast path: if AuthStore is already populated (bootstrap done), redirect to
+    // home. On cold start the store is null, so we let the component render.
     const authState = context.auth.getState();
     const isAuthenticated = !!authState.user;
     if (isAuthenticated) {
@@ -44,27 +47,25 @@ const anonymousLayoutRoute = createRoute({
   },
 });
 
+// Protected routes use AuthGuard component instead of sync beforeLoad.
+// AuthGuard calls useCurrentUser (GET /users/me) on mount; if 401 it redirects
+// to /auth/sign-in?redirect=<path>. This works with httpOnly-cookie auth where
+// the auth state is not available synchronously at router init time.
 const protectedLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: 'protected',
-  beforeLoad: ({ context, location }) => {
-    const authState = context.auth.getState();
-    const isAuthenticated = !!authState.user;
-    if (!isAuthenticated) {
-      throw redirect({
-        to: paths.auth.signIn,
-        search: {
-          redirect: location.href,
-        },
-      });
-    }
-  },
+  component: AuthGuard,
+});
+
+const protectedContentRoute = createRoute({
+  getParentRoute: () => protectedLayoutRoute,
+  id: 'protected-content',
   component: ProtectedLayout,
 });
 
 // Home: redirect to account settings (placeholder for C2 watchlists dashboard)
 const indexRoute = createRoute({
-  getParentRoute: () => protectedLayoutRoute,
+  getParentRoute: () => protectedContentRoute,
   path: paths.home,
   beforeLoad: () => {
     throw redirect({ to: paths.account.settings, replace: true });
@@ -73,7 +74,7 @@ const indexRoute = createRoute({
 });
 
 const accountSettingsRoute = createRoute({
-  getParentRoute: () => protectedLayoutRoute,
+  getParentRoute: () => protectedContentRoute,
   path: paths.account.settings,
   component: AccountSettingsPage,
 });
@@ -116,8 +117,10 @@ const resetPasswordRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   protectedLayoutRoute.addChildren([
-    indexRoute,
-    accountSettingsRoute,
+    protectedContentRoute.addChildren([
+      indexRoute,
+      accountSettingsRoute,
+    ]),
   ]),
   anonymousLayoutRoute.addChildren([
     signInRoute,
