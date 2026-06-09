@@ -33,11 +33,13 @@ export interface paths {
         };
         /**
          * List Alerts
-         * @description List the caller's alerts with pagination and plan-based history window.
+         * @description List the caller's alerts with cursor pagination and plan-based history window.
          *
          *     Free plan → returns empty list + history_unavailable=True (not 403).
          *     Pro/Team → returns alerts within the plan's history window (30/90 days).
          *     Always tenant-scoped: only the caller's alerts are returned.
+         *     Pass `cursor` from the previous response's `next_cursor` field to load the next page.
+         *     Invalid cursor → 422.
          */
         get: operations["list_alerts_alerts_get"];
         put?: never;
@@ -386,7 +388,11 @@ export interface components {
         };
         /**
          * AlertListResponse
-         * @description Paginated list response envelope for GET /alerts.
+         * @description Cursor-paginated list response envelope for GET /alerts (TASK-020).
+         *
+         *     `next_cursor` is an opaque base64url token encoding (first_seen, id) for the
+         *     keyset position. None means no more pages. Clients MUST treat it as opaque
+         *     and pass it back verbatim via the `cursor` query parameter.
          *
          *     `history_unavailable` is True when the caller's plan has no history window
          *     (Free plan, HISTORY == 0). The UI must show the plan-upgrade upsell.
@@ -398,12 +404,8 @@ export interface components {
             history_unavailable: boolean;
             /** Items */
             items: components["schemas"]["AlertRead"][];
-            /** Limit */
-            limit: number;
-            /** Offset */
-            offset: number;
-            /** Total */
-            total: number;
+            /** Next Cursor */
+            next_cursor: string | null;
         };
         /**
          * AlertRead
@@ -731,8 +733,8 @@ export interface operations {
             query?: {
                 /** @description Maximum number of alerts to return (server silently clamps to max). */
                 limit?: number;
-                /** @description Number of alerts to skip. */
-                offset?: number;
+                /** @description Opaque pagination cursor from previous response next_cursor field. */
+                cursor?: string | null;
             };
             header?: never;
             path?: never;

@@ -31,7 +31,7 @@
       },
       "AlertListResponse": {
         "additionalProperties": false,
-        "description": "Paginated list response envelope for GET /alerts.\n\n`history_unavailable` is True when the caller's plan has no history window\n(Free plan, HISTORY == 0). The UI must show the plan-upgrade upsell.\nThe plan window is enforced backend-side; the frontend MUST NOT hard-code\nthe 30/90 day numbers inline (TASK-016 invariant: backend is source of truth).",
+        "description": "Cursor-paginated list response envelope for GET /alerts (TASK-020).\n\n`next_cursor` is an opaque base64url token encoding (first_seen, id) for the\nkeyset position. None means no more pages. Clients MUST treat it as opaque\nand pass it back verbatim via the `cursor` query parameter.\n\n`history_unavailable` is True when the caller's plan has no history window\n(Free plan, HISTORY == 0). The UI must show the plan-upgrade upsell.\nThe plan window is enforced backend-side; the frontend MUST NOT hard-code\nthe 30/90 day numbers inline (TASK-016 invariant: backend is source of truth).",
         "properties": {
           "history_unavailable": {
             "title": "History Unavailable",
@@ -44,24 +44,21 @@
             "title": "Items",
             "type": "array"
           },
-          "limit": {
-            "title": "Limit",
-            "type": "integer"
-          },
-          "offset": {
-            "title": "Offset",
-            "type": "integer"
-          },
-          "total": {
-            "title": "Total",
-            "type": "integer"
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
           }
         },
         "required": [
           "items",
-          "total",
-          "limit",
-          "offset",
+          "next_cursor",
           "history_unavailable"
         ],
         "title": "AlertListResponse",
@@ -746,7 +743,7 @@
     },
     "/alerts": {
       "get": {
-        "description": "List the caller's alerts with pagination and plan-based history window.\n\nFree plan → returns empty list + history_unavailable=True (not 403).\nPro/Team → returns alerts within the plan's history window (30/90 days).\nAlways tenant-scoped: only the caller's alerts are returned.",
+        "description": "List the caller's alerts with cursor pagination and plan-based history window.\n\nFree plan → returns empty list + history_unavailable=True (not 403).\nPro/Team → returns alerts within the plan's history window (30/90 days).\nAlways tenant-scoped: only the caller's alerts are returned.\nPass `cursor` from the previous response's `next_cursor` field to load the next page.\nInvalid cursor → 422.",
         "operationId": "list_alerts_alerts_get",
         "parameters": [
           {
@@ -763,16 +760,21 @@
             }
           },
           {
-            "description": "Number of alerts to skip.",
+            "description": "Opaque pagination cursor from previous response next_cursor field.",
             "in": "query",
-            "name": "offset",
+            "name": "cursor",
             "required": false,
             "schema": {
-              "default": 0,
-              "description": "Number of alerts to skip.",
-              "minimum": 0,
-              "title": "Offset",
-              "type": "integer"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Opaque pagination cursor from previous response next_cursor field.",
+              "title": "Cursor"
             }
           }
         ],

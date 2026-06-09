@@ -1,12 +1,15 @@
-"""Pydantic boundary models for the alerts read API (TASK-016, CONVENTIONS).
+"""Pydantic boundary models for the alerts read API (TASK-016/020, CONVENTIONS).
 
 AlertRead — the response shape for one alert (score, topic from Cluster join,
 first_seen, channels_count, delivery_status). `topic` is NOT on Alert — it is
 carried by the related Cluster and is resolved by the service layer.
 
-AlertListResponse — paginated envelope: items + total/limit/offset + the
-`history_unavailable` flag which the UI uses to render the plan-based upsell
-(Free plan → history_unavailable=True, items=[]).
+AlertListResponse — cursor pagination envelope: items + next_cursor (opaque
+base64url string, None on last page) + the `history_unavailable` flag which
+the UI uses to render the plan-based upsell (Free plan → history_unavailable=True,
+items=[], next_cursor=None).
+
+TASK-020: replaces offset/total fields with next_cursor (keyset pagination).
 """
 
 from datetime import datetime
@@ -28,7 +31,11 @@ class AlertRead(BaseModel):
 
 
 class AlertListResponse(BaseModel):
-    """Paginated list response envelope for GET /alerts.
+    """Cursor-paginated list response envelope for GET /alerts (TASK-020).
+
+    `next_cursor` is an opaque base64url token encoding (first_seen, id) for the
+    keyset position. None means no more pages. Clients MUST treat it as opaque
+    and pass it back verbatim via the `cursor` query parameter.
 
     `history_unavailable` is True when the caller's plan has no history window
     (Free plan, HISTORY == 0). The UI must show the plan-upgrade upsell.
@@ -39,7 +46,5 @@ class AlertListResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     items: list[AlertRead]
-    total: int
-    limit: int
-    offset: int
+    next_cursor: str | None
     history_unavailable: bool

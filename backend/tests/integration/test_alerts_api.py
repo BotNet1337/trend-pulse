@@ -1,7 +1,8 @@
 """Alerts read API integration tests (marker: integration).
 
-RED anchor for AC2 (TASK-016): GET /alerts requires auth, returns only the
-caller's alerts, supports pagination, and applies history window by plan.
+RED anchor for AC1 (TASK-020): GET /alerts cursor-pagination — no dupes/gaps,
+insert-between-pages stability, tiebreaker by id, next_cursor=None on last page,
+invalid cursor → 422.
 
 Runs against the live pgvector Postgres (same `Settings.database_url`).
 `current_user` and the sync DB session are overridden to the fixture user so
@@ -15,6 +16,7 @@ Note on plan: the main `user` fixture is Pro plan so history window is non-zero
 """
 
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -58,14 +60,18 @@ def _make_alert(
     score: float = 88.0,
     channels_count: int = 5,
     delivery_status: str = DELIVERY_STATUS_DELIVERED,
+    first_seen: datetime | None = None,
 ) -> Alert:
-    alert = Alert(
-        user_id=user_id,
-        cluster_id=cluster_id,
-        score=score,
-        channels_count=channels_count,
-        delivery_status=delivery_status,
-    )
+    kwargs: dict[str, object] = {
+        "user_id": user_id,
+        "cluster_id": cluster_id,
+        "score": score,
+        "channels_count": channels_count,
+        "delivery_status": delivery_status,
+    }
+    if first_seen is not None:
+        kwargs["first_seen"] = first_seen
+    alert = Alert(**kwargs)
     session.add(alert)
     session.flush()
     return alert
@@ -137,7 +143,7 @@ def free_client(db_session_committing: Session, free_user: User) -> Iterator[Tes
         app.dependency_overrides.pop(get_db_session, None)
 
 
-# ─── RED anchor: AC2 — 401 without cookie ────────────────────────────────────
+# ─── RED anchor: 401 without cookie ──────────────────────────────────────────
 
 
 def test_no_auth_returns_401() -> None:
@@ -147,13 +153,13 @@ def test_no_auth_returns_401() -> None:
     assert resp.status_code == 401
 
 
-# ─── AC2 — 200 + only own alerts ─────────────────────────────────────────────
+# ─── AC1 (TASK-020) — cursor contract ────────────────────────────────────────
 
 
 def test_list_returns_200_for_authenticated(
     client: TestClient, db_session_committing: Session, user: User
 ) -> None:
-    """GET /alerts with valid session → 200 AlertListResponse."""
+    """GET /alerts with valid session → 200 AlertListResponse (cursor contract)."""
     cluster = _make_cluster(db_session_committing, user.id)
     _make_alert(db_session_committing, user.id, cluster.id)
 
@@ -161,10 +167,12 @@ def test_list_returns_200_for_authenticated(
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert "items" in body
-    assert "total" in body
-    assert "limit" in body
-    assert "offset" in body
+    assert "next_cursor" in body
     assert "history_unavailable" in body
+    # Old offset/total fields must be gone
+    assert "total" not in body
+    assert "offset" not in body
+    assert "limit" not in body
 
 
 def test_list_returns_only_own_alerts(
@@ -219,14 +227,190 @@ def test_alert_read_fields_present(
     assert item["delivery_status"] == DELIVERY_STATUS_DELIVERED
 
 
-# ─── AC2 — pagination ────────────────────────────────────────────────────────
+# ─── AC1 — cursor-листание без дублей/пропусков ───────────────────────────────
 
 
-def test_pagination_limit_offset(
+def test_cursor_paginates_without_dupes_or_gaps(
     client: TestClient, db_session_committing: Session, user: User
 ) -> None:
-    """Pagination: limit/offset work; total counts correctly."""
+    """AC1: Cursor pagination collects all N alerts, no duplicates, no gaps."""
+    n = 7
+    limit = 3
     # Each alert needs its own cluster (unique (user_id, cluster_id) constraint)
+    for i in range(n):
+        cluster = _make_cluster(db_session_committing, user.id, topic=f"topic-nd-{i}")
+        _make_alert(
+            db_session_committing,
+            user.id,
+            cluster.id,
+            score=float(80 + i),
+        )
+
+    collected_ids: list[int] = []
+    cursor: str | None = None
+
+    for _ in range(n + 2):  # safety limit to prevent infinite loop
+        params: dict[str, int | str] = {"limit": limit}
+        if cursor is not None:
+            params["cursor"] = cursor
+        resp = client.get("/alerts", params=params)
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        page_items = body["items"]
+        collected_ids.extend(item["id"] for item in page_items)
+        cursor = body["next_cursor"]
+        if cursor is None:
+            break
+
+    assert len(collected_ids) == n, f"expected {n}, got {len(collected_ids)}"
+    assert len(set(collected_ids)) == n, "duplicates found in cursor pagination"
+
+
+def test_insert_between_pages_no_dupes(
+    client: TestClient, db_session_committing: Session, user: User
+) -> None:
+    """AC1: Inserting a new alert (newer first_seen) between pages doesn't cause dupes/gaps."""
+    # Create 4 alerts with explicitly recent timestamps (within Pro 30-day window)
+    now = datetime.now(UTC)
+    alert_ids: list[int] = []
+    for i in range(4):
+        # Each alert is 1 second apart, all within the last day
+        ts = now.replace(microsecond=0) - timedelta(seconds=3 - i)
+        cluster = _make_cluster(db_session_committing, user.id, topic=f"topic-ibp-{i}")
+        alert = _make_alert(
+            db_session_committing,
+            user.id,
+            cluster.id,
+            first_seen=ts,
+        )
+        alert_ids.append(alert.id)
+
+    # Get first page (limit=2) — returns newest 2
+    resp1 = client.get("/alerts", params={"limit": 2})
+    assert resp1.status_code == 200, resp1.text
+    body1 = resp1.json()
+    first_page_ids = {item["id"] for item in body1["items"]}
+    cursor = body1["next_cursor"]
+    assert cursor is not None, "expected next_cursor after first page"
+
+    # Insert a NEW alert with first_seen NEWER than all existing
+    newer_ts = now + timedelta(seconds=60)
+    new_cluster = _make_cluster(db_session_committing, user.id, topic="topic-ibp-new")
+    new_alert = _make_alert(
+        db_session_committing,
+        user.id,
+        new_cluster.id,
+        first_seen=newer_ts,
+    )
+
+    # Continue pagination from cursor — should not return already-seen items
+    all_page2_ids: list[int] = []
+    while cursor is not None:
+        resp = client.get("/alerts", params={"limit": 2, "cursor": cursor})
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        all_page2_ids.extend(item["id"] for item in body["items"])
+        cursor = body["next_cursor"]
+
+    # The new alert (newer ts) is above the cursor window — should NOT appear in page 2+
+    assert new_alert.id not in all_page2_ids, "new alert leaked into subsequent cursor pages"
+    # No items from page 1 should reappear
+    assert not first_page_ids.intersection(all_page2_ids), "duplicates across cursor pages"
+
+
+def test_equal_first_seen_tiebreaker(
+    client: TestClient, db_session_committing: Session, user: User
+) -> None:
+    """AC1: Alerts with equal first_seen use id DESC as tiebreaker — all seen exactly once.
+
+    Uses NON-zero microseconds so the cursor round-trip (encode isoformat → decode →
+    bind into the keyset predicate) is exercised at full timestamptz precision —
+    a truncation/tz drift on the boundary value would drop or duplicate a row here.
+    """
+    # Recent timestamp within the Pro 30-day window; nonzero microseconds on purpose.
+    same_ts = datetime.now(UTC).replace(microsecond=123456)
+    created_ids: list[int] = []
+    for i in range(3):
+        cluster = _make_cluster(db_session_committing, user.id, topic=f"topic-tie-{i}")
+        alert = _make_alert(
+            db_session_committing,
+            user.id,
+            cluster.id,
+            first_seen=same_ts,
+        )
+        created_ids.append(alert.id)
+
+    collected_ids: list[int] = []
+    cursor: str | None = None
+
+    for _ in range(10):
+        params: dict[str, int | str] = {"limit": 1}
+        if cursor is not None:
+            params["cursor"] = cursor
+        resp = client.get("/alerts", params=params)
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        for item in body["items"]:
+            collected_ids.append(item["id"])
+        cursor = body["next_cursor"]
+        if cursor is None:
+            break
+
+    assert len(collected_ids) == 3, f"expected 3 alerts, got {len(collected_ids)}"
+    assert len(set(collected_ids)) == 3, "duplicates in tiebreaker test"
+    # All created ids must appear
+    assert set(collected_ids) == set(created_ids)
+
+
+def test_next_cursor_none_on_last_page(
+    client: TestClient, db_session_committing: Session, user: User
+) -> None:
+    """AC1: next_cursor is None when all items fit in one page."""
+    limit = 5
+    n = 3  # fewer than limit
+    for i in range(n):
+        cluster = _make_cluster(db_session_committing, user.id, topic=f"topic-lp-{i}")
+        _make_alert(db_session_committing, user.id, cluster.id)
+
+    resp = client.get("/alerts", params={"limit": limit})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert len(body["items"]) == n
+    assert body["next_cursor"] is None
+
+
+def test_invalid_cursor_not_500(
+    client: TestClient, db_session_committing: Session, user: User
+) -> None:
+    """AC3: Invalid/garbage cursor → 422 (not 500)."""
+    resp = client.get("/alerts", params={"cursor": "garbage!!!"})
+    assert resp.status_code == 422, f"expected 422, got {resp.status_code}: {resp.text}"
+
+
+def test_out_of_range_cursor_id_not_500(
+    client: TestClient, db_session_committing: Session, user: User
+) -> None:
+    """AC3: A well-formed cursor carrying an out-of-int8-range id → 422, not a DB 500.
+
+    A crafted cursor with a huge id must be rejected at decode time (range guard)
+    rather than reaching the DB and raising an int8-overflow DataError.
+    """
+    import base64
+    import json
+
+    payload = json.dumps(["2026-01-01T00:00:00+00:00", 2**63]).encode()
+    crafted = base64.urlsafe_b64encode(payload).rstrip(b"=").decode()
+    resp = client.get("/alerts", params={"cursor": crafted})
+    assert resp.status_code == 422, f"expected 422, got {resp.status_code}: {resp.text}"
+
+
+# ─── AC1 — pagination (cursor-based, replaces old limit/offset tests) ─────────
+
+
+def test_pagination_with_cursor(
+    client: TestClient, db_session_committing: Session, user: User
+) -> None:
+    """Cursor pagination: pages of limit=2 cover all 5 alerts without duplication."""
     for i in range(5):
         cluster = _make_cluster(db_session_committing, user.id, topic=f"topic-pag-{i}")
         _make_alert(
@@ -238,23 +422,23 @@ def test_pagination_limit_offset(
             delivery_status=DELIVERY_STATUS_PENDING,
         )
 
-    resp_p1 = client.get("/alerts", params={"limit": 2, "offset": 0})
-    assert resp_p1.status_code == 200, resp_p1.text
-    body_p1 = resp_p1.json()
-    assert len(body_p1["items"]) == 2
-    assert body_p1["total"] == 5
-    assert body_p1["limit"] == 2
-    assert body_p1["offset"] == 0
+    all_ids: list[int] = []
+    cursor: str | None = None
 
-    resp_p2 = client.get("/alerts", params={"limit": 2, "offset": 2})
-    assert resp_p2.status_code == 200, resp_p2.text
-    body_p2 = resp_p2.json()
-    assert len(body_p2["items"]) == 2
+    for _ in range(10):
+        params: dict[str, int | str] = {"limit": 2}
+        if cursor is not None:
+            params["cursor"] = cursor
+        resp = client.get("/alerts", params=params)
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        all_ids.extend(item["id"] for item in body["items"])
+        cursor = body["next_cursor"]
+        if cursor is None:
+            break
 
-    resp_p3 = client.get("/alerts", params={"limit": 2, "offset": 4})
-    assert resp_p3.status_code == 200, resp_p3.text
-    body_p3 = resp_p3.json()
-    assert len(body_p3["items"]) == 1
+    assert len(all_ids) == 5
+    assert len(set(all_ids)) == 5
 
 
 def test_limit_capped_at_max(
@@ -264,13 +448,13 @@ def test_limit_capped_at_max(
     cluster = _make_cluster(db_session_committing, user.id)
     _make_alert(db_session_committing, user.id, cluster.id)
 
-    # Pass limit above 100 — FastAPI clamps via Query(ge=1), server clamps via service.
-    # We request exactly MAX_ALERTS_PAGE_SIZE (100) to avoid Pydantic rejection.
+    # Pass limit exactly at MAX_ALERTS_PAGE_SIZE (100) — should succeed
     resp = client.get("/alerts", params={"limit": 100})
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    # limit in response must not exceed the server max constant (100)
-    assert body["limit"] <= 100
+    # Response must have next_cursor (new contract, not limit field)
+    assert "next_cursor" in body
+    assert "items" in body
 
 
 # ─── AC2 — detail endpoint ────────────────────────────────────────────────────
@@ -303,7 +487,7 @@ def test_get_alert_detail_foreign_returns_404(
     assert resp.status_code == 404, resp.text
 
 
-# ─── AC5 — history window by plan ────────────────────────────────────────────
+# ─── AC4 — history window by plan ────────────────────────────────────────────
 
 
 def test_free_plan_history_unavailable(
@@ -319,3 +503,4 @@ def test_free_plan_history_unavailable(
     # Free plan: history window = 0 days → no history, flag set
     assert body["history_unavailable"] is True
     assert body["items"] == []
+    assert body["next_cursor"] is None

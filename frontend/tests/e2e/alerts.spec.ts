@@ -1,7 +1,10 @@
 /**
- * Alerts e2e — TASK-016 (Epic C / C4).
+ * Alerts e2e — TASK-016/TASK-020 (Epic C / C4, Epic D).
  *
- * Covers AC1/AC3/AC4/AC6/AC7: alerts list, detail, empty state, auth-guard.
+ * Covers AC1/AC3/AC4/AC6: alerts list, detail, empty state, auth-guard.
+ * TASK-020: pagination migrated to cursor (keyset) via next_cursor.
+ * The "Load more" button loads subsequent pages via cursor parameter.
+ * Existing tests are UI-abstracted and work unchanged with cursor pagination.
  * Must run against the full nginx-backed stack (`make up`).
  * baseURL is set in playwright.config.ts → HTTP_PORT (default :80).
  *
