@@ -2,8 +2,8 @@
 
 > Персональный детектор вирусного контента из Telegram
 
-**Статус:** Pre-MVP  
-**Стек:** Python · Celery + Redis · PostgreSQL + pgvector · FastAPI  
+**Статус:** MVP построен (эпики A–D done), pre-revenue — текущая волна **Epic E «Path to revenue»** ([epics](./epics/README.md))  
+**Стек:** Python · Celery + Redis · PostgreSQL + pgvector · FastAPI · React (frontend + landing)  
 **Модель:** Multi-tenant SaaS  
 
 ---
@@ -301,41 +301,19 @@ trendpulse/
 
 ## 9. Roadmap
 
-### Фаза 1 — Backend core (6–7 недель)
-> Цель: работающий pipeline, протестированный без UI
+Фазы 1–3 исходного плана (backend core, landing+frontend, монетизация) — **выполнены**
+(эпики A–D, task-001…028; история — в [tasks-index](../tasks/tasks-index.md)).
+Из фазы 4 готов API access (task-028); Twitter/X спроектирован (task-031, триггер $2k MRR).
 
-- [ ] Пул технических аккаунтов + Telethon коллектор
-- [ ] Redis буфер сырых постов
-- [ ] Батч pipeline: dedup → normalize → embed → cluster
-- [ ] Velocity scorer + alert trigger
-- [ ] FastAPI: auth, watchlist CRUD, delivery config
-- [ ] Доставка алертов: Telegram Bot токен + Webhook
-- [ ] Тестирование на реальных каналах (ручное, через API / curl)
+Актуальный roadmap: [`../architecture/roadmap.md`](../architecture/roadmap.md).
+Текущая волна — **Epic E «Path to revenue»** ([полные планы](./epics/README.md)): E0 ops-фундамент →
+E1 первая польза за 30 секунд → E2 качество сигнала → E3 витрина-канал → E4 деньги без трения →
+E5 цены/упаковка → E6 бизнес-метрики → E7 масштаб → E8 новые рынки. Цель: первый платящий → $2k MRR.
 
-### Фаза 2 — Landing + Frontend App (4–5 недель)
-> Цель: пользователь может зарегистрироваться и настроить всё через UI
-
-- [ ] Landing page (React) — описание продукта, CTA, FAQ
-- [ ] Frontend app (React) — регистрация, watchlist, настройки доставки, история алертов
-- [ ] Подключение к FastAPI backend
-- [ ] Базовый дашборд: список алертов, score, каналы
-
-### Фаза 3 — Монетизация (3–4 недели)
-> Цель: подключить оплату перед публичным релизом
-
-- [ ] Интеграция крипто-платежей (NOWPayments или CoinGate API)
-- [ ] Логика тарифных планов (Free / Pro / Team) + лимиты
-- [ ] Страница оплаты и управления подпиской в UI
-- [ ] Автоматическая активация плана после верификации транзакции
-
-### Фаза 4 — Рост (+4 недели)
-> После первых пользователей
-
-- [ ] Cross-platform: добавить Twitter/X как второй источник
-- [ ] Cross-platform viral score
-- [ ] API access для Team-плана (REST + документация)
-- [ ] White-label конфигурация
-- [ ] Affiliate программа (крипто-биржи)
+> Важный сдвиг против исходного плана: white-label и разовые отчёты **вычеркнуты из ближайших
+> 6 месяцев** (расфокус, см. [E5](./epics/epic-e5-pricing-packaging.md)); Free-план переосмысляется
+> как воронка (готовые наборы + задержка алертов вместо «5 своих каналов real-time»); цены
+> пересматриваются от ценности (скорость/точность/API), а не от числа каналов.
 
 ---
 

@@ -1,11 +1,6 @@
-# Copy to terraform.tfvars (GITIGNORED) and fill in. Secrets (do_token,
-# spaces_*) are best supplied via TF_VAR_* env vars instead of a file.
+# Copy to terraform.tfvars (GITIGNORED) and fill in. Secrets (s3_access_key,
+# s3_secret_key) are best supplied via TF_VAR_* env vars instead of a file.
 # NEVER commit a real terraform.tfvars — only this *.example is tracked.
-
-# --- Credentials (prefer TF_VAR_do_token env var over putting it here) ---
-# do_token          = "dop_v1_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-# spaces_access_id  = "XXXXXXXXXXXXXXXXXXXX"
-# spaces_secret_key = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 
 # --- Placement / sizing ---
 region    = "fra1"
@@ -20,6 +15,16 @@ app_subdomain = "app"
 ssh_key_fingerprints = ["aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99"]
 ssh_allowlist_cidrs  = ["203.0.113.4/32"]
 
-# --- Object storage (optional) ---
-enable_object_storage = false
-object_storage_bucket = "trendpulse-backups"
+# --- Hetzner Object Storage (S3-compatible, TASK-056) ---
+# Endpoint format: https://<region>.your-objectstorage.com
+# Available Hetzner regions: fsn1 (Falkenstein), nbg1 (Nuremberg), hel1 (Helsinki)
+s3_endpoint   = "https://fsn1.your-objectstorage.com"
+s3_region     = "fsn1"  # IMPORTANT: must match the datacenter slug in s3_endpoint (fsn1/nbg1/hel1, NOT "eu-central")
+# Credentials: Hetzner Console → project TrendPulse → Object Storage → Manage credentials
+# Keep secrets in TF_VAR_s3_access_key / TF_VAR_s3_secret_key env vars or this gitignored file.
+s3_access_key = "XXXXXXXXXXXXXXXXXXXX"
+s3_secret_key = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+# Bucket name (Hetzner Object Storage namespace is per-region; rename if taken):
+s3_backup_bucket_name = "trendpulse-backups"
+# How many days to keep postgres/ backups before lifecycle expiry (default: 30):
+# backup_expire_after_days = 30

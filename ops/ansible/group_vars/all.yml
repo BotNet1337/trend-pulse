@@ -46,3 +46,8 @@ smtp_starttls: "false"
 frontend_domain: "app.trendpulse.local"
 # Frontend base URL for email deeplinks (verify/reset, TASK-026) + templates service.
 base_url: "https://app.trendpulse.local"
+# TASK-056: Hetzner Object Storage (non-secret). Credentials (S3_ACCESS_KEY/S3_SECRET_KEY)
+# live in vault/sensitive.vault.yml. Override s3_endpoint in group_vars/prod.yml.
+s3_endpoint: "https://nbg1.your-objectstorage.com"
+s3_region: "nbg1"
+s3_bucket: "trendpulse-backups"

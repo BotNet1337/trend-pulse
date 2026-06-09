@@ -4,23 +4,46 @@
 
 # --- Credentials (secret) ---
 variable "do_token" {
-  description = "DigitalOcean API token. Supply via TF_VAR_do_token or a gitignored tfvars; NEVER commit."
-  type        = string
-  sensitive   = true
-}
-
-variable "spaces_access_id" {
-  description = "Spaces (S3-compatible) access key id for object storage / remote state."
+  description = "DigitalOcean API token (legacy — used by deprecated vps/dns/firewall.tf). Supply via TF_VAR_do_token or a gitignored tfvars; NEVER commit."
   type        = string
   sensitive   = true
   default     = ""
 }
 
-variable "spaces_secret_key" {
-  description = "Spaces (S3-compatible) secret key for object storage / remote state."
+# --- Hetzner Object Storage (S3-compatible, TASK-056) ---
+variable "s3_endpoint" {
+  description = "Hetzner Object Storage endpoint URL, e.g. https://fsn1.your-objectstorage.com (region: fsn1 / nbg1 / hel1)."
+  type        = string
+}
+
+variable "s3_region" {
+  description = "Hetzner Object Storage region identifier used by the minio provider. Must match the datacenter slug in s3_endpoint (e.g. fsn1, nbg1, hel1 — NOT 'eu-central')."
+  type        = string
+  default     = "fsn1"
+}
+
+variable "s3_access_key" {
+  description = "Hetzner Object Storage access key. Create in Hetzner Console → project TrendPulse → Object Storage → Manage credentials. Supply via gitignored tfvars; NEVER commit."
   type        = string
   sensitive   = true
-  default     = ""
+}
+
+variable "s3_secret_key" {
+  description = "Hetzner Object Storage secret key. Create alongside s3_access_key. Supply via gitignored tfvars; NEVER commit."
+  type        = string
+  sensitive   = true
+}
+
+variable "s3_backup_bucket_name" {
+  description = "Name of the S3 backup bucket created on Hetzner Object Storage."
+  type        = string
+  default     = "trendpulse-backups"
+}
+
+variable "backup_expire_after_days" {
+  description = "Days after which postgres/ backup objects are expired by the bucket lifecycle rule."
+  type        = number
+  default     = 30
 }
 
 # --- Placement / sizing (non-secret) ---
@@ -74,15 +97,3 @@ variable "ssh_allowlist_cidrs" {
   default = ["127.0.0.1/32"]
 }
 
-# --- Object storage (optional; off by default — ADR-005 §5, edge case) ---
-variable "enable_object_storage" {
-  description = "Create a Spaces bucket for backups/artifacts. Off until a real need appears."
-  type        = bool
-  default     = false
-}
-
-variable "object_storage_bucket" {
-  description = "Spaces bucket name (used only when enable_object_storage = true)."
-  type        = string
-  default     = "trendpulse-backups"
-}
