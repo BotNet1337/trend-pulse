@@ -44,5 +44,5 @@ smtp_port: "1025"
 smtp_from: "TrendPulse <noreply@trendpulse.local>"
 smtp_starttls: "false"
 frontend_domain: "app.trendpulse.local"
+# Frontend base URL for email deeplinks (verify/reset, TASK-026) + templates service.
 base_url: "https://app.trendpulse.local"
-verify_email_path: "/auth/email/confirm"

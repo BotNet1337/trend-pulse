@@ -7,7 +7,7 @@
  *
  * Guard: on 401 → apiClient interceptor redirects here with ?redirect=<path>.
  * After login: navigate to `redirect` param (internal-only via isSafeRedirect).
- * Forgot/reset/confirm pages hidden: backend reset/verify routers not mounted in C2.
+ * Forgot password link enabled: backend verify/reset routers mounted in TASK-026.
  */
 import React, { useState } from 'react'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
@@ -143,13 +143,18 @@ export const SignInPage: React.FC = () => {
         </Button>
 
         <div className="text-center text-sm text-muted-foreground flex flex-col gap-1">
-          {/* forgot-password / reset-password / confirm-email links are hidden in C2.
-              The backend reset/verify routers are not mounted, so those pages would
-              hit non-existent endpoints. They will be re-enabled in a future task. */}
           <span>
             Don&apos;t have an account?{' '}
             <Link to={paths.auth.signUp} className="text-foreground underline underline-offset-2">
               Sign up
+            </Link>
+          </span>
+          <span>
+            <Link
+              to={paths.auth.forgotPassword}
+              className="text-foreground underline underline-offset-2"
+            >
+              Forgot password?
             </Link>
           </span>
         </div>
