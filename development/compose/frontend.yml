@@ -1,0 +1,33 @@
+# Frontend SPA service — TrendPulse dashboard (React + Vite, pure static).
+# Serves pre-built static files via nginx inside the container on port 80.
+# Lives on `internal` only — no published host ports. Traffic reaches it via
+# edge-nginx (location / { proxy_pass http://frontend_spa; }).
+# No SSR node server; no API_URL/COOKIE_SECRET needed — cookie-auth is
+# handled entirely client-side by TanStack Router + axios interceptor.
+services:
+  frontend:
+    image: ${FRONTEND_IMAGE}
+    build:
+      context: ../../frontend
+      args:
+        NODE_VERSION: ${NODE_VERSION}
+        NGINX_VERSION: ${NGINX_VERSION}
+        VITE_BRAND_NAME: ${VITE_BRAND_NAME:-TrendPulse}
+        VITE_HELP_URL: ${VITE_HELP_URL:-https://trendpulse.app/docs}
+    restart: unless-stopped
+    networks:
+      - internal
+    # NOT in edge; NOT in postgres_net or redis_net — frontend is stateless.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          wget -qO- http://127.0.0.1/healthz || exit 1
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  internal:
+    external: false

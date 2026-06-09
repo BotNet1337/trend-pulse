@@ -41,23 +41,3 @@ export type OpenApiQueryParams<P extends keyof paths, M extends Method> =
     }
     ? QueryParams
     : never;
-
-/**
- * Generic paginated envelope shared by every list endpoint. The meta shape
- * is pulled straight from the OpenAPI-generated `ListWorkspacesResponseDto`
- * so it stays in sync with the backend's `PaginatedResponse<T>` contract —
- * if the backend ever changes the meta shape, regenerating types will
- * surface the diff at every list-feature site.
- */
-type ListResponse = paths['/workspaces']['get'] extends {
-    responses: { 200: { content: { 'application/json': infer R } } };
-}
-    ? R
-    : never;
-
-export type PaginatedResponseMeta = ListResponse extends { meta: infer M } ? M : never;
-
-export interface PaginatedResponse<T> {
-    data: T[];
-    meta: PaginatedResponseMeta;
-}

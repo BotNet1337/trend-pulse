@@ -1,37 +1,44 @@
-# Stage 1: Dependencies
-FROM node:22-alpine AS deps
+# Frontend Dockerfile — TrendPulse SPA (React + Vite, pure static).
+# Multi-stage build: deps → builder (static assets) → production (nginx static).
+# No SSR node server: client-side TanStack Router handles routing + 401-guard.
+# Node version pinned via build-arg from development/version.env (no `latest`).
+# Build-time VITE_* env vars passed as --build-arg from deploy.env (non-secret).
+
+ARG NODE_VERSION=22.15.1
+ARG NGINX_VERSION=1.27
+
+# Stage 1: Install dependencies (cached layer)
+FROM node:${NODE_VERSION}-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --ignore-scripts
 
-# Stage 2: Build
-FROM node:22-alpine AS builder
+# Stage 2: Build static assets
+FROM node:${NODE_VERSION}-alpine AS builder
+ARG VITE_BRAND_NAME=TrendPulse
+ARG VITE_HELP_URL=https://trendpulse.app/docs
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NODE_ENV=production
-# tsc type-check, then vite builds client assets into dist/client
-RUN npx tsc -b && npx vite build --outDir dist/client
+# Build-time brand injection (non-secret VITE_* vars baked into the bundle)
+ENV VITE_BRAND_NAME=${VITE_BRAND_NAME}
+ENV VITE_HELP_URL=${VITE_HELP_URL}
+# tsc type-check → vite builds client assets into dist/
+RUN npm run build
 
-# Stage 3: Production
-FROM node:22-alpine AS production
-WORKDIR /app
+# Stage 3: Production static server (nginx — zero node runtime)
+FROM nginx:${NGINX_VERSION}-alpine AS production
 
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/src ./src
-COPY --from=builder /app/server ./server
-COPY --from=builder /app/tsconfig.json ./
-COPY --from=builder /app/tsconfig.node.json ./
-COPY --from=builder /app/tsconfig.app.json ./
-COPY package.json package-lock.json ./
+# Remove default nginx site config
+RUN rm -f /etc/nginx/conf.d/default.conf
 
-# tsx and cross-env are devDependencies but required at runtime for SSR server
-RUN npm ci && npm cache clean --force
+# Copy built SPA static files
+COPY --from=builder /app/dist /usr/share/nginx/html
 
-ENV NODE_ENV=production
-ENV PORT=4000
+# Nginx SPA config: try_files for client-side routing
+COPY docker/nginx-spa.conf /etc/nginx/conf.d/default.conf
 
-USER node
-EXPOSE 4000
+EXPOSE 80
 
-CMD ["npm", "run", "start"]
+CMD ["nginx", "-g", "daemon off;"]

@@ -4,56 +4,6 @@
  */
 
 export interface paths {
-    "/metrics": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["MetricsHttpController_getMetrics"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/health/live": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Liveness probe */
-        get: operations["HttpHealthController_liveness"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/health/startup": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Startup probe */
-        get: operations["HttpHealthController_startup"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/health": {
         parameters: {
             query?: never;
@@ -61,8 +11,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Readiness probe */
-        get: operations["HttpHealthController_readiness"];
+        /**
+         * Health
+         * @description Liveness probe — returns 200 without touching any backing service.
+         */
+        get: operations["health_health_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -71,15 +24,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/health/deep": {
+    "/auth/jwt/login": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Deep health check with memory and detailed status */
-        get: operations["HttpHealthController_deep"];
+        get?: never;
+        put?: never;
+        /** Auth:Jwt.Login */
+        post: operations["auth_jwt_login_auth_jwt_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/jwt/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Auth:Jwt.Logout */
+        post: operations["auth_jwt_logout_auth_jwt_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register:Register */
+        post: operations["register_register_auth_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/google/authorize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Oauth:Google.Jwt.Authorize */
+        get: operations["oauth_google_jwt_authorize_auth_google_authorize_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -88,187 +92,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/inbox/cleanup/run": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Prune stale inbox rows
-         * @description Internal-only endpoint invoked by the scheduler daily. Deletes `inbox_messages` rows older than the configured retention horizon (`INBOX_RETENTION_HOURS`, default 720h / 30 days). The horizon must stay well above the NATS retry budget (`ackWait × maxDeliver`, currently 5 min) so an in-flight redelivery never sees a missing claim. Protected by the `X-Internal-Token` header — not reachable from the public API.
-         */
-        post: operations["InboxCleanupController_run"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/email/sign-up": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Sign up by email
-         * @description Create a new user account with email and password
-         */
-        post: operations["AuthController_signUpByEmail"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/email/sign-in": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Sign in by email
-         * @description Authenticate user with email and password
-         */
-        post: operations["AuthController_signInByEmail"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/email/confirm": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Confirm email
-         * @description Verify user email address with token
-         */
-        post: operations["AuthController_confirmEmail"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/token/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Refresh token
-         * @description Generate new access token using refresh token from Authorization header
-         */
-        post: operations["AuthController_refreshToken"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/email/verify": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Request email verification
-         * @description Send email verification link to user
-         */
-        post: operations["AuthController_invokeEmailVerification"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/sign-out": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Sign out
-         * @description Sign out user and revoke all refresh tokens
-         */
-        post: operations["AuthController_signOut"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/password/forgot": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Forgot password
-         * @description Request password reset link for user email
-         */
-        post: operations["AuthController_forgotPassword"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/password/reset": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Reset password
-         * @description Reset user password with valid reset token
-         */
-        post: operations["AuthController_resetPassword"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/users/{userId}": {
+    "/auth/google/callback": {
         parameters: {
             query?: never;
             header?: never;
@@ -276,50 +100,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Find user by id
-         * @description Get user information by user ID
+         * Oauth:Google.Jwt.Callback
+         * @description The response varies based on the authentication backend used.
          */
-        get: operations["UserController_findUserById"];
-        put?: never;
-        post?: never;
-        delete: operations["UserController_softDeleteUser"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/uploads/presign": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Generate presigned URLs
-         * @description Generate presigned URLs for direct S3 uploads
-         */
-        post: operations["StorageController_generatePresignUrls"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/users/{userId}/storage/objects/keys/{key}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Find storage object by key
-         * @description Get a storage object by its S3 key
-         */
-        get: operations["StorageObjectsController_findStorageObjectByKey"];
+        get: operations["oauth_google_jwt_callback_auth_google_callback_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -328,7 +112,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/users/{userId}/storage/objects/{id}": {
+    "/users/me/tenant": {
         parameters: {
             query?: never;
             header?: never;
@@ -336,10 +120,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Find storage object by ID
-         * @description Get a storage object by its ID
+         * Read My Tenant
+         * @description Protected example route (AC2): 401 without a token, tenant id with one.
          */
-        get: operations["StorageObjectsController_findStorageObjectById"];
+        get: operations["read_my_tenant_users_me_tenant_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -348,7 +132,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/users/{userId}/storage/objects": {
+    "/watchlists": {
         parameters: {
             query?: never;
             header?: never;
@@ -356,19 +140,51 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List storage objects
-         * @description Get a paginated list of storage objects for the authenticated user
+         * List Watchlists
+         * @description List only the caller's watchlists (tenant-scoped).
          */
-        get: operations["StorageObjectsController_listStorageObjects"];
+        get: operations["list_watchlists_watchlists_get"];
         put?: never;
-        post?: never;
+        /**
+         * Create Watchlist
+         * @description Create one watchlist (single channel) for the caller -> 201 WatchlistRead.
+         */
+        post: operations["create_watchlist_watchlists_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/webhooks/s3/events": {
+    "/watchlists/{watchlist_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Watchlist
+         * @description Get one owned watchlist; missing / other tenant's id -> 404.
+         */
+        get: operations["get_watchlist_watchlists__watchlist_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Watchlist
+         * @description Delete an owned watchlist; missing / other tenant's id -> 404.
+         */
+        delete: operations["delete_watchlist_watchlists__watchlist_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Watchlist
+         * @description Partial update of an owned watchlist; missing / other tenant's id -> 404.
+         */
+        patch: operations["update_watchlist_watchlists__watchlist_id__patch"];
+        trace?: never;
+    };
+    "/billing/invoice": {
         parameters: {
             query?: never;
             header?: never;
@@ -378,69 +194,17 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Handle S3 event
-         * @description Internal endpoint for S3 event notifications
+         * Create Invoice
+         * @description Create a NOWPayments invoice for the caller's chosen plan/period.
          */
-        post: operations["S3WebhookController_handleS3Event"];
+        post: operations["create_invoice_billing_invoice_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/workspaces": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List workspaces
-         * @description Returns the authenticated user's workspaces, paginated. Archived workspaces are excluded by default — pass `withArchived=true` to include them, or `archivedOnly=true` to return only archived.
-         */
-        get: operations["WorkspacesController_list"];
-        put?: never;
-        /**
-         * Create workspace
-         * @description Creates a new workspace owned by the authenticated user. Emits WorkspaceCreatedEvent.
-         */
-        post: operations["WorkspacesController_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/workspaces/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get workspace by id
-         * @description Returns a single workspace owned by the authenticated user.
-         */
-        get: operations["WorkspacesController_findById"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete workspace
-         * @description Soft-deletes the workspace and emits WorkspaceDeletedEvent. Channels and content bound to this workspace are cascaded via event subscribers. For non-destructive hiding use `/archive`.
-         */
-        delete: operations["WorkspacesController_delete"];
-        options?: never;
-        head?: never;
-        /**
-         * Update workspace
-         * @description Partial update of `name` / `description` / `imageStorageObjectId`. Author-only. `undefined` leaves the field as-is, `null` clears nullable fields.
-         */
-        patch: operations["WorkspacesController_update"];
-        trace?: never;
-    };
-    "/workspaces/{id}/archive": {
+    "/billing/ipn": {
         parameters: {
             query?: never;
             header?: never;
@@ -450,263 +214,17 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Archive workspace
-         * @description Sets `archivedAt = now()`. The workspace stays accessible by id but is hidden from default `GET /workspaces` (use `withArchived=true` to include). Idempotent.
+         * Receive Ipn
+         * @description Receive a NOWPayments IPN: verify HMAC over the RAW body, then apply.
          */
-        post: operations["WorkspacesController_archive"];
+        post: operations["receive_ipn_billing_ipn_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/workspaces/{id}/unarchive": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Unarchive workspace
-         * @description Clears `archivedAt`. Idempotent.
-         */
-        post: operations["WorkspacesController_unarchive"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/workspaces/{workspaceId}/channels": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List connected channels
-         * @description Returns the authenticated user's connected channels, paginated. OAuth credentials (access/refresh tokens) are intentionally excluded from the response — they never leave the backend.
-         */
-        get: operations["ChannelsController_list"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/workspaces/{workspaceId}/channels/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get channel by id
-         * @description Returns a single channel owned by the authenticated user. OAuth credentials are intentionally excluded from the response.
-         */
-        get: operations["ChannelsController_findById"];
-        put?: never;
-        post?: never;
-        /**
-         * Disconnect channel
-         * @description Soft-deletes the channel and transitions its OAuth status to `revoked`.
-         */
-        delete: operations["ChannelsController_disconnect"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/workspaces/{workspaceId}/channels/{id}/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Refresh channel credentials
-         * @description Refreshes the channel access token via the platform refresh endpoint. New credentials are stored encrypted server-side and are NOT returned to the client.
-         */
-        post: operations["ChannelsController_refresh"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/workspaces/{workspaceId}/channels/oauth/{platform}/initiate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Initiate OAuth flow
-         * @description Issues a short-lived CSRF state token and returns the provider authorization URL. The state token is valid for 10 minutes and is consumed on callback.
-         */
-        get: operations["OAuthCallbackController_initiate"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/channels/oauth/{platform}/callback": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * OAuth provider callback
-         * @description Consumes the CSRF state token atomically, exchanges the authorization code for access/refresh tokens, and creates or reconnects the channel for the original user. Called by the OAuth provider — not directly by clients. Always responds with a 302 redirect to a frontend popup route. On success: `{FRONTEND_URL}/workspaces/{workspaceId}/channels/{channelId}/connected`. On failure: `{FRONTEND_URL}/channels/connect-failed?reason=...&platform=...`. The popup page postMessages the result to the opener and closes itself.
-         */
-        get: operations["OAuthCallbackController_callback"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/workspaces/{workspaceId}/posts": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List posts
-         * @description Returns paginated active posts of the workspace.
-         */
-        get: operations["PostsController_list"];
-        put?: never;
-        /**
-         * Create post (draft)
-         * @description Creates a new post in draft state within the workspace.
-         */
-        post: operations["PostsController_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/workspaces/{workspaceId}/posts/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get post by id */
-        get: operations["PostsController_findById"];
-        put?: never;
-        post?: never;
-        /** Delete post (soft) */
-        delete: operations["PostsController_delete"];
-        options?: never;
-        head?: never;
-        /** Update post */
-        patch: operations["PostsController_update"];
-        trace?: never;
-    };
-    "/workspaces/{workspaceId}/posts/{id}/media": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Attach media to post
-         * @description Links a storage object to the post (max 10 per post).
-         */
-        post: operations["PostsController_attachMedia"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/workspaces/{workspaceId}/posts/{id}/media/{mediaId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Detach media from post */
-        delete: operations["PostsController_detachMedia"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/workspaces/{workspaceId}/posts/{postId}/publications": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List publications of a post
-         * @description Paginated list of publications for the given post. Filter by channel via `?channelId=`.
-         */
-        get: operations["PublicationsController_list"];
-        put?: never;
-        /**
-         * Publish post to channels
-         * @description Creates one publication per target channel in a single transaction.
-         *
-         *     **Per-channel PostType** — each entry in `channels[]` carries its own `postType` and an optional typed `meta` block:
-         *     - `instagram_feed` / `instagram_reels` / `instagram_stories`
-         *     - `linkedin_personal` / `linkedin_organization` (`meta.organizationUrn` is required)
-         *     - `facebook_page_feed` / `facebook_page_reels` / `facebook_page_stories`
-         *     - `youtube_video` / `youtube_shorts`
-         *
-         *     **Workflow:**
-         *     1. Validates post + media + channel ownership inside a UoW.
-         *     2. Verifies each `(channel.platform, postType)` pair (e.g. `instagram_reels` only on IG channels).
-         *     3. Copies post media into `publication_media` so each publication owns its ordered set.
-         *     4. Persists publications + raises `PublicationCreatedEvent` per row → dispatcher picks up after commit.
-         *
-         *     **Failure modes:**
-         *     - `400` — post has no media (and PostType requires media), or `(platform, postType)` mismatch, or channel not in workspace.
-         *     - `403` — caller is not the post author.
-         *     - `404` — post not found in workspace.
-         *     - `409` — an active publication already exists for the same `(post, channel, postType)`.
-         */
-        post: operations["PublicationsController_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/workspaces/{workspaceId}/posts/{postId}/publications/{publicationId}": {
+    "/account": {
         parameters: {
             query?: never;
             header?: never;
@@ -717,75 +235,16 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Delete a publication
-         * @description Soft-deletes the publication so the user can re-create one for the same `(post, channel, postType)` triple. Idempotent — re-deleting a deleted publication returns 204 without raising another event.
+         * Delete Account
+         * @description Delete the authenticated user and all their data (cascade) -> 204.
          */
-        delete: operations["PublicationsController_delete"];
-        options?: never;
-        head?: never;
-        /**
-         * Reschedule a publication
-         * @description Moves a **pending** publication to a new `publishAt` and notifies the
-         *     dispatcher (via `PublicationRescheduledEvent`) so the planner row is
-         *     reslotted in lock-step. No-op when the new value matches the current
-         *     `publishAt`.
-         *
-         *     **Failure modes:**
-         *     - `400` — `publishAt` is in the past.
-         *     - `404` — publication not found in this post / workspace.
-         *     - `409` — publication is no longer in `pending` status (already
-         *       publishing / published / failed).
-         */
-        patch: operations["PublicationsController_update"];
-        trace?: never;
-    };
-    "/dispatcher/planner/process": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Process pending publications
-         * @description Internal-only webhook called by the scheduler every 5 minutes. Atomically transitions all planner rows with `status = pending AND at <= now()` to `publishing` and emits one `event.dispatch.publication:requested` per row. Protected by the `X-Internal-Token` header — not reachable from the public API.
-         */
-        post: operations["PlannerController_process"];
-        delete?: never;
+        delete: operations["delete_account_account_delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/dispatcher/reconciliation/run": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Reconcile stuck publications
-         * @description Internal-only endpoint that reconciles `dispatch_planner` rows stuck in `publishing` past the configured threshold (default 30 minutes). For each stuck row:
-         *
-         *     - If `external_id` is set → the worker crashed after strategy success but before emitting the completion event. The row is transitioned to `published` and a `event.dispatch.publication:completed` event is synthesized.
-         *
-         *     - If `external_id` is null → the content-client's `verifyPlatformPublication` is called to ask the platform whether our `publicationId` already exists. On match → marked `published`; otherwise (or when the platform cannot verify) → marked `failed` with `DISPATCH_TIMEOUT` and `event.dispatch.publication:failed` is emitted.
-         *
-         *     Idempotent per row: a follow-up run finds nothing new when the system is healthy. Protected by the `X-Internal-Token` header — not reachable from the public API.
-         */
-        post: operations["ReconciliationController_run"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/notifications/templates": {
+    "/ready": {
         parameters: {
             query?: never;
             header?: never;
@@ -793,41 +252,13 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List email template mappings
-         * @description Returns a paginated list of all event name → template mappings.
+         * Ready
+         * @description Readiness: 200 when DB+Redis reachable, else 503 with per-dep markers.
          */
-        get: operations["EmailTemplatesController_list"];
-        put?: never;
-        /**
-         * Create email template mapping
-         * @description Maps a domain event name to a React Email template path. Used when processing JetStream notification events.
-         */
-        post: operations["EmailTemplatesController_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/notifications/templates/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get email template mapping by ID
-         * @description Returns a single event name → template mapping by its UUID.
-         */
-        get: operations["EmailTemplatesController_getById"];
+        get: operations["ready_ready_get"];
         put?: never;
         post?: never;
-        /**
-         * Delete email template mapping
-         * @description Removes the mapping; the worker will skip notifications for that event until re-created.
-         */
-        delete: operations["EmailTemplatesController_delete"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -838,1010 +269,244 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
-         * @description Sign up by email request body
-         * @example {
-         *       "email": "user@example.com",
-         *       "password": "password123",
-         *       "name": "Jane Doe"
-         *     }
+         * AlertConfig
+         * @description Per-watchlist alert tuning (maps to Watchlist.threshold/min_channels/lang).
          */
-        SignUpByEmailDto: {
+        AlertConfig: {
+            /** Score Threshold */
+            score_threshold: number;
+            /** Min Channels */
+            min_channels: number;
             /**
-             * Format: email
-             * @description User email address
-             * @example user@example.com
+             * Notification Lang
+             * @default en
              */
-            email: string;
+            notification_lang: string;
+        };
+        /**
+         * BillingPeriod
+         * @description Billing period for an invoice. Crypto has no native subscriptions, so the
+         *     only supported period is a calendar month; the duration lives in `PERIOD_DAYS`.
+         * @enum {string}
+         */
+        BillingPeriod: "month";
+        /** Body_auth_jwt_login_auth_jwt_login_post */
+        Body_auth_jwt_login_auth_jwt_login_post: {
+            /** Grant Type */
+            grant_type?: string | null;
+            /** Username */
+            username: string;
             /**
-             * @description User password (minimum 8 characters)
-             * @example password123
+             * Password
+             * Format: password
              */
             password: string;
             /**
-             * @description Display name shown on posts and across the workspace
-             * @example Jane Doe
+             * Scope
+             * @default
              */
-            name: string;
+            scope: string;
+            /** Client Id */
+            client_id?: string | null;
+            /**
+             * Client Secret
+             * Format: password
+             */
+            client_secret?: string | null;
         };
         /**
-         * @description Sign in by email request body
-         * @example {
-         *       "email": "user@example.com",
-         *       "password": "password123",
-         *       "rememberMe": true
-         *     }
+         * ChannelRef
+         * @description A single source reference: a platform `kind` + its `handle` (ADR-001).
          */
-        SignInByEmailDto: {
-            /**
-             * Format: email
-             * @description User email address
-             * @example user@example.com
-             */
-            email: string;
-            /**
-             * @description User password
-             * @example password123
-             */
-            password: string;
-            /**
-             * @description When `true` (default), the refresh cookie is persisted across browser restarts (~7 days). When `false`, the refresh cookie is a session cookie and the underlying token uses a short TTL.
-             * @default true
-             * @example true
-             */
-            rememberMe: boolean;
+        ChannelRef: {
+            /** Handle */
+            handle: string;
+            /** @default telegram */
+            kind: components["schemas"]["SourceKind"];
         };
-        /**
-         * @description Sign in by email response
-         * @example {
-         *       "access": {
-         *         "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-         *         "expiresAt": "2024-01-01T00:15:00.000Z"
-         *       },
-         *       "refresh": {
-         *         "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-         *         "expiresAt": "2024-01-08T00:00:00.000Z"
-         *       }
-         *     }
-         */
-        SignInByEmailResponseDto: {
-            /** @description Access token information */
-            access: {
-                /**
-                 * @description Access token
-                 * @example eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-                 */
-                token: string;
-                /**
-                 * Format: date-time
-                 * @description Access token expiration date
-                 * @example 2024-01-01T00:15:00.000Z
-                 */
-                expiresAt: string;
-            };
-            /** @description Refresh token information */
-            refresh?: {
-                /**
-                 * @description Refresh token
-                 * @example eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-                 */
-                token: string;
-                /**
-                 * Format: date-time
-                 * @description Refresh token expiration date
-                 * @example 2024-01-08T00:00:00.000Z
-                 */
-                expiresAt: string;
-            };
-        };
-        /**
-         * @description Confirm email request body
-         * @example {
-         *       "token": "abc123def456",
-         *       "email": "user@example.com"
-         *     }
-         */
-        ConfirmEmailDto: {
-            /**
-             * @description Email verification token
-             * @example abc123def456
-             */
-            token: string;
-            /**
-             * Format: email
-             * @description User email address
-             * @example user@example.com
-             */
-            email: string;
-        };
-        /**
-         * @description Refresh token response
-         * @example {
-         *       "access": {
-         *         "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-         *         "expiresAt": "2024-01-01T00:15:00.000Z"
-         *       },
-         *       "refresh": {
-         *         "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-         *         "expiresAt": "2024-01-08T00:00:00.000Z"
-         *       }
-         *     }
-         */
-        RefreshTokenResponseDto: {
-            /** @description Access token information */
-            access: {
-                /**
-                 * @description Access token
-                 * @example eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-                 */
-                token: string;
-                /**
-                 * Format: date-time
-                 * @description Access token expiration date
-                 * @example 2024-01-01T00:15:00.000Z
-                 */
-                expiresAt: string;
-            };
-            /** @description Refresh token information */
-            refresh?: {
-                /**
-                 * @description Refresh token
-                 * @example eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-                 */
-                token: string;
-                /**
-                 * Format: date-time
-                 * @description Refresh token expiration date
-                 * @example 2024-01-08T00:00:00.000Z
-                 */
-                expiresAt: string;
-            };
-        };
-        /**
-         * @description Invoke email verification request body
-         * @example {
-         *       "email": "user@example.com"
-         *     }
-         */
-        InvokeEmailVerificationDto: {
-            /**
-             * Format: email
-             * @description User email address
-             * @example user@example.com
-             */
-            email: string;
-        };
-        /**
-         * @description Forgot password request body
-         * @example {
-         *       "email": "user@example.com"
-         *     }
-         */
-        ForgotPasswordDto: {
-            /**
-             * Format: email
-             * @description User email address
-             * @example user@example.com
-             */
-            email: string;
-        };
-        /**
-         * @description Reset password request body
-         * @example {
-         *       "token": "token...",
-         *       "email": "user@example.com",
-         *       "newPassword": "newPassword123"
-         *     }
-         */
-        ResetPasswordDto: {
-            /**
-             * @description Password reset token
-             * @example token...
-             */
-            token: string;
-            /**
-             * Format: email
-             * @description User email address
-             * @example user@example.com
-             */
-            email: string;
-            /**
-             * @description New password (minimum 8 characters)
-             * @example newPassword123
-             */
-            newPassword: string;
-        };
-        /** @description The user */
-        UserParamsDto: {
-            /**
-             * Format: uuid
-             * @description The id of the user
-             * @example 123e4567-e89b-12d3-a456-426614174000
-             */
-            id: string;
-            /**
-             * @description Display name (null until the user fills profile).
-             * @example Alice
-             */
-            name: string | null;
-            /**
-             * MediaObject
-             * @description Avatar — `MediaObject` with pre-signed url, or `null` if unset.
-             */
-            avatar: {
-                /** Format: uuid */
-                id: string;
-                /** Format: uri */
-                url: string;
-                mimeType: string;
-                meta: {
-                    width?: number;
-                    height?: number;
-                    durationMs?: number;
-                };
-            } | null;
-            /**
-             * @description User credits amount
-             * @example 10000
-             */
-            unitAmount: number;
-            /**
-             * @description Whether the user has a local password account (false for OAuth-only users).
-             * @example true
-             */
-            hasPassword: boolean;
-            /**
-             * Format: date-time
-             * @description The date and time the user was created
-             * @example 2021-01-01T00:00:00.000Z
-             */
-            createdAt: string;
-            /**
-             * Format: date-time
-             * @description The date and time the user was updated
-             * @example 2021-01-01T00:00:00.000Z
-             */
-            updatedAt: string;
-        };
-        /**
-         * @description Generate presigned URLs request
-         * @example {
-         *       "files": [
-         *         {
-         *           "mimeType": "image/png",
-         *           "size": 1024
-         *         }
-         *       ],
-         *       "metadata": {
-         *         "userId": "123e4567-e89b-12d3-a456-426614174000"
-         *       }
-         *     }
-         */
-        GeneratePresignUrlsDto: {
-            /** @description Files to generate presigned URLs for */
-            files: {
-                /**
-                 * @description MIME type — must be in the whitelist
-                 * @example image/png
-                 * @enum {string}
-                 */
-                mimeType: "image/jpeg" | "image/png" | "image/webp" | "image/gif" | "video/mp4" | "video/quicktime" | "video/webm" | "video/x-matroska";
-                /**
-                 * @description File size in bytes (capped at 52428800)
-                 * @example 1024
-                 */
-                size: number;
-            }[];
-            /** @description Custom metadata */
-            metadata?: {
-                /**
-                 * Format: uuid
-                 * @description User ID
-                 * @example 123e4567-e89b-12d3-a456-426614174000
-                 */
-                userId: string;
-                /**
-                 * Format: uuid
-                 * @description Project ID
-                 * @example 123e4567-e89b-12d3-a456-426614174000
-                 */
-                projectId?: string;
-            };
-        };
-        /** @description Generate presigned URLs response */
-        GeneratePresignUrlsResponseDto: {
-            /** @description Presigned URLs */
-            urls: {
-                /**
-                 * Format: uri
-                 * @description Presigned URL
-                 * @example https://s3.amazonaws.com/bucket/key?signature=...
-                 */
-                url: string;
-                /**
-                 * @description S3 object key
-                 * @example user-id/timestamp/file.png
-                 */
-                key: string;
-                /**
-                 * @description MIME type
-                 * @example image/png
-                 */
-                mimeType: string;
-                /**
-                 * @description File size in bytes
-                 * @example 1024
-                 */
-                size?: number;
-                /** @description Custom metadata */
-                metadata: {
-                    [key: string]: string;
-                };
-                /**
-                 * Format: date-time
-                 * @description Expiration time
-                 * @example 2025-11-07T00:15:00.000Z
-                 */
-                expiresAt: string;
-            }[];
-        };
-        /** @description Storage object */
-        StorageObjectDto: {
-            /**
-             * Format: uuid
-             * @description Storage object ID
-             * @example 123e4567-e89b-12d3-a456-426614174000
-             */
-            id: string;
-            /**
-             * Format: uuid
-             * @description User ID
-             * @example 123e4567-e89b-12d3-a456-426614174000
-             */
-            userId: string;
-            /**
-             * @description S3 object key
-             * @example user-id/timestamp/file.png
-             */
-            key: string;
-            /**
-             * @description File size in bytes
-             * @example 1024
-             */
-            size: number;
-            /**
-             * @description MIME type
-             * @example image/png
-             */
-            mimeType: string;
-            /**
-             * @description File checksum (ETag)
-             * @example d41d8cd98f00b204e9800998ecf8427e
-             */
-            checksum: string | null;
-            /**
-             * @description S3 bucket name
-             * @example legaltech-documents
-             */
-            bucket: string;
-            /**
-             * @description Custom metadata (project_id, user_id, etc.)
-             * @example {
-             *       "userId": "123e4567-e89b-12d3-a456-426614174000",
-             *       "projectId": "123e4567-e89b-12d3-a456-426614174000"
-             *     }
-             */
-            meta: {
+        /** ErrorModel */
+        ErrorModel: {
+            /** Detail */
+            detail: string | {
                 [key: string]: string;
             };
-            /**
-             * Format: date-time
-             * @description Creation date
-             * @example 2025-11-08T19:04:21.448Z
-             */
-            createdAt: string;
-            /**
-             * Format: date-time
-             * @description Last update date
-             * @example 2025-11-08T19:04:21.448Z
-             */
-            updatedAt: string;
         };
-        /** @description List storage objects response */
-        ListStorageObjectsResponseDto: {
-            /** @description Storage objects */
-            data: {
-                /**
-                 * Format: uuid
-                 * @description Storage object ID
-                 * @example 123e4567-e89b-12d3-a456-426614174000
-                 */
-                id: string;
-                /**
-                 * Format: uuid
-                 * @description User ID
-                 * @example 123e4567-e89b-12d3-a456-426614174000
-                 */
-                userId: string;
-                /**
-                 * @description S3 object key
-                 * @example user-id/timestamp/file.png
-                 */
-                key: string;
-                /**
-                 * @description File size in bytes
-                 * @example 1024
-                 */
-                size: number;
-                /**
-                 * @description MIME type
-                 * @example image/png
-                 */
-                mimeType: string;
-                /**
-                 * @description File checksum (ETag)
-                 * @example d41d8cd98f00b204e9800998ecf8427e
-                 */
-                checksum: string | null;
-                /**
-                 * @description S3 bucket name
-                 * @example legaltech-documents
-                 */
-                bucket: string;
-                /**
-                 * @description Custom metadata (project_id, user_id, etc.)
-                 * @example {
-                 *       "userId": "123e4567-e89b-12d3-a456-426614174000",
-                 *       "projectId": "123e4567-e89b-12d3-a456-426614174000"
-                 *     }
-                 */
-                meta: {
-                    [key: string]: string;
-                };
-                /**
-                 * Format: date-time
-                 * @description Creation date
-                 * @example 2025-11-08T19:04:21.448Z
-                 */
-                createdAt: string;
-                /**
-                 * Format: date-time
-                 * @description Last update date
-                 * @example 2025-11-08T19:04:21.448Z
-                 */
-                updatedAt: string;
-            }[];
-            /**
-             * Metadata
-             * @description Response metadata
-             */
-            meta: {
-                /**
-                 * Pagination meta
-                 * @description Pagination metadata
-                 */
-                pagination: {
-                    /** @description Total number of records available */
-                    total: number;
-                    /**
-                     * @description Number of records skipped
-                     * @default 0
-                     */
-                    offset: number;
-                    /**
-                     * @description Maximum number of records returned
-                     * @default 1
-                     */
-                    limit: number;
-                };
-            };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
         };
-        S3EventNotificationDto: {
-            EventName: string;
-            Key: string;
-            Records: ({
-                eventVersion: string;
-                eventSource: string;
-                awsRegion: string;
-                eventTime: string;
-                eventName: string;
-                userIdentity: {
-                    principalId: string;
-                } & {
-                    [key: string]: unknown;
-                };
-                requestParameters: {
-                    principalId?: string;
-                    accessKey?: string;
-                    region?: string;
-                    sourceIPAddress?: string;
-                } & {
-                    [key: string]: unknown;
-                };
-                responseElements: {
-                    "x-amz-id-2"?: string;
-                    "x-amz-request-id"?: string;
-                    "x-minio-deployment-id"?: string;
-                    "x-minio-origin-endpoint"?: string;
-                    "content-length"?: string;
-                } & {
-                    [key: string]: unknown;
-                };
-                s3: {
-                    s3SchemaVersion: string;
-                    configurationId: string;
-                    bucket: {
-                        name: string;
-                        ownerIdentity: {
-                            principalId: string;
-                        } & {
-                            [key: string]: unknown;
-                        };
-                        arn: string;
-                    } & {
-                        [key: string]: unknown;
-                    };
-                    object: {
-                        key: string;
-                        size?: number;
-                        eTag?: string;
-                        contentType?: string;
-                        userMetadata?: {
-                            "cache-control"?: string;
-                            "content-type"?: string;
-                            "x-amz-meta-user-id"?: string;
-                        } & {
-                            [key: string]: unknown;
-                        };
-                        sequencer?: string;
-                        versionId?: string;
-                    } & {
-                        [key: string]: unknown;
-                    };
-                } & {
-                    [key: string]: unknown;
-                };
-                source: {
-                    host?: string;
-                    port?: string;
-                    userAgent?: string;
-                } & {
-                    [key: string]: unknown;
-                };
-            } & {
-                [key: string]: unknown;
-            })[];
-        } & {
-            [key: string]: unknown;
-        };
-        /** @description Webhook response */
-        WebhookResponseDto: {
+        /**
+         * HealthResponse
+         * @description Liveness payload returned by `GET /health`.
+         */
+        HealthResponse: {
             /**
-             * @description Status
-             * @example ok
-             * @enum {string}
+             * Status
+             * @constant
              */
             status: "ok";
         };
-        CreateWorkspaceBodyDto: {
-            name: string;
-            description?: string | null;
-            /** Format: uuid */
-            imageStorageObjectId?: string | null;
+        /**
+         * InvoiceRequest
+         * @description Create-invoice request body (validated at the boundary).
+         */
+        InvoiceRequest: {
+            plan: components["schemas"]["Plan"];
+            /** @default month */
+            period: components["schemas"]["BillingPeriod"];
         };
         /**
-         * PublicWorkspace
-         * @description Workspace as exposed through HTTP responses — owner-safe projection.
+         * InvoiceResponse
+         * @description Invoice response: where to pay + the order id to reconcile the IPN.
          */
-        PublicWorkspaceResponseDto: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            authorId: string;
+        InvoiceResponse: {
+            /** Order Id */
+            order_id: string;
+            /** Payment Url */
+            payment_url: string;
+            /** Redirect Url */
+            redirect_url: string | null;
+            /** Amount */
+            amount: string;
+            /** Currency */
+            currency: string;
+        };
+        /**
+         * IpnAck
+         * @description Ack body returned for any handled IPN (200).
+         */
+        IpnAck: {
+            /** Status */
+            status: string;
+        };
+        /** OAuth2AuthorizeResponse */
+        OAuth2AuthorizeResponse: {
+            /** Authorization Url */
+            authorization_url: string;
+        };
+        /**
+         * Plan
+         * @description Subscription tiers (overview §6). String values match `users.plan`.
+         * @enum {string}
+         */
+        Plan: "free" | "pro" | "team";
+        /**
+         * SourceKind
+         * @description Platform a channel belongs to. Telegram now; Twitter/X later (ADR-001).
+         * @enum {string}
+         */
+        SourceKind: "telegram";
+        /**
+         * TenantResponse
+         * @description Tenant identity payload for the protected example route.
+         */
+        TenantResponse: {
+            /** User Id */
+            user_id: number;
+        };
+        /**
+         * UserCreate
+         * @description Registration payload (email + password, validated by the library).
+         */
+        UserCreate: {
             /**
-             * AuthorEmbed
-             * @description Compact author projection — id + display name + avatar MediaObject.
+             * Email
+             * Format: email
              */
-            author: {
-                /** Format: uuid */
-                id: string;
-                name: string | null;
-                /**
-                 * MediaObject
-                 * @description Embedded media — id + pre-signed GET url + mimeType + optional meta (dimensions / duration).
-                 */
-                avatar: {
-                    /** Format: uuid */
-                    id: string;
-                    /** Format: uri */
-                    url: string;
-                    mimeType: string;
-                    meta: {
-                        width?: number;
-                        height?: number;
-                        durationMs?: number;
-                    };
-                } | null;
-            } | null;
-            name: string;
-            description: string | null;
+            email: string;
+            /** Password */
+            password: string;
             /**
-             * MediaObject
-             * @description Embedded media — id + pre-signed GET url + mimeType + optional meta (dimensions / duration).
+             * Is Active
+             * @default true
              */
-            image: {
-                /** Format: uuid */
-                id: string;
-                /** Format: uri */
-                url: string;
-                mimeType: string;
-                meta: {
-                    width?: number;
-                    height?: number;
-                    durationMs?: number;
-                };
-            } | null;
-            postsCount: number;
-            channelsCount: number;
-            membersCount: number;
-            /** Format: date-time */
-            archivedAt: string | null;
-            /** @enum {string} */
-            state: "active" | "deleted";
-            /** Format: date-time */
-            createdAt: string;
-            /** Format: date-time */
-            updatedAt: string;
-        };
-        ListWorkspacesResponseDto: {
-            data: {
-                /** Format: uuid */
-                id: string;
-                /** Format: uuid */
-                authorId: string;
-                /**
-                 * AuthorEmbed
-                 * @description Compact author projection — id + display name + avatar MediaObject.
-                 */
-                author: {
-                    /** Format: uuid */
-                    id: string;
-                    name: string | null;
-                    /**
-                     * MediaObject
-                     * @description Embedded media — id + pre-signed GET url + mimeType + optional meta (dimensions / duration).
-                     */
-                    avatar: {
-                        /** Format: uuid */
-                        id: string;
-                        /** Format: uri */
-                        url: string;
-                        mimeType: string;
-                        meta: {
-                            width?: number;
-                            height?: number;
-                            durationMs?: number;
-                        };
-                    } | null;
-                } | null;
-                name: string;
-                description: string | null;
-                /**
-                 * MediaObject
-                 * @description Embedded media — id + pre-signed GET url + mimeType + optional meta (dimensions / duration).
-                 */
-                image: {
-                    /** Format: uuid */
-                    id: string;
-                    /** Format: uri */
-                    url: string;
-                    mimeType: string;
-                    meta: {
-                        width?: number;
-                        height?: number;
-                        durationMs?: number;
-                    };
-                } | null;
-                postsCount: number;
-                channelsCount: number;
-                membersCount: number;
-                /** Format: date-time */
-                archivedAt: string | null;
-                /** @enum {string} */
-                state: "active" | "deleted";
-                /** Format: date-time */
-                createdAt: string;
-                /** Format: date-time */
-                updatedAt: string;
-            }[];
+            is_active: boolean | null;
             /**
-             * Metadata
-             * @description Contains metadata such as pagination
+             * Is Superuser
+             * @default false
              */
-            meta: {
-                /**
-                 * Pagination meta
-                 * @description Pagination metadata
-                 */
-                pagination: {
-                    /** @description Total number of records available */
-                    total: number;
-                    /**
-                     * @description Number of records skipped
-                     * @default 0
-                     */
-                    offset: number;
-                    /**
-                     * @description Maximum number of records returned
-                     * @default 1
-                     */
-                    limit: number;
-                };
-            };
-        };
-        UpdateWorkspaceBodyDto: {
-            name?: string;
-            description?: string | null;
-            /** Format: uuid */
-            imageStorageObjectId?: string | null;
-        };
-        CreatePostBodyDto: {
-            name: string;
-            /** @default null */
-            description: string | null;
-            /** @default [] */
-            tags: string[];
-        };
-        UpdatePostBodyDto: {
-            name?: string;
-            description?: string | null;
-            tags?: string[];
-        };
-        AttachMediaBodyDto: {
-            /** Format: uuid */
-            storageObjectId: string;
-            position?: number;
-        };
-        CreatePublicationBodyDto: {
-            /** @description One entry per target channel. Discriminated by `postType` — each PostType has its own typed `meta` shape (see schema variants). */
-            channels: ({
-                /**
-                 * Format: uuid
-                 * @description Target channel UUID
-                 */
-                channelId: string;
-                /** @enum {string} */
-                postType: "instagram_feed";
-                meta?: {
-                    /** @description Image alt text for accessibility (≤1000 chars) */
-                    altText?: string;
-                    /** @description Video thumbnail offset in milliseconds */
-                    thumbOffsetMs?: number;
-                } & {
-                    [key: string]: unknown;
-                };
-            } | {
-                /**
-                 * Format: uuid
-                 * @description Target channel UUID
-                 */
-                channelId: string;
-                /** @enum {string} */
-                postType: "instagram_reels";
-                meta?: {
-                    /** @description Also share Reel into the Feed tab. Default: true */
-                    shareToFeed?: boolean;
-                    /**
-                     * Format: uri
-                     * @description Public HTTPS URL of a custom cover image
-                     */
-                    coverUrl?: string;
-                    /** @description Video thumbnail offset (ms). Overridden by coverUrl if both set */
-                    thumbOffsetMs?: number;
-                    /** @description Up to 3 IG usernames invited as collaborators */
-                    collaborators?: string[];
-                } & {
-                    [key: string]: unknown;
-                };
-            } | {
-                /**
-                 * Format: uuid
-                 * @description Target channel UUID
-                 */
-                channelId: string;
-                /** @enum {string} */
-                postType: "instagram_stories";
-                meta?: {
-                    [key: string]: unknown;
-                };
-            } | {
-                /**
-                 * Format: uuid
-                 * @description Target channel UUID
-                 */
-                channelId: string;
-                /** @enum {string} */
-                postType: "linkedin_personal";
-                meta?: {
-                    /** @description Image alt text (≤4086 chars) */
-                    altText?: string;
-                    /** @description Video title shown on LinkedIn (≤200 chars) */
-                    title?: string;
-                } & {
-                    [key: string]: unknown;
-                };
-            } | {
-                /**
-                 * Format: uuid
-                 * @description Target channel UUID
-                 */
-                channelId: string;
-                /** @enum {string} */
-                postType: "linkedin_organization";
-                meta: {
-                    /** @description Target organization URN, e.g. `urn:li:organization:1234567` */
-                    organizationUrn: string;
-                    altText?: string;
-                    title?: string;
-                } & {
-                    [key: string]: unknown;
-                };
-            } | {
-                /**
-                 * Format: uuid
-                 * @description Target channel UUID
-                 */
-                channelId: string;
-                /** @enum {string} */
-                postType: "facebook_page_feed";
-                meta?: {
-                    /**
-                     * Format: uri
-                     * @description External URL — Facebook will scrape OG tags and render a link preview
-                     */
-                    link?: string;
-                    /** @description Override description for video posts (≤5000 chars) */
-                    description?: string;
-                } & {
-                    [key: string]: unknown;
-                };
-            } | {
-                /**
-                 * Format: uuid
-                 * @description Target channel UUID
-                 */
-                channelId: string;
-                /** @enum {string} */
-                postType: "facebook_page_reels";
-                meta?: {
-                    /** @description Reel description / caption (≤2200 chars). Hashtags supported */
-                    description?: string;
-                } & {
-                    [key: string]: unknown;
-                };
-            } | {
-                /**
-                 * Format: uuid
-                 * @description Target channel UUID
-                 */
-                channelId: string;
-                /** @enum {string} */
-                postType: "facebook_page_stories";
-                meta?: {
-                    [key: string]: unknown;
-                };
-            } | {
-                /**
-                 * Format: uuid
-                 * @description Target channel UUID
-                 */
-                channelId: string;
-                /** @enum {string} */
-                postType: "youtube_video";
-                meta?: {
-                    /** @description Override post title (≤100 chars). Defaults to post title */
-                    title?: string;
-                    /** @description Override description (≤5000 chars). Defaults to post description / caption */
-                    description?: string;
-                    /**
-                     * @description YouTube privacy. Defaults to channel.meta.privacyStatus or `public`
-                     * @enum {string}
-                     */
-                    privacyStatus?: "public" | "unlisted" | "private";
-                    /** @description YouTube category id. Default: `22` (People & Blogs) */
-                    categoryId?: string;
-                    /** @description YouTube tags (free-form keywords) */
-                    tags?: string[];
-                } & {
-                    [key: string]: unknown;
-                };
-            } | {
-                /**
-                 * Format: uuid
-                 * @description Target channel UUID
-                 */
-                channelId: string;
-                /** @enum {string} */
-                postType: "youtube_shorts";
-                meta?: {
-                    /** @description Override post title (≤100 chars). Defaults to post title */
-                    title?: string;
-                    /** @description Override description (≤5000 chars). Defaults to post description / caption */
-                    description?: string;
-                    /**
-                     * @description YouTube privacy. Defaults to channel.meta.privacyStatus or `public`
-                     * @enum {string}
-                     */
-                    privacyStatus?: "public" | "unlisted" | "private";
-                    /** @description YouTube category id. Default: `22` (People & Blogs) */
-                    categoryId?: string;
-                    /** @description YouTube tags (free-form keywords) */
-                    tags?: string[];
-                } & {
-                    [key: string]: unknown;
-                };
-            })[];
+            is_superuser: boolean | null;
             /**
-             * Format: date-time
-             * @description ISO 8601 datetime — when to dispatch. Omit for immediate publish.
+             * Is Verified
+             * @default false
              */
-            publishAt?: string;
+            is_verified: boolean | null;
         };
-        UpdatePublicationBodyDto: {
+        /**
+         * UserRead
+         * @description Public user representation returned by register / users routes.
+         */
+        UserRead: {
+            /** Id */
+            id: number;
             /**
-             * Format: date-time
-             * @description ISO 8601 datetime — new dispatch time. Must be in the future.
+             * Email
+             * Format: email
              */
-            publishAt: string;
-        };
-        CreateEmailTemplateBodyDto: {
-            eventName: string;
-            templatePath: string;
-        };
-        EmailTemplateResponseDto: {
-            /** Format: uuid */
-            id: string;
-            eventName: string;
-            templatePath: string;
-            /** Format: date-time */
-            createdAt: string;
-            /** Format: date-time */
-            updatedAt: string;
-        };
-        ListEmailTemplatesResponseDto: {
-            data: {
-                /** Format: uuid */
-                id: string;
-                eventName: string;
-                templatePath: string;
-                /** Format: date-time */
-                createdAt: string;
-                /** Format: date-time */
-                updatedAt: string;
-            }[];
+            email: string;
             /**
-             * Metadata
-             * @description Contains metadata such as pagination
+             * Is Active
+             * @default true
              */
-            meta: {
-                /**
-                 * Pagination meta
-                 * @description Pagination metadata
-                 */
-                pagination: {
-                    /** @description Total number of records available */
-                    total: number;
-                    /**
-                     * @description Number of records skipped
-                     * @default 0
-                     */
-                    offset: number;
-                    /**
-                     * @description Maximum number of records returned
-                     * @default 1
-                     */
-                    limit: number;
-                };
-            };
+            is_active: boolean;
+            /**
+             * Is Superuser
+             * @default false
+             */
+            is_superuser: boolean;
+            /**
+             * Is Verified
+             * @default false
+             */
+            is_verified: boolean;
+        };
+        /** ValidationError */
+        ValidationError: {
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
+        };
+        /**
+         * WatchlistCreate
+         * @description Create payload: one topic + one channel + alert-config -> one watchlist row.
+         */
+        WatchlistCreate: {
+            /** Topic */
+            topic: string;
+            channel: components["schemas"]["ChannelRef"];
+            alert_config: components["schemas"]["AlertConfig"];
+        };
+        /**
+         * WatchlistRead
+         * @description Response model: the persisted watchlist row, tenant id included (AC1).
+         */
+        WatchlistRead: {
+            /** Id */
+            id: number;
+            /** User Id */
+            user_id: number;
+            /** Topic */
+            topic: string;
+            channel: components["schemas"]["ChannelRef"];
+            alert_config: components["schemas"]["AlertConfig"];
+        };
+        /**
+         * WatchlistUpdate
+         * @description Partial update: only supplied fields are applied (PATCH, `exclude_unset`).
+         */
+        WatchlistUpdate: {
+            /** Topic */
+            topic?: string | null;
+            channel?: components["schemas"]["ChannelRef"] | null;
+            alert_config?: components["schemas"]["AlertConfig"] | null;
         };
     };
     responses: never;
@@ -1852,7 +517,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    MetricsHttpController_getMetrics: {
+    health_health_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -1861,418 +526,18 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    HttpHealthController_liveness: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    HttpHealthController_startup: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The Health Check is successful */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        /** @example ok */
-                        status?: string;
-                        /**
-                         * @example {
-                         *       "database": {
-                         *         "status": "up"
-                         *       }
-                         *     }
-                         */
-                        info?: {
-                            [key: string]: {
-                                status: string;
-                            } & {
-                                [key: string]: unknown;
-                            };
-                        } | null;
-                        /** @example {} */
-                        error?: {
-                            [key: string]: {
-                                status: string;
-                            } & {
-                                [key: string]: unknown;
-                            };
-                        } | null;
-                        /**
-                         * @example {
-                         *       "database": {
-                         *         "status": "up"
-                         *       }
-                         *     }
-                         */
-                        details?: {
-                            [key: string]: {
-                                status: string;
-                            } & {
-                                [key: string]: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-            /** @description The Health Check is not successful */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** @example error */
-                        status?: string;
-                        /**
-                         * @example {
-                         *       "database": {
-                         *         "status": "up"
-                         *       }
-                         *     }
-                         */
-                        info?: {
-                            [key: string]: {
-                                status: string;
-                            } & {
-                                [key: string]: unknown;
-                            };
-                        } | null;
-                        /**
-                         * @example {
-                         *       "redis": {
-                         *         "status": "down",
-                         *         "message": "Could not connect"
-                         *       }
-                         *     }
-                         */
-                        error?: {
-                            [key: string]: {
-                                status: string;
-                            } & {
-                                [key: string]: unknown;
-                            };
-                        } | null;
-                        /**
-                         * @example {
-                         *       "database": {
-                         *         "status": "up"
-                         *       },
-                         *       "redis": {
-                         *         "status": "down",
-                         *         "message": "Could not connect"
-                         *       }
-                         *     }
-                         */
-                        details?: {
-                            [key: string]: {
-                                status: string;
-                            } & {
-                                [key: string]: unknown;
-                            };
-                        };
-                    };
+                    "application/json": components["schemas"]["HealthResponse"];
                 };
             };
         };
     };
-    HttpHealthController_readiness: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The Health Check is successful */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** @example ok */
-                        status?: string;
-                        /**
-                         * @example {
-                         *       "database": {
-                         *         "status": "up"
-                         *       }
-                         *     }
-                         */
-                        info?: {
-                            [key: string]: {
-                                status: string;
-                            } & {
-                                [key: string]: unknown;
-                            };
-                        } | null;
-                        /** @example {} */
-                        error?: {
-                            [key: string]: {
-                                status: string;
-                            } & {
-                                [key: string]: unknown;
-                            };
-                        } | null;
-                        /**
-                         * @example {
-                         *       "database": {
-                         *         "status": "up"
-                         *       }
-                         *     }
-                         */
-                        details?: {
-                            [key: string]: {
-                                status: string;
-                            } & {
-                                [key: string]: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-            /** @description The Health Check is not successful */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** @example error */
-                        status?: string;
-                        /**
-                         * @example {
-                         *       "database": {
-                         *         "status": "up"
-                         *       }
-                         *     }
-                         */
-                        info?: {
-                            [key: string]: {
-                                status: string;
-                            } & {
-                                [key: string]: unknown;
-                            };
-                        } | null;
-                        /**
-                         * @example {
-                         *       "redis": {
-                         *         "status": "down",
-                         *         "message": "Could not connect"
-                         *       }
-                         *     }
-                         */
-                        error?: {
-                            [key: string]: {
-                                status: string;
-                            } & {
-                                [key: string]: unknown;
-                            };
-                        } | null;
-                        /**
-                         * @example {
-                         *       "database": {
-                         *         "status": "up"
-                         *       },
-                         *       "redis": {
-                         *         "status": "down",
-                         *         "message": "Could not connect"
-                         *       }
-                         *     }
-                         */
-                        details?: {
-                            [key: string]: {
-                                status: string;
-                            } & {
-                                [key: string]: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-    };
-    HttpHealthController_deep: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The Health Check is successful */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** @example ok */
-                        status?: string;
-                        /**
-                         * @example {
-                         *       "database": {
-                         *         "status": "up"
-                         *       }
-                         *     }
-                         */
-                        info?: {
-                            [key: string]: {
-                                status: string;
-                            } & {
-                                [key: string]: unknown;
-                            };
-                        } | null;
-                        /** @example {} */
-                        error?: {
-                            [key: string]: {
-                                status: string;
-                            } & {
-                                [key: string]: unknown;
-                            };
-                        } | null;
-                        /**
-                         * @example {
-                         *       "database": {
-                         *         "status": "up"
-                         *       }
-                         *     }
-                         */
-                        details?: {
-                            [key: string]: {
-                                status: string;
-                            } & {
-                                [key: string]: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-            /** @description The Health Check is not successful */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** @example error */
-                        status?: string;
-                        /**
-                         * @example {
-                         *       "database": {
-                         *         "status": "up"
-                         *       }
-                         *     }
-                         */
-                        info?: {
-                            [key: string]: {
-                                status: string;
-                            } & {
-                                [key: string]: unknown;
-                            };
-                        } | null;
-                        /**
-                         * @example {
-                         *       "redis": {
-                         *         "status": "down",
-                         *         "message": "Could not connect"
-                         *       }
-                         *     }
-                         */
-                        error?: {
-                            [key: string]: {
-                                status: string;
-                            } & {
-                                [key: string]: unknown;
-                            };
-                        } | null;
-                        /**
-                         * @example {
-                         *       "database": {
-                         *         "status": "up"
-                         *       },
-                         *       "redis": {
-                         *         "status": "down",
-                         *         "message": "Could not connect"
-                         *       }
-                         *     }
-                         */
-                        details?: {
-                            [key: string]: {
-                                status: string;
-                            } & {
-                                [key: string]: unknown;
-                            };
-                        };
-                    };
-                };
-            };
-        };
-    };
-    InboxCleanupController_run: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Count of rows removed: `{ deleted: number }` */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid `X-Internal-Token` header */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    AuthController_signUpByEmail: {
+    auth_jwt_login_auth_jwt_login_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -2281,414 +546,81 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SignUpByEmailDto"];
+                "application/x-www-form-urlencoded": components["schemas"]["Body_auth_jwt_login_auth_jwt_login_post"];
             };
         };
         responses: {
-            /** @description User created successfully */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Bad request - invalid email or password format */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description User with this email already exists */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    AuthController_signInByEmail: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SignInByEmailDto"];
-            };
-        };
-        responses: {
-            /** @description User authenticated successfully */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SignInByEmailResponseDto"];
+                    "application/json": unknown;
                 };
             };
-            /** @description Bad request - invalid email or password format */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Invalid credentials or email not verified */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    AuthController_confirmEmail: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ConfirmEmailDto"];
-            };
-        };
-        responses: {
-            /** @description Email verified successfully */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Bad request - invalid token or email */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Invalid credentials or email already verified */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    AuthController_refreshToken: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description New access token generated successfully */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RefreshTokenResponseDto"];
-                };
-            };
-            /** @description Bad request - missing or invalid authorization header */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Invalid refresh token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    AuthController_invokeEmailVerification: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["InvokeEmailVerificationDto"];
-            };
-        };
-        responses: {
-            /** @description Email verification sent successfully */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Bad request - invalid email format */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Email already verified */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Account not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    AuthController_signOut: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description User signed out successfully */
+            /** @description No Content */
             204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description Bad request - invalid user or account */
+            /** @description Bad Request */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorModel"];
+                };
             };
-            /** @description User or account not found */
-            404: {
+            /** @description Validation Error */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
-                content?: never;
             };
         };
     };
-    AuthController_forgotPassword: {
+    auth_jwt_logout_auth_jwt_logout_post: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ForgotPasswordDto"];
-            };
-        };
-        responses: {
-            /** @description Password reset email sent successfully */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Bad request - invalid email format */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Account not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    AuthController_resetPassword: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ResetPasswordDto"];
-            };
-        };
-        responses: {
-            /** @description Password reset successfully */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Bad request - invalid token, email or password format */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Invalid or expired reset token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Account not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    UserController_findUserById: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                userId: string;
-            };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description User found successfully */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UserParamsDto"];
+                    "application/json": unknown;
                 };
             };
-            /** @description Bad request - invalid user ID format */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description User not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    UserController_softDeleteUser: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                userId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
+            /** @description No Content */
             204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
+            /** @description Missing token or inactive user. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
-    StorageController_generatePresignUrls: {
+    register_register_auth_register_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -2697,1150 +629,114 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["GeneratePresignUrlsDto"];
+                "application/json": components["schemas"]["UserCreate"];
             };
         };
         responses: {
-            /** @description Presigned URLs generated successfully */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GeneratePresignUrlsResponseDto"];
-                };
-            };
-        };
-    };
-    StorageObjectsController_findStorageObjectByKey: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description User ID */
-                userId: string;
-                /** @description S3 object key (URL encoded) */
-                key: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Storage object found successfully */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StorageObjectDto"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden - User ID mismatch */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Storage object not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    StorageObjectsController_findStorageObjectById: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Storage object ID */
-                id: string;
-                /** @description User ID */
-                userId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Storage object found successfully */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StorageObjectDto"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden - User ID mismatch */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Storage object not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    StorageObjectsController_listStorageObjects: {
-        parameters: {
-            query?: {
-                /** @description Number of items to skip */
-                offset?: number;
-                /** @description Maximum number of items to return (1-100) */
-                limit?: number;
-            };
-            header?: never;
-            path: {
-                /** @description User ID */
-                userId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Storage objects retrieved successfully */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ListStorageObjectsResponseDto"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden - User ID mismatch */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    S3WebhookController_handleS3Event: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["S3EventNotificationDto"];
-            };
-        };
-        responses: {
-            /** @description Event processed successfully */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WebhookResponseDto"];
-                };
-            };
-        };
-    };
-    WorkspacesController_list: {
-        parameters: {
-            query?: {
-                offset?: number;
-                limit?: number;
-                withArchived?: boolean;
-                archivedOnly?: boolean;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Paginated workspaces */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ListWorkspacesResponseDto"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkspacesController_create: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateWorkspaceBodyDto"];
-            };
-        };
-        responses: {
-            /** @description Workspace created */
+            /** @description Successful Response */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PublicWorkspaceResponseDto"];
+                    "application/json": components["schemas"]["UserRead"];
                 };
             };
-            /** @description Invalid input */
+            /** @description Bad Request */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
+                content: {
+                    "application/json": components["schemas"]["ErrorModel"];
                 };
-                content?: never;
             };
-        };
-    };
-    WorkspacesController_findById: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Workspace UUID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Workspace details */
-            200: {
+            /** @description Validation Error */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PublicWorkspaceResponseDto"];
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not the workspace author */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workspace not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
         };
     };
-    WorkspacesController_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Workspace UUID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Workspace deleted */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not the workspace author */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workspace not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkspacesController_update: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Workspace UUID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateWorkspaceBodyDto"];
-            };
-        };
-        responses: {
-            /** @description Workspace updated */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PublicWorkspaceResponseDto"];
-                };
-            };
-            /** @description Invalid input */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not the workspace author */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workspace not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkspacesController_archive: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Workspace UUID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Workspace archived */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PublicWorkspaceResponseDto"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not the workspace author */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workspace not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkspacesController_unarchive: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Workspace UUID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Workspace unarchived */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PublicWorkspaceResponseDto"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not the workspace author */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workspace not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    ChannelsController_list: {
+    oauth_google_jwt_authorize_auth_google_authorize_get: {
         parameters: {
             query?: {
-                /** @description Pagination offset */
-                offset?: number;
-                /** @description Page size (1–100) */
-                limit?: number;
+                scopes?: string[];
             };
             header?: never;
-            path: {
-                workspaceId: string;
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Paginated channels for the authenticated user (credentials omitted) */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized — missing or invalid access token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    ChannelsController_findById: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspaceId: string;
-                /** @description Channel UUID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Channel details (credentials omitted) */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Channel not found or not owned by user */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    ChannelsController_disconnect: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspaceId: string;
-                /** @description Channel UUID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Channel disconnected */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Channel not found or not owned by user */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    ChannelsController_refresh: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspaceId: string;
-                /** @description Channel UUID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Channel credentials refreshed (tokens stored server-side) */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Channel not found or not owned by user */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Upstream token refresh failed */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    OAuthCallbackController_initiate: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspaceId: string;
-                /** @description Target platform */
-                platform: "instagram" | "facebook" | "youtube" | "linkedin";
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Authorization URL */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        url?: string;
-                    };
+                    "application/json": components["schemas"]["OAuth2AuthorizeResponse"];
                 };
             };
-            /** @description Platform not supported */
-            400: {
+            /** @description Validation Error */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
-            };
-            /** @description Unauthorized — missing or invalid access token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
-                content?: never;
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
         };
     };
-    OAuthCallbackController_callback: {
-        parameters: {
-            query: {
-                /** @description Authorization code from provider */
-                code: string;
-                /** @description CSRF state token issued by initiate */
-                state: string;
-            };
-            header?: never;
-            path: {
-                /** @description Target platform */
-                platform: "instagram" | "facebook" | "youtube" | "linkedin";
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Redirect to frontend popup page (success or failure) */
-            302: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Internal server error (no redirect — provider sees a hard failure) */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    PostsController_list: {
+    oauth_google_jwt_callback_auth_google_callback_get: {
         parameters: {
             query?: {
-                search?: string;
-                status?: ("draft" | "publishing" | "published" | "failed")[];
-                authorId?: string;
-                tags?: string[];
-                channelId?: string;
-                postType?: ("instagram_feed" | "instagram_reels" | "instagram_stories" | "linkedin_personal" | "linkedin_organization" | "facebook_page_feed" | "facebook_page_reels" | "facebook_page_stories" | "youtube_video" | "youtube_shorts")[];
-                publicationStatus?: ("pending" | "publishing" | "published" | "failed")[];
-                rangeFrom?: string;
-                rangeTo?: string;
-                sortBy?: "createdAt" | "updatedAt";
-                sortOrder?: "asc" | "desc";
-                cursor?: string;
-                limit?: number;
-                offset?: number;
+                code?: string | null;
+                code_verifier?: string | null;
+                state?: string | null;
+                error?: string | null;
             };
             header?: never;
-            path: {
-                /** @description Workspace UUID */
-                workspaceId: string;
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Paginated posts */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
-            };
-        };
-    };
-    PostsController_create: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Workspace UUID */
-                workspaceId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreatePostBodyDto"];
-            };
-        };
-        responses: {
-            /** @description Post created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
+                content: {
+                    "application/json": unknown;
                 };
-                content?: never;
             };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workspace not owned by user */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    PostsController_findById: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspaceId: string;
-                /** @description Post UUID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Post details */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Post not found in workspace */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    PostsController_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspaceId: string;
-                /** @description Post UUID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Post soft-deleted */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not the author */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Post not found in workspace */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    PostsController_update: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspaceId: string;
-                /** @description Post UUID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdatePostBodyDto"];
-            };
-        };
-        responses: {
-            /** @description Post updated */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not the author */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Post not found in workspace */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    PostsController_attachMedia: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspaceId: string;
-                /** @description Post UUID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AttachMediaBodyDto"];
-            };
-        };
-        responses: {
-            /** @description Media attached */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Media limit exceeded or storage object not accessible */
+            /** @description Bad Request */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorModel"];
+                };
             };
-            /** @description Post not found in workspace */
-            404: {
+            /** @description Validation Error */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };
-    PostsController_detachMedia: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspaceId: string;
-                /** @description Post UUID */
-                id: string;
-                /** @description PostMedia UUID */
-                mediaId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Media detached */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Post or media not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    PublicationsController_list: {
-        parameters: {
-            query?: {
-                offset?: number;
-                limit?: number;
-                /** @description Filter by channel UUID */
-                channelId?: string;
-            };
-            header?: never;
-            path: {
-                /** @description Workspace UUID */
-                workspaceId: string;
-                /** @description Post UUID */
-                postId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Paginated publications */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    PublicationsController_create: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Workspace UUID */
-                workspaceId: string;
-                /** @description Post UUID */
-                postId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreatePublicationBodyDto"];
-            };
-        };
-        responses: {
-            /** @description Publications created (one per channel) */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation failure — missing media, postType / platform mismatch, or invalid meta shape */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Caller is not the post author */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Post not found in workspace */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Active publication already exists for `(post, channel, postType)` */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    PublicationsController_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Workspace UUID */
-                workspaceId: string;
-                /** @description Post UUID */
-                postId: string;
-                /** @description Publication UUID */
-                publicationId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Publication deleted */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Publication not found in this post / workspace */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    PublicationsController_update: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Workspace UUID */
-                workspaceId: string;
-                /** @description Post UUID */
-                postId: string;
-                /** @description Publication UUID */
-                publicationId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdatePublicationBodyDto"];
-            };
-        };
-        responses: {
-            /** @description Publication rescheduled */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description publishAt is in the past */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Publication not found in this post / workspace */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Publication is not pending */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    PlannerController_process: {
+    read_my_tenant_users_me_tenant_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -3849,30 +745,18 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Processed batch summary */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
-            };
-            /** @description Missing or invalid `X-Internal-Token` header */
-            401: {
-                headers: {
-                    [name: string]: unknown;
+                content: {
+                    "application/json": components["schemas"]["TenantResponse"];
                 };
-                content?: never;
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
         };
     };
-    ReconciliationController_run: {
+    list_watchlists_watchlists_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -3881,61 +765,18 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Reconciliation run summary: `scanned` total rows inspected, `reconciledAsPublished` rows finalized as published, `reconciledAsFailed` rows finalized as failed, `skipped` rows that errored during per-row processing. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid `X-Internal-Token` header */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    EmailTemplatesController_list: {
-        parameters: {
-            query?: {
-                /** @description Items to skip */
-                offset?: number;
-                /** @description Page size (default from pagination config) */
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ListEmailTemplatesResponseDto"];
+                    "application/json": components["schemas"]["WatchlistRead"][];
                 };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
         };
     };
-    EmailTemplatesController_create: {
+    create_watchlist_watchlists_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -3944,107 +785,213 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateEmailTemplateBodyDto"];
+                "application/json": components["schemas"]["WatchlistCreate"];
             };
         };
         responses: {
+            /** @description Successful Response */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EmailTemplateResponseDto"];
+                    "application/json": components["schemas"]["WatchlistRead"];
                 };
             };
-            /** @description Validation error */
-            400: {
+            /** @description Validation Error */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
-                content?: never;
-            };
-            /** @description Mapping for this event name already exists */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
         };
     };
-    EmailTemplatesController_getById: {
+    get_watchlist_watchlists__watchlist_id__get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                watchlist_id: number;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EmailTemplateResponseDto"];
+                    "application/json": components["schemas"]["WatchlistRead"];
                 };
             };
-            /** @description Unauthorized */
-            401: {
+            /** @description Validation Error */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
-            };
-            /** @description Template not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
-                content?: never;
             };
         };
     };
-    EmailTemplatesController_delete: {
+    delete_watchlist_watchlists__watchlist_id__delete: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                watchlist_id: number;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Deleted */
+            /** @description Successful Response */
             204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description Unauthorized */
-            401: {
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_watchlist_watchlists__watchlist_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                watchlist_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WatchlistUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchlistRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_invoice_billing_invoice_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoiceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    receive_ipn_billing_ipn_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IpnAck"];
+                };
+            };
+        };
+    };
+    delete_account_account_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description Template not found */
-            404: {
+        };
+    };
+    ready_ready_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": unknown;
+                };
             };
         };
     };

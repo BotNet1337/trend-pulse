@@ -1,14 +1,6 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { v4 as uuidv4 } from "uuid"
+import { useMutation } from "@tanstack/react-query"
 
-import { useAlertStore } from "@/app/providers/use-alert-store"
-
-import { meQueryKey } from "./model"
-import {
-  updateUserProfile,
-  updateUserProfilePath,
-  type UpdateUserProfileParams,
-} from "./update-api"
+import type { UpdateUserProfileParams } from "./update-api"
 
 export interface UseUpdateUserProfileOptions {
   onSuccess?: (params: UpdateUserProfileParams) => void | Promise<void>
@@ -16,40 +8,24 @@ export interface UseUpdateUserProfileOptions {
 }
 
 /**
- * Invokes `PATCH /users/:userId/profile` to update the display name. On
- * success refreshes the `useMe()` query and emits a success alert.
+ * Profile update — stub for TrendPulse C2+.
+ * Profile name/avatar update endpoints are not yet implemented in the backend.
+ * This hook is kept as a stub so account-settings-view compiles without errors.
  */
 export const useUpdateUserProfile = (
   options: UseUpdateUserProfileOptions = {},
 ) => {
-  const queryClient = useQueryClient()
-  const alertStore = useAlertStore()
-  const addAlert = alertStore((state) => state.add)
-
   return useMutation({
-    mutationKey: updateUserProfilePath.split("/"),
-    mutationFn: (params: UpdateUserProfileParams) => updateUserProfile(params),
+    mutationKey: ["update-user-profile"],
+    mutationFn: async (params: UpdateUserProfileParams): Promise<void> => {
+      // Not yet implemented in TrendPulse C1.
+      // TODO: implement in C2 when backend exposes PATCH /users/me/profile.
+      throw new Error(`Profile update not yet available (userId=${params.userId})`)
+    },
     onSuccess: async (_, params) => {
-      await queryClient.invalidateQueries({
-        queryKey: meQueryKey(params.userId),
-      })
-
-      addAlert({
-        id: uuidv4(),
-        type: "success",
-        title: "Display name updated",
-      })
-
       await options.onSuccess?.(params)
     },
     onError: async (error) => {
-      addAlert({
-        id: uuidv4(),
-        type: "error",
-        title: "Couldn't update display name",
-        description: error instanceof Error ? error.message : "Unknown error",
-      })
-
       await options.onError?.(error as Error)
     },
   })

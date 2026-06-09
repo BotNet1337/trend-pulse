@@ -1,97 +1,52 @@
+/**
+ * match-route unit tests — TrendPulse C1.
+ *
+ * Tests the generic matchRoute utility. Workspace/channel patterns removed
+ * (not in TrendPulse C1 — route-map is empty pending C3 watchlists SSR).
+ */
 import { describe, expect, it } from 'vitest';
 import { matchRoute } from '../../../../../server/ssr/prefetch/match-route';
-import { PREFETCH_ROUTE_PATTERNS } from '../../../../../server/ssr/prefetch/route-map';
 
 describe('matchRoute', () => {
-  it('matches the workspaces list', () => {
-    const result = matchRoute('/workspaces', PREFETCH_ROUTE_PATTERNS);
-    expect(result).toEqual({ pattern: '/workspaces', params: {} });
+  it('returns null when no patterns are provided', () => {
+    const result = matchRoute('/account/settings', []);
+    expect(result).toBeNull();
   });
 
-  it('matches workspace detail and extracts the id param', () => {
-    const result = matchRoute(
-      '/workspaces/abc-123',
-      PREFETCH_ROUTE_PATTERNS,
-    );
-    expect(result).toEqual({
-      pattern: '/workspaces/$id',
-      params: { id: 'abc-123' },
-    });
+  it('returns null for unmatched pathname', () => {
+    const result = matchRoute('/unknown-path', ['/account/settings']);
+    expect(result).toBeNull();
   });
 
-  it('matches workspace channels', () => {
-    const result = matchRoute(
-      '/workspaces/abc-123/channels',
-      PREFETCH_ROUTE_PATTERNS,
-    );
-    expect(result).toEqual({
-      pattern: '/workspaces/$id/channels',
-      params: { id: 'abc-123' },
-    });
+  it('matches exact static path', () => {
+    const result = matchRoute('/account/settings', ['/account/settings']);
+    expect(result).toEqual({ pattern: '/account/settings', params: {} });
   });
 
-  it('matches posts list', () => {
-    const result = matchRoute(
-      '/workspaces/abc-123/posts',
-      PREFETCH_ROUTE_PATTERNS,
-    );
-    expect(result).toEqual({
-      pattern: '/workspaces/$id/posts',
-      params: { id: 'abc-123' },
-    });
+  it('matches a pattern with a dynamic segment', () => {
+    const result = matchRoute('/items/abc-123', ['/items/$id']);
+    expect(result).toEqual({ pattern: '/items/$id', params: { id: 'abc-123' } });
   });
 
-  it('matches calendar', () => {
-    const result = matchRoute(
-      '/workspaces/abc-123/calendar',
-      PREFETCH_ROUTE_PATTERNS,
-    );
-    expect(result).toEqual({
-      pattern: '/workspaces/$id/calendar',
-      params: { id: 'abc-123' },
-    });
+  it('returns the most specific pattern (first match wins)', () => {
+    const patterns = ['/items/$id/detail', '/items/$id'];
+    const result = matchRoute('/items/abc-123/detail', patterns);
+    expect(result).toEqual({ pattern: '/items/$id/detail', params: { id: 'abc-123' } });
   });
 
-  it('prefers post detail over workspace detail when both could match', () => {
-    const result = matchRoute(
-      '/workspaces/ws/posts/post-1',
-      PREFETCH_ROUTE_PATTERNS,
-    );
-    expect(result).toEqual({
-      pattern: '/workspaces/$id/posts/$postId',
-      params: { id: 'ws', postId: 'post-1' },
-    });
+  it('falls through to less specific pattern', () => {
+    const patterns = ['/items/$id/detail', '/items/$id'];
+    const result = matchRoute('/items/abc-123', patterns);
+    expect(result).toEqual({ pattern: '/items/$id', params: { id: 'abc-123' } });
   });
 
-  it('matches publication detail', () => {
-    const result = matchRoute(
-      '/workspaces/ws/posts/post-1/publications/pub-1',
-      PREFETCH_ROUTE_PATTERNS,
-    );
-    expect(result).toEqual({
-      pattern: '/workspaces/$id/posts/$postId/publications/$publicationId',
-      params: { id: 'ws', postId: 'post-1', publicationId: 'pub-1' },
-    });
+  it('decodes URL-encoded path params', () => {
+    const result = matchRoute('/items/hello%20world', ['/items/$id']);
+    expect(result).toEqual({ pattern: '/items/$id', params: { id: 'hello world' } });
   });
 
-  it('returns null for unknown paths', () => {
-    expect(matchRoute('/auth/sign-in', PREFETCH_ROUTE_PATTERNS)).toBeNull();
-    expect(matchRoute('/', PREFETCH_ROUTE_PATTERNS)).toBeNull();
-  });
-
-  it('decodes URI-encoded segment values', () => {
-    const result = matchRoute(
-      '/workspaces/my%20ws',
-      PREFETCH_ROUTE_PATTERNS,
-    );
-    expect(result?.params.id).toBe('my ws');
-  });
-
-  it('does not match longer paths against shorter patterns', () => {
-    const result = matchRoute(
-      '/workspaces/abc/extra/segment',
-      ['/workspaces/$id'],
-    );
+  it('returns null when segment count differs', () => {
+    const result = matchRoute('/items/abc/extra', ['/items/$id']);
     expect(result).toBeNull();
   });
 });

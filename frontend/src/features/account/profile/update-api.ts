@@ -1,28 +1,12 @@
-import type { AxiosInstance } from "axios"
-
-import { apiClient } from "@/shared/api"
-
-import type { FindUserResponse } from "./api"
-
-const mask = "{userId}"
-
-export const updateUserProfilePath = `/users/${mask}/profile` as const
+/**
+ * Profile update — placeholder for TrendPulse C2+.
+ * The backend does not yet expose a profile update endpoint in C1.
+ * This module is kept as a stub so downstream imports compile without errors.
+ */
 
 export interface UpdateUserProfileParams {
   userId: string
   name: string
 }
 
-export const updateUserProfile = async (
-  params: UpdateUserProfileParams,
-  client?: AxiosInstance,
-): Promise<FindUserResponse> => {
-  const executor = client ?? apiClient
-
-  const response = await executor.patch<FindUserResponse>(
-    updateUserProfilePath.replace(mask, params.userId),
-    { name: params.name },
-  )
-
-  return response.data
-}
+export const updateUserProfilePath = "/users/me/profile" as const

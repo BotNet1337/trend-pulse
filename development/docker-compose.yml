@@ -20,6 +20,7 @@ include:
   - compose/api.yml
   - compose/worker.yml
   - compose/beat.yml
+  - compose/frontend.yml
   - compose/nginx.yml
 
 networks:

@@ -25,7 +25,8 @@ export interface DeleteAccountDialogProps {
 export const DeleteAccountDialog: React.FC<DeleteAccountDialogProps> = ({
   open,
   onOpenChange,
-  userId,
+  // userId kept in props for future use (task-014)
+  userId: _userId,
   email,
   ownedWorkspacesCount,
   ownedPostsCount,
@@ -104,7 +105,7 @@ export const DeleteAccountDialog: React.FC<DeleteAccountDialogProps> = ({
             className="h-10"
             onClick={() => {
               if (!canDelete) return
-              mutation.mutate({ userId })
+              mutation.mutate()
             }}
             disabled={!canDelete}
             data-testid="delete-account-confirm"

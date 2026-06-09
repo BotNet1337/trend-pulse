@@ -6,25 +6,20 @@ import { useAlertStore } from "@/app/providers/use-alert-store"
 import { useAuth } from "@/app/providers/use-auth"
 import { paths } from "@/app/router/path"
 
-import {
-  deleteAccount,
-  deleteAccountPath,
-  type DeleteAccountParams,
-} from "./api"
+import { deleteAccount } from "./api"
 
 export interface DeleteAccountOptions {
-  onSuccess?: (params: DeleteAccountParams) => void | Promise<void>
+  onSuccess?: () => void | Promise<void>
   onError?: (error: Error) => void | Promise<void>
 }
 
+const DELETE_ACCOUNT_MUTATION_KEY = ["delete-account"]
+
 /**
- * Invokes `DELETE /users/:userId` for the currently-authenticated user. The
- * backend soft-deletes the user, revokes refresh sessions, and (via NATS
- * cascade) marks owned workspaces / posts / channels as `state='deleted'`.
+ * Invokes `DELETE /account` for the currently-authenticated user (TrendPulse).
+ * The backend deletes the user and all their data (cascade) → 204.
  *
- * On success the auth store is cleared and the SPA redirects to sign-in —
- * the cookie may still be live for a moment until the API layer notices the
- * 401 from a follow-up request, so we proactively wipe state here.
+ * On success the auth store is cleared and the SPA redirects to sign-in.
  */
 export const useDeleteAccount = (options: DeleteAccountOptions = {}) => {
   const queryClient = useQueryClient()
@@ -35,9 +30,9 @@ export const useDeleteAccount = (options: DeleteAccountOptions = {}) => {
   const navigate = useNavigate()
 
   return useMutation({
-    mutationKey: deleteAccountPath.split("/"),
-    mutationFn: (params: DeleteAccountParams) => deleteAccount(params),
-    onSuccess: async (_, params) => {
+    mutationKey: DELETE_ACCOUNT_MUTATION_KEY,
+    mutationFn: () => deleteAccount(),
+    onSuccess: async () => {
       queryClient.clear()
       clearAuth()
 
@@ -45,11 +40,11 @@ export const useDeleteAccount = (options: DeleteAccountOptions = {}) => {
         id: uuidv4(),
         type: "success",
         title: "Account deleted",
-        description: "Your account and all owned workspaces were removed.",
+        description: "Your account and all your data were removed.",
       })
 
       await navigate({ to: paths.auth.signIn, replace: true })
-      await options.onSuccess?.(params)
+      await options.onSuccess?.()
     },
     onError: async (error) => {
       addAlert({
