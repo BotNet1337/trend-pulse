@@ -3,7 +3,6 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ViteDevServer } from 'vite';
-import { createServer as createViteServer } from 'vite';
 import { buildHtml } from './html';
 import type { RenderFn, RenderFnInput, RenderPayload } from './ssr.types.ts';
 import { loadConfig } from '../config.js';
@@ -51,6 +50,9 @@ export class SsrFactory {
   }
 
   private async createDevViteServer(): Promise<ViteDevServer> {
+    // Dynamic import so the production runtime never resolves `vite` at all
+    // (prod serves prebuilt dist/client + render.js; vite is a dev-only dep).
+    const { createServer: createViteServer } = await import('vite');
     return createViteServer({
       root: process.cwd(),
       server: {
@@ -105,18 +107,17 @@ export class SsrFactory {
     try {
       const { template, render } = await this.selectAssets(url);
 
-      // SECURITY (TASK-AUDIT-RELEASE-1 / C7):
-      // `req.user` is now Zod-filtered in `auth.plugin.ts` to only the safe
-      // claims (userId/accountId/email/provider). Pass through verbatim — no
-      // cast, no extra fields leak into the SSR ctx or `__INITIAL_STATE__`.
-      this.logger?.debug({ reqUser: req.user ?? null }, 'Request user');
+      // Forward the raw Cookie header to the prefetch layer.
+      // The httpOnly `fastapiusersauth` cookie is included here and will be
+      // forwarded verbatim to the upstream API in fetchCurrentUser / fetchWatchlists.
+      // We do NOT decode the cookie or inject any Bearer token.
+      const cookieHeader = req.headers.cookie;
+      this.logger?.debug({ hasCookie: !!cookieHeader }, 'SSR request cookie present');
 
-      const accessToken = req.cookies?.access_token;
       const renderPayload: RenderFnInput = {
         url,
         ctx: {
-          user: req.user ?? null,
-          accessToken,
+          cookieHeader,
         }
       }
 

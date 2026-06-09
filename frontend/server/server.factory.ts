@@ -9,7 +9,6 @@ import { loggerOptions } from './logger.js';
 import { AppConfig } from './config.js';
 import cookie from '@fastify/cookie'
 import authPlugin from './plugins/auth.plugin.js';
-import refreshPlugin from './plugins/refresh.plugin.js';
 
 
 
@@ -95,30 +94,15 @@ export class ServerFactory {
       prefix: '/api',
       rewritePrefix: '',
       proxyPayloads: true,
-      replyOptions: {
-        rewriteRequestHeaders: (originalReq, headers) => {
-          const cookies = originalReq.cookies ?? '';
-          const accessToken = cookies?.access_token;
-          const refreshToken = cookies?.refresh_token;
-
-          const nextHeaders: Record<string, string> = {
-            ...(headers as Record<string, string>),
-          };
-
-          if (accessToken) {
-            nextHeaders.authorization = `Bearer ${accessToken}`;
-          } else if (refreshToken) {
-            nextHeaders.authorization = `Bearer ${refreshToken}`;
-          }
-
-          return nextHeaders;
-        },
-      },
+      // @fastify/http-proxy forwards the inbound Cookie header automatically —
+      // no rewriteRequestHeaders needed. The fastapiusersauth httpOnly cookie
+      // rides through as-is. We intentionally do NOT inject Authorization: Bearer
+      // (TrendPulse uses cookie-auth, not passport-jwt Bearer tokens).
     })
 
     // Socket.io upgrade. The WS gateway lives on the API host on path
     // `/socket.io/` (default) with namespace `/ws`. Browser cookies (incl.
-    // `access_token`) ride along on the same-origin upgrade — the gateway
+    // `fastapiusersauth`) ride along on the same-origin upgrade — the gateway
     // reads them from `handshake.headers.cookie`.
     app.register(fastifyHttpProxy, {
       upstream: this.config.API_URL,
@@ -127,8 +111,17 @@ export class ServerFactory {
       websocket: true,
     })
 
+    // authPlugin decorates request.user — kept as no-op decoration so that
+    // existing code referencing req.user compiles. User data is fetched from
+    // GET /users/me in the SSR prefetch layer (cookie-forward), not decoded
+    // from JWT claims here.
     app.register(authPlugin, { required: false })
-    app.register(refreshPlugin, { apiUrl: this.config.API_URL })
+
+    // Health-check endpoint for Docker/compose healthcheck. Must be registered
+    // BEFORE the SSR catch-all / notFoundHandler so it is matched first.
+    app.get('/healthz', async (_req, reply) => {
+      return reply.status(200).send({ ok: true });
+    });
 
     const logger = app.log
 

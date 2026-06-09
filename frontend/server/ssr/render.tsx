@@ -8,26 +8,50 @@ import { createQueryClient } from '../../src/app/providers/query-client';
 import { hydrateQueryCache } from '../../src/app/hydrate-query-cache';
 import type { RenderFnInput, RenderPayload } from './ssr.types';
 import { runPrefetch } from './prefetch';
+import type { JwtUser } from '../../src/entities/user/model';
+import type { CurrentUser } from '../../src/entities/viewer/model';
+
+/**
+ * Map a CurrentUser (from GET /users/me UserMeResponse) to the JwtUser shape
+ * used by AuthStore. Mirrors the client-side `toJwtUser` in auth.provider.tsx.
+ *
+ * The `fastapiusersauth` JWT only carries `sub`/`aud`/`exp` — email and other
+ * user data are NOT in the token and must come from /users/me.
+ */
+function toJwtUser(user: CurrentUser): JwtUser {
+  return {
+    userId: String(user.id),
+    accountId: String(user.id),
+    email: user.email,
+    provider: 'cookie',
+  };
+}
 
 export async function render(input: RenderFnInput): Promise<RenderPayload> {
-  // input.ctx.user is already Zod-filtered upstream (auth.plugin.ts) — no
-  // raw JWT fields, no `[key: string]: unknown` wildcard. Pass through.
-  const auth = createAuthStore({ user: input.ctx.user ?? null });
-  const alert = createAlertStore();
+  const requestUrl = new URL(input.url, 'http://localhost');
 
   // Prefetch BEFORE rendering so we can seed a server-side QueryClient with
-  // the same data the client will hydrate from. Without this seeding, hooks
-  // like `useWorkspace`/`useChannels` return `data: undefined` during SSR
-  // (empty cache), components branch on `workspace && (...)`, and the server
-  // emits a different DOM than the client renders post-hydration — exactly
-  // the WorkspaceTopBar `flex-1` vs `w-px h-6 bg-border mx-3` mismatch we
-  // were chasing.
-  const requestUrl = new URL(input.url, 'http://localhost');
+  // the same data the client will hydrate from. Cookie is forwarded verbatim —
+  // no Bearer-token lifting (TrendPulse is cookie-auth only).
   const queries = await runPrefetch({
     pathname: requestUrl.pathname,
     search: requestUrl.searchParams,
-    accessToken: input.ctx.accessToken,
+    cookieHeader: input.ctx.cookieHeader,
   });
+
+  // Extract current user from prefetch results.
+  // CURRENT_USER_QUERY_KEY = ['viewer', 'me'] (entities/viewer/model.ts).
+  // The prefetch runner drops all queries on 401, so if the cookie is absent
+  // or expired, queries = [] and ssrUser = null (anonymous render).
+  const viewerEntry = queries.find(
+    (q) => Array.isArray(q.key) && q.key[0] === 'viewer' && q.key[1] === 'me',
+  );
+  const ssrUser: JwtUser | null = viewerEntry
+    ? toJwtUser(viewerEntry.data as CurrentUser)
+    : null;
+
+  const auth = createAuthStore({ user: ssrUser });
+  const alert = createAlertStore();
 
   const queryClient = createQueryClient();
   hydrateQueryCache(queryClient, queries);
@@ -98,13 +122,12 @@ export async function render(input: RenderFnInput): Promise<RenderPayload> {
 
   let html = await response.text();
 
-  // SECURITY (TASK-AUDIT-RELEASE-1 / C7):
-  // `input.ctx.user` is already Zod-validated `JwtUser | null` — only safe
-  // fields (userId, accountId, email, provider) reach the browser.
+  // SECURITY: ssrUser is derived from the Zod-validated UserMeResponse —
+  // only safe fields (userId, accountId, email, provider) reach the browser.
   // `queries` carries server-prefetched cache entries; payloads are responses
   // from authenticated API calls scoped to the current user.
   const initialState: Record<string, unknown> = {
-    user: input.ctx.user ?? null,
+    user: ssrUser,
     queries,
   };
 

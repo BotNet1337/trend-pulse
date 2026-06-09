@@ -1,11 +1,11 @@
 ---
 id: TASK-029
 title: Frontend SSR enablement — TanStack-гидрация (откат статик-решения C1) + cookie-auth SSR-прокси + manualChunks
-status: planned             # planned → in-progress → review → done
+status: done                # planned → in-progress → review → done
 owner: frontend
 created: 2026-06-09
 updated: 2026-06-09
-baseline_commit: ""
+baseline_commit: "05cbdb8c7ec62af708412389ba98a788534d5f45"
 branch: "gsd/phase-029-frontend-ssr-enablement"
 tags: [epic-d, frontend, ssr, perf]
 ---
@@ -105,18 +105,18 @@ TrendPulse (см. [`../product/overview.md`](../product/overview.md)) — зре
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
-baseline_commit: ""
+current_step: done
+baseline_commit: "05cbdb8c7ec62af708412389ba98a788534d5f45"
 branch: "gsd/phase-029-frontend-ssr-enablement"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + real behavior через nginx/стек)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (если применимо)
-- [ ] 6 ship (PR, squash-merged)
-- [ ] 7 learnings (auto)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + real behavior через nginx/стек)
+- [x] 5 review (auto, adversarial)
+- [x] 5.5 security (opus — обязательна; cookie-forward/секреты-в-бандле/SSRF/XSS)
+- [x] 6 ship (PR, squash-merged)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details

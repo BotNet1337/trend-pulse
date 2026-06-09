@@ -2,48 +2,49 @@ import axios, { type AxiosInstance } from 'axios';
 
 const baseURL = process.env.API_URL;
 
-export const serverApiClient: AxiosInstance = axios.create({
-  baseURL,
-  withCredentials: true,
-});
-
 /**
  * Build an axios instance scoped to a single SSR request.
  *
- * The upstream API authenticates via `Authorization: Bearer <jwt>` only
- * (passport-jwt `ExtractJwt.fromAuthHeaderAsBearerToken`), so we lift the
- * `access_token` out of the inbound cookies and stamp it as a Bearer header.
- * Forwarding the raw `Cookie` header alone — as the previous implementation
- * did — got every server-side fetcher 401'd, which the prefetch runner then
- * treated as a "drop hydration" signal, leaving `__INITIAL_STATE__.queries`
- * empty on every SSR render.
+ * TrendPulse backend authenticates via **httpOnly cookie** (`fastapiusersauth`)
+ * set by fastapi-users `CookieTransport`. Bearer tokens are NOT used — the API
+ * has no `ExtractJwt.fromAuthHeaderAsBearerToken` path.
+ *
+ * In SSR we receive the inbound `Cookie` request header (containing
+ * `fastapiusersauth`) and forward it verbatim to the upstream API via the
+ * explicit `Cookie` header on the axios instance. Node's http(s) does not send
+ * cookies automatically (`withCredentials` is a browser-only concept), so we
+ * must set the header explicitly.
  *
  * The `AbortSignal` is shared across all per-request fetchers so a single
  * timeout aborts every in-flight call cooperatively.
+ *
+ * 401 from the upstream is NOT swallowed here — the prefetch runner catches it
+ * via `Promise.allSettled` and treats it as a "drop hydration" signal, leaving
+ * `__INITIAL_STATE__.queries` empty so the client refetches and AuthGuard
+ * redirects to /auth/sign-in.
  */
 export interface CreateServerApiClientArgs {
   /**
-   * JWT pulled from `request.cookies.access_token`. When undefined the
-   * upstream call lands unauthenticated and the prefetch runner wipes
-   * hydration to `[]` — which is the correct behaviour for an SSR request
-   * with a stale or missing cookie.
+   * The raw `Cookie` request header from the inbound SSR request (e.g.
+   * `req.headers.cookie`). When undefined the upstream call lands
+   * unauthenticated — correct behaviour for an anonymous SSR request.
    */
-  accessToken?: string;
+  cookieHeader?: string;
   signal?: AbortSignal;
 }
 
 export function createServerApiClient(args: CreateServerApiClientArgs): AxiosInstance {
   const headers: Record<string, string> = {};
-  if (args.accessToken) {
-    headers.Authorization = `Bearer ${args.accessToken}`;
+  if (args.cookieHeader) {
+    headers['Cookie'] = args.cookieHeader;
   }
 
   return axios.create({
     baseURL,
     headers,
     signal: args.signal,
-    // We carry auth via the explicit Bearer header above; `withCredentials`
-    // is irrelevant in Node.
+    // withCredentials is irrelevant in Node — we forward cookies explicitly
+    // via the Cookie header above.
     withCredentials: false,
     // Treat any 2xx as success; any other status throws and is caught by the
     // prefetch runner. 401 specifically becomes a "drop everything" signal.

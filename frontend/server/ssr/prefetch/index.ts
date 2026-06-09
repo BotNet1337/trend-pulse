@@ -7,4 +7,4 @@ export {
   PREFETCH_ROUTES,
   PREFETCH_ROUTE_PATTERNS,
 } from './route-map';
-export { fetchPlaceholder } from './fetchers';
+export { fetchCurrentUser, fetchWatchlists } from './fetchers';
