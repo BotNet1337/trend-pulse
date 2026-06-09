@@ -1,11 +1,11 @@
 ---
 id: TASK-013
 title: Frontend foundation — SPA scaffold (дизайн-система, API-клиент к TrendPulse, типы, e2e-харнесс, Docker)
-status: planned          # planned → in-progress → review → done
+status: in-progress      # planned → in-progress → review → done
 owner: frontend
 created: 2026-06-09
 updated: 2026-06-09
-baseline_commit: ""
+baseline_commit: "155eb923ff51ba8b75b5672c79a92f50403548ed"
 branch: "gsd/phase-013-frontend-foundation"
 tags: [frontend, scaffold, design-system, api-client, e2e]
 ---
@@ -99,9 +99,9 @@ Backend-контракт (источник истины — реальные р�
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
 current_step: 3
-baseline_commit: ""
+baseline_commit: "155eb923ff51ba8b75b5672c79a92f50403548ed"
 branch: "gsd/phase-013-frontend-foundation"
-lock: ""
+lock: "loop-013"
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [ ] 3 do (TDD: failing test → minimal code)
