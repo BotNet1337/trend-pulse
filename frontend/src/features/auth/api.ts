@@ -1,0 +1,56 @@
+/**
+ * Auth feature API — wraps TrendPulse auth endpoints.
+ *
+ * Contracts (from task-003 / TASK-014):
+ *  - register:  POST /auth/register          JSON { email, password }
+ *  - login:     POST /auth/jwt/login         form-urlencoded username + password
+ *  - logout:    POST /auth/jwt/logout        (no body)
+ *  - google:    browser redirect to /api/auth/google/authorize (NOT fetch)
+ *
+ * Cookie-auth: httpOnly cookie set/cleared by backend; never read in JS.
+ * withCredentials: true is set on apiClient (shared/api/client.ts).
+ */
+
+import { apiClient } from '@/shared/api';
+
+export interface RegisterPayload {
+  email: string;
+  password: string;
+}
+
+/** POST /auth/register — creates a new user. */
+export async function register(payload: RegisterPayload): Promise<void> {
+  await apiClient.post('/auth/register', payload);
+}
+
+export interface LoginPayload {
+  email: string;
+  password: string;
+}
+
+/**
+ * POST /auth/jwt/login — form-urlencoded (fastapi-users OAuth2PasswordRequestForm).
+ * Sets httpOnly fastapiusersauth cookie on success.
+ */
+export async function login(payload: LoginPayload): Promise<void> {
+  const form = new URLSearchParams();
+  form.set('username', payload.email);
+  form.set('password', payload.password);
+  await apiClient.post('/auth/jwt/login', form, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  });
+}
+
+/** POST /auth/jwt/logout — clears the httpOnly auth cookie. */
+export async function logout(): Promise<void> {
+  await apiClient.post('/auth/jwt/logout');
+}
+
+/**
+ * Initiate Google OAuth — full browser redirect (NOT fetch).
+ * No secrets on the frontend: redirect_uri and client_id live on backend.
+ * The /api prefix is the nginx strip-prefix for the backend.
+ */
+export function navigateToGoogleAuth(): void {
+  window.location.assign('/api/auth/google/authorize');
+}

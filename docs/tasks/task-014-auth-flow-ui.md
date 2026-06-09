@@ -1,11 +1,11 @@
 ---
 id: TASK-014
 title: Auth flow UI — register/login/logout (httpOnly-cookie), Google OAuth, guarded-роуты, current_user
-status: planned          # planned → in-progress → review → done
+status: done             # planned → in-progress → review → done
 owner: frontend
 created: 2026-06-09
 updated: 2026-06-09
-baseline_commit: ""
+baseline_commit: "2f90fcfa51ad3282978dc5c403f2c22e917d278f"
 branch: "gsd/phase-014-auth-flow-ui"
 tags: [frontend, auth, oauth, e2e, security]
 ---
@@ -101,21 +101,26 @@ TrendPulse (см. [`../product/overview.md`](../product/overview.md) §3) — mu
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
-baseline_commit: ""
+current_step: done
+baseline_commit: "2f90fcfa51ad3282978dc5c403f2c22e917d278f"
 branch: "gsd/phase-014-auth-flow-ui"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — build + Playwright e2e + real behavior через nginx)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (XSS/санитизация, secrets не в бандле, cookie/CSRF, SSRF в webhook-полях)
-- [ ] 6 ship (PR, squash-merged)
-- [ ] 7 learnings (auto)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — build + Playwright e2e + real behavior через nginx)
+- [x] 5 review (auto, adversarial — PASS, 0 blocking; 3 MED закрыты)
+- [x] 5.5 security (PASS, 0 blocking — no-IDOR/no-secrets verified; no-enumeration MED закрыт)
+- [x] 6 ship (PR, squash-merged)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план по эталону task-003/004 и контексту: auth-флоу SPA на httpOnly-cookie поверх task-003 (register/login/logout, Google OAuth redirect, guard+возврат), `current_user` из новой тонкой backend-добавки `GET /users/me` (read-only, за `current_user`). deps: 013 (C1 фундамент), backend 003 (auth). Ядро auth не трогаем — только монтируем users-read-роут. locate+plan выполнены этим планированием — executor стартует с «3 do».)
-</content>
+
+### Step 3 do · 4 verify · 5 review · 5.5 security · loop-014
+- **do (TDD):** backend тонкий read-роут `GET /users/me` (`api/auth/me.py`, `UserMeResponse`: id/email/plan/is_verified, за `current_user`, `response_model` whitelist'ит поля — секреты User не утекают) + смонтирован в `main.py`; integration-тест `test_users_me.py` (401/200). Frontend: `features/auth/` (register, login form-urlencoded `username`+`password`, logout, Google-redirect на `/api/auth/google/authorize`), `entities/viewer` `useCurrentUser` (react-query), `app/router/auth-guard.tsx` + nested protected route, sign-in/sign-up адаптированы. RED→GREEN: backend integration + e2e `auth.spec.ts`. Коммиты 2b332b7, 3234db0.
+- **verify (G2):** статика build/tsc/lint/vitest зелёные; backend integration **2/2** (`GET /users/me` 401/200, через `make dev-infra-up` postgres); полный стек `make up` → **e2e 6/6 за nginx** (AC1 register→login→`/users/me` 200 email/plan/is_verified; AC3 logout→401→redirect; AC4 guard+возврат + open-redirect `//evil`→home; AC5 неверный пароль→дружелюбная ошибка; AC6 Google→authorize); cookie httpOnly подтверждена; нет секретов в бандле. **Gotcha (инфра):** `backend/tests/conftest.py` строит схему через `create_all` и дропает таблицы в teardown, но не чистит `alembic_version` на общем postgres-volume → последующий `make up` пропускает миграции (migration_runner видит head). Mitigation: перед stack-e2e — чистый volume (`down -v`). Долг (не в scope C2): изолировать тест-БД/чистить alembic_version в teardown.
+- **review (opus) PASS + security (opus) PASS — 0 blocking.** Закрыты 3 MED (коммит a14aaee): (1) **no user-enumeration** — login/register показывают статичные generic-сообщения (не пробрасывают raw backend-detail `LOGIN_BAD_CREDENTIALS`/`REGISTER_USER_ALREADY_EXISTS`); +e2e register-duplicate (AC5b); (2) **gen.types регенерирован** из живого `/api/openapi.json` (содержит `/users/me`+`UserMeResponse`), ручной `CurrentUser` → `components['schemas']['UserMeResponse']` (контракт-дрейф устранён); (3) **двойной 401-redirect + двойной bootstrap** сведены к одному источнику (`SKIP_REDIRECT_ON_401` для `GET /users/me` — редирект только через guard; `AuthSync` зеркалит react-query→Zustand, без прямого axios на старте). re-verify: build/tsc/lint зелёные, vitest 17, **e2e 7/7 за nginx**.
+- **Долг (→ task-009 prod-hardening / C2):** cookie SameSite=Lax|Strict + Secure=true в проде (CSRF для logout); анти-IDOR регресс-тест (2 юзера) опционально; React.FC по конвенции реф-проекта.

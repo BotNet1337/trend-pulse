@@ -132,6 +132,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Users Me
+         * @description Return the authenticated user's profile.
+         *
+         *     Behind `current_user` dependency: returns 401 without a valid auth cookie.
+         *     Tenant-scoped: only reads data belonging to the requesting user.
+         */
+        get: operations["get_users_me_users_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/watchlists": {
         parameters: {
             query?: never;
@@ -432,6 +455,23 @@ export interface components {
              * @default false
              */
             is_verified: boolean | null;
+        };
+        /**
+         * UserMeResponse
+         * @description Public current-user payload (read-only, no secrets).
+         */
+        UserMeResponse: {
+            /** Id */
+            id: number;
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Plan */
+            plan: string;
+            /** Is Verified */
+            is_verified: boolean;
         };
         /**
          * UserRead
@@ -752,6 +792,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TenantResponse"];
+                };
+            };
+        };
+    };
+    get_users_me_users_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserMeResponse"];
                 };
             };
         };

@@ -22,6 +22,7 @@ from api.auth import (
     current_user,
     fastapi_users,
 )
+from api.auth.me import router as users_me_router
 from api.deps import get_tenant_user_id
 from api.rate_limit import limiter, rate_limit_handler
 from api.routes import account_router, ops_router
@@ -122,6 +123,11 @@ def read_my_tenant(user: User = Depends(current_user)) -> TenantResponse:
     """Protected example route (AC2): 401 without a token, tenant id with one."""
     return {"user_id": get_tenant_user_id(user)}
 
+
+# --- Current-user profile (TASK-014 C2): GET /users/me — read-only, behind
+# current_user, returns email/plan/is_verified.  Must be mounted BEFORE
+# watchlist so the `/users/me` path is not shadowed by a more-specific prefix. ---
+app.include_router(users_me_router)
 
 # --- Watchlist CRUD (tenant-scoped, behind current_user). ---
 app.include_router(watchlist_router)
