@@ -42,7 +42,7 @@ Roadmap: [`../architecture/roadmap.md`](../architecture/roadmap.md). Epic A = Ba
 | [TASK-033](./task-033-gdpr-data-export.md) | GDPR data-export (GET /account/export, Art.20 portability) | D | planned | backend | 011 | 2026-06-09 |
 | [TASK-034](./task-034-pg-backup-restore-check.md) | Postgres backups — ежедневный дамп в Hetzner Object Storage + restore-check | E0 | done | infra | 056 | 2026-06-10 |
 | [TASK-035](./task-035-tg-pool-health.md) | TG-пул: целевой размер ≥3, health-метрика, self-alert опсам | E0 | done | backend | 005, 024 | 2026-06-10 |
-| [TASK-036](./task-036-signal-latency-metric.md) | Метрика задержки сигнала p50/p95 «пост→алерт» + Redis memory watch | E0 | planned | backend | 008, 009, 022 | 2026-06-09 |
+| [TASK-036](./task-036-signal-latency-metric.md) | Метрика задержки сигнала p50/p95 «пост→алерт» + Redis memory watch | E0 | done | backend | 008, 009, 022 | 2026-06-10 |
 | [TASK-037](./task-037-embedding-cache.md) | Кэш эмбеддингов по SHA-256 хэшу текста (Redis, TTL 48h) | E0 | planned | backend | 007 | 2026-06-09 |
 | [TASK-038](./task-038-curated-channel-packs.md) | Curated channel packs — каталог, GET /packs, подписка в 1 клик вне лимита CHANNELS | E1 | planned | backend | 004, 010 | 2026-06-09 |
 | [TASK-039](./task-039-onboarding-instant-value.md) | Onboarding instant value — showcase-тенант + GET /trending + экран после регистрации | E1 | planned | backend | 038 | 2026-06-09 |
