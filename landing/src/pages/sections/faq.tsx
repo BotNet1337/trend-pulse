@@ -7,61 +7,51 @@ export function FaqSection() {
   const faqs = [
     {
       question: `What is ${brand}?`,
-      answer: `${brand} helps you plan, schedule, and publish posts to multiple social platforms from one workspace—so you spend less time switching apps and more time on the content itself.`,
+      answer: `${brand} is a viral-content detector for Telegram. It monitors public channels and alerts you when a topic reaches viral velocity — giving you the earliest possible signal to act on trending news, crypto moves, political events, or anything you track.`,
     },
     {
       question: `Is ${brand} currently available?`,
-      answer: `${brand} is currently in early access development. We're actively building features and onboarding early users. Join the waitlist and we'll reach out when access is available.`,
+      answer: `${brand} is in early access. We are actively onboarding users and building out the channel coverage. Sign up for a free account to get started.`,
+    },
+    {
+      question: 'Which Telegram channels does it monitor?',
+      answer:
+        'Only public channels accessible via @username. Private groups, personal chats, and paid-subscription channels are not accessible and are never monitored.',
+    },
+    {
+      question: 'How long is content stored?',
+      answer:
+        'Raw message content is automatically discarded within 48 hours of ingestion. Trend signals (score, channel count, timestamp) are retained for the period covered by your plan (Free: none; Pro: 30 days; Team: 90 days).',
     },
     {
       question: 'How does pricing work?',
       answer:
-        "Pricing is evolving during early access. We'll publish concrete plans as the product stabilizes. If you need a custom agreement, contact us.",
-    },
-    {
-      question: 'Which social platforms are supported?',
-      answer:
-        'We are expanding integrations during early access. Join the waitlist for the current list of networks and what is planned next.',
+        `${brand} offers three plans: Free ($0 — 5 channels, 1 topic, 5 alerts/day), Pro ($19/mo — 100 channels, 5 topics, unlimited alerts, 30-day history, webhook), and Team ($79/mo — 500 channels, unlimited topics, unlimited alerts, 90-day history, API access). All payments are via cryptocurrency (NOWPayments) — no credit card required.`,
     },
     {
       question: 'Is my data secure and private?',
       answer:
-        'We aim to follow reasonable security practices and a privacy-first baseline. Your content and connected accounts are not sold for marketing, and we keep policies transparent. Please review our Security and Privacy pages for current details.',
+        'We aim for practical security controls. Your account data and alert history are not sold for marketing. Raw Telegram content is never stored beyond 48 hours. Please review our Security and Privacy Policy pages for full details.',
     },
     {
-      question: 'Can I use images or video in posts?',
+      question: 'Can I connect the alerts to my own systems?',
       answer:
-        'Yes—rich media is core to social publishing. Supported formats and limits depend on each platform and will evolve as we ship.',
-    },
-    {
-      question: 'What happens to my drafts and scheduled posts?',
-      answer:
-        'Drafts and scheduled posts are part of the core experience. Details like retention, export, and history can evolve during early access.',
+        'Yes. Pro plans include webhook delivery. Team plans include full REST API access so you can pipe viral signals directly into your workflow, dashboard, or automation.',
     },
     {
       question: `Can I use ${brand} for my business?`,
       answer:
-        "Yes. We can discuss business needs and custom agreements during early access. Contact us and we'll figure out the right setup.",
-    },
-    {
-      question: 'What if pricing changes after I sign up?',
-      answer:
-        "Early access terms can change as the product evolves. We'll communicate material changes through updated policies and announcements.",
-    },
-    {
-      question: 'How can I contact support?',
-      answer:
-        'You can reach our support team through the contact form on our website, or email us directly. Pro and Enterprise customers receive priority support with faster response times.',
+        "Yes. The Team plan covers business-scale tracking. If you need a custom channel quota or a custom agreement, contact us and we'll work out the right setup.",
     },
     {
       question: 'Do you offer refunds?',
       answer:
-        'Please review our Refund Policy. If paid plans are introduced, the policy will be updated with concrete terms.',
+        'Please review our Terms of Service for refund terms. EU consumers have a 14-day statutory withdrawal right.',
     },
     {
-      question: 'Will there be an API?',
+      question: 'How can I contact support?',
       answer:
-        'Yes—API access for integrations and publishing workflows is planned. Scope and availability will be published as the product stabilizes.',
+        `Reach us via the contact form on this site or email ${SITE.contactEmail}. Pro and Team customers receive priority support.`,
     },
   ];
 

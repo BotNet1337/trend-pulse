@@ -26,7 +26,7 @@ export function SecurityPage() {
           <div className="bg-card border border-border rounded-lg p-6 text-center">
             <Shield className="h-10 w-10 text-primary mx-auto mb-3" />
             <h3 className="font-semibold mb-2">Encryption Everywhere</h3>
-            <p className="text-sm text-muted-foreground">TLS 1.2+ in transit, AES-256 at rest</p>
+            <p className="text-sm text-muted-foreground">TLS 1.2+ in transit, strong encryption at rest</p>
           </div>
           <div className="bg-card border border-border rounded-lg p-6 text-center">
             <Lock className="h-10 w-10 text-primary mx-auto mb-3" />
@@ -53,7 +53,7 @@ export function SecurityPage() {
               </li>
               <li>
                 <strong className="text-foreground">At rest.</strong> Databases, object storage, and backups are
-                encrypted using AES-256 or equivalent.
+                encrypted using strong symmetric encryption.
               </li>
               <li>
                 <strong className="text-foreground">Secrets.</strong> OAuth tokens, API keys, and other secrets are

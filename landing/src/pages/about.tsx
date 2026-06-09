@@ -7,8 +7,8 @@ export function AboutPage() {
   const values = [
     {
       icon: Target,
-      title: 'Simplicity',
-      description: 'Publishing across networks should feel straightforward. We focus on clear flows and fewer dead ends.',
+      title: 'Speed',
+      description: 'Viral content waits for no one. We optimize every step so you get the alert before everyone else.',
     },
     {
       icon: Users,
@@ -17,13 +17,13 @@ export function AboutPage() {
     },
     {
       icon: Lightbulb,
-      title: 'Innovation',
-      description: 'We invest in workflows that save time—smarter scheduling, reuse, and consistency across channels.',
+      title: 'Transparency',
+      description: 'No vague promises. Clear pricing, honest compliance (public channels only, 48-hour retention), open communication.',
     },
     {
       icon: Rocket,
-      title: 'Transparency',
-      description: 'No hidden fees, no vague promises. Clear pricing direction, open communication, and honest timelines.',
+      title: 'Privacy First',
+      description: 'We monitor only public channels. Raw content is discarded within 48 hours. Your data is never sold.',
     },
   ];
 
@@ -31,22 +31,22 @@ export function AboutPage() {
     {
       quarter: 'Now',
       status: 'In Progress',
-      items: ['Core publish & schedule flows', 'Connected accounts baseline', 'Early access onboarding'],
+      items: ['Real-time viral detection (public channels)', 'Telegram alert delivery', 'Early access onboarding'],
     },
     {
       quarter: 'Next (M1)',
       status: 'Planned',
-      items: ['More platform integrations', 'Media workflows & drafts queue', 'API access (planned)'],
+      items: ['Webhook delivery (Pro)', 'Multi-topic tracking', 'Alert history UI'],
     },
     {
       quarter: 'Then (M2)',
       status: 'Planned',
-      items: ['Team collaboration & approvals (planned)', 'Analytics overview (planned)', 'Bulk scheduling (planned)'],
+      items: ['REST API (Team)', 'Channel group management', 'Trend history dashboard'],
     },
     {
       quarter: 'Later (M3)',
       status: 'Planned',
-      items: ['Production hardening + monitoring (planned)', 'Reliability for high-volume posters (planned)', 'UX polish (planned)'],
+      items: ['Advanced scoring models', 'Cross-topic correlation', 'Custom alert thresholds'],
     },
   ];
 
@@ -57,10 +57,10 @@ export function AboutPage() {
           <Badge variant="secondary" className="mb-6">
             About {SITE.brandName}
           </Badge>
-          <h1 className="text-4xl md:text-5xl font-bold mb-6">One workspace. Every platform you post to.</h1>
+          <h1 className="text-4xl md:text-5xl font-bold mb-6">Your personal viral radar for Telegram</h1>
           <p className="text-lg text-muted-foreground mb-8">
-            We&apos;re building the fastest way to keep a consistent presence across social networks. {SITE.brandName}{' '}
-            brings planning, scheduling, and publishing into one streamlined place.
+            We&apos;re building the fastest way to detect viral content in public Telegram channels. {SITE.brandName}{' '}
+            monitors public channels continuously and alerts you the moment a topic crosses the viral threshold.
           </p>
         </div>
       </section>
@@ -71,12 +71,12 @@ export function AboutPage() {
             <div>
               <h2 className="text-3xl font-bold mb-4">Our Mission</h2>
               <p className="text-muted-foreground mb-4">
-                Creators and teams juggle native apps, different formats, and loose threads just to ship one campaign. We
-                believe there&apos;s a better way to work.
+                Telegram is one of the world&apos;s fastest-moving information channels. Crypto moves, breaking news, and
+                political shifts often surface in public Telegram channels hours before anywhere else. But watching dozens
+                of channels manually is impossible.
               </p>
               <p className="text-muted-foreground">
-                {SITE.brandName} unifies how you prepare and send content—so you can show up everywhere that matters with
-                less friction and clearer oversight.
+                {SITE.brandName} solves this: we watch public channels for you and surface the signal when it matters.
               </p>
             </div>
             <div className="bg-card border border-border rounded-lg p-8">
@@ -85,24 +85,24 @@ export function AboutPage() {
                 <li className="flex items-start gap-2">
                   <div className="w-1.5 h-1.5 bg-primary rounded-full mt-2 shrink-0" />
                   <span className="text-sm text-muted-foreground">
-                    Cut down tab-hopping between networks when you publish the same story
+                    Give you the earliest possible viral signal from public Telegram channels
                   </span>
                 </li>
                 <li className="flex items-start gap-2">
                   <div className="w-1.5 h-1.5 bg-primary rounded-full mt-2 shrink-0" />
                   <span className="text-sm text-muted-foreground">
-                    Offer transparent pricing that scales with how you actually use the product
+                    Be honest about what we monitor (public channels only) and how long we store it (48-hour raw content limit)
                   </span>
                 </li>
                 <li className="flex items-start gap-2">
                   <div className="w-1.5 h-1.5 bg-primary rounded-full mt-2 shrink-0" />
                   <span className="text-sm text-muted-foreground">
-                    Ship features that respect real publishing workflows—not generic &quot;social tools&quot;
+                    Offer transparent pricing with no Stripe, no credit card requirements
                   </span>
                 </li>
                 <li className="flex items-start gap-2">
                   <div className="w-1.5 h-1.5 bg-primary rounded-full mt-2 shrink-0" />
-                  <span className="text-sm text-muted-foreground">Maintain strong privacy and security baselines</span>
+                  <span className="text-sm text-muted-foreground">Maintain strong privacy and security baselines from day one</span>
                 </li>
               </ul>
             </div>
@@ -134,8 +134,8 @@ export function AboutPage() {
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-3xl font-bold mb-6">Built by a Small Team</h2>
           <p className="text-lg text-muted-foreground mb-8">
-            {SITE.brandName} is built and maintained by a small team that cares about making cross-platform publishing
-            easier. We&apos;re in active development and growing carefully.
+            {SITE.brandName} is built and maintained by a small team focused on real-time Telegram trend detection.
+            We&apos;re in active development and growing carefully.
           </p>
           <p className="text-muted-foreground">
             Interested in joining us?{' '}
@@ -192,8 +192,8 @@ export function AboutPage() {
           <div className="bg-card border border-primary/50 rounded-lg p-8 text-center">
             <h3 className="mb-4">Join Us in Early Access</h3>
             <p className="text-muted-foreground mb-6">
-              By joining now, you&apos;ll get early access pricing, help shape publishing workflows, and be part of building
-              a calmer way to post everywhere.
+              By joining now, you&apos;ll get early access to viral Telegram alerts, help shape the product roadmap, and
+              be among the first to ride waves before everyone else.
             </p>
             <Link to="/" hash="get-started" className="text-primary hover:underline font-medium">
               Get started today →
