@@ -166,6 +166,38 @@ test('AC5 — wrong password shows friendly error message', async ({ page }) => 
   expect(page.url()).toContain('/auth/sign-in');
 });
 
+// AC5b — duplicate-email registration shows generic error (no enumeration)
+test('AC5b — register duplicate email → generic error, no email/exists/already disclosure', async ({ page }) => {
+  await page.context().clearCookies();
+
+  const email = uniqueEmail('ac5b-dup');
+  const password = 'S3curePassw0rd!';
+
+  // Register first time — should succeed and redirect to sign-in
+  await register(page, email, password);
+
+  // Attempt to register the same email again
+  await page.goto('/auth/sign-up');
+  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Password').fill(password);
+  await page.getByRole('button', { name: /create account/i }).click();
+
+  // An error message should appear
+  const errorEl = page.getByRole('alert');
+  await expect(errorEl).toBeVisible({ timeout: 5000 });
+  const errorText = (await errorEl.innerText()).toLowerCase();
+
+  // Must NOT disclose that the email already exists (AC5 / no-enumeration)
+  expect(errorText).not.toContain(email.toLowerCase());
+  expect(errorText).not.toContain('exists');
+  expect(errorText).not.toContain('already');
+  expect(errorText).not.toContain('register_user_already_exists');
+  expect(errorText).not.toContain('"detail"');
+
+  // Should still be on the sign-up page (no redirect on error)
+  expect(page.url()).toContain('/auth/sign-up');
+});
+
 // AC6 — Google OAuth button navigates to /api/auth/google/authorize
 test('AC6 — Google OAuth button navigates to /api/auth/google/authorize', async ({ page }) => {
   await page.context().clearCookies();

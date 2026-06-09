@@ -22,15 +22,16 @@ export interface AlertItem {
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { apiClient } from '@/shared/api';
+import { apiClient, SKIP_REDIRECT_ON_401 } from '@/shared/api';
+import type { components } from '@/shared/api/gen.types';
 import type { AxiosError } from 'axios';
 
-export interface CurrentUser {
-  id: number;
-  email: string;
-  plan: string;
-  is_verified: boolean;
-}
+/**
+ * CurrentUser — derived from the generated OpenAPI schema (C1 invariant).
+ * Source of truth: GET /users/me → UserMeResponse (backend schema).
+ * Do NOT declare this manually; use the generated type.
+ */
+export type CurrentUser = components['schemas']['UserMeResponse'];
 
 /** Stable query key for cache invalidation (logout, login). */
 export const CURRENT_USER_QUERY_KEY = ['viewer', 'me'] as const;
@@ -41,7 +42,11 @@ export const CURRENT_USER_QUERY_KEY = ['viewer', 'me'] as const;
  */
 async function fetchCurrentUser(): Promise<CurrentUser | null> {
   try {
-    const resp = await apiClient.get<CurrentUser>('/users/me');
+    // Tag the request so the interceptor skips its own 401-redirect.
+    // Redirect responsibility for this path belongs to AuthGuard.
+    const resp = await apiClient.get<CurrentUser>('/users/me', {
+      [SKIP_REDIRECT_ON_401]: true,
+    } as Record<string, unknown>);
     return resp.data;
   } catch (error: unknown) {
     const axiosError = error as AxiosError;

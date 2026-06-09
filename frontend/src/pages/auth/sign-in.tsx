@@ -45,8 +45,9 @@ export const SignInPage: React.FC = () => {
       const redirectTo =
         search.redirect && isSafeRedirect(search.redirect) ? search.redirect : paths.home
       await navigate({ to: redirectTo, replace: true })
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Invalid email or password. Please try again.')
+    } catch {
+      // Static message — never leak whether the email exists (AC5 / no-enumeration).
+      setError('Invalid email or password.')
     }
   }
 

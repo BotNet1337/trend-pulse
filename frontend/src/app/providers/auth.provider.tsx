@@ -1,21 +1,20 @@
 /**
  * AuthProvider — wraps children in the AuthContext and bootstraps auth state.
  *
- * TASK-014 (C2): On mount, fetches GET /users/me to determine if the user is
- * authenticated (httpOnly cookie). On success → calls setAuth to populate the
- * Zustand AuthStore so the TanStack Router beforeLoad guards can read it
- * synchronously. On 401 or error → clearAuth (user stays null).
+ * TASK-014 (C2): Subscribes to the react-query useCurrentUser cache (single
+ * source of truth) and mirrors the result into the Zustand AuthStore so that
+ * TanStack Router beforeLoad guards can read it synchronously.
  *
- * This keeps the router guards synchronous (beforeLoad) while the actual auth
- * source is the backend cookie (no JWT in localStorage).
+ * No direct axios call here — the bootstrap is handled by AuthGuard (which
+ * already calls useCurrentUser). This eliminates the duplicate GET /users/me
+ * on cold-start and keeps redirect logic in one place (guard only).
  */
-import React, { useMemo, useEffect, useRef } from 'react'
+import React, { useMemo, useEffect } from 'react'
 import { createUseAuthStore, type AuthStore } from '../stores/auth.store'
 import { AuthContext } from './use-auth'
-import { apiClient } from '@/shared/api'
+import { useCurrentUser } from '@/entities/viewer/model'
 import type { CurrentUser } from '@/entities/viewer/model'
 import type { JwtUser } from '@/entities/user/model'
-import type { AxiosError } from 'axios'
 
 export interface AuthProviderProps {
   auth: AuthStore
@@ -37,36 +36,32 @@ function toJwtUser(user: CurrentUser): JwtUser {
   }
 }
 
-export function AuthProvider(props: AuthProviderProps) {
-  const useAuth = useMemo(() => createUseAuthStore(props.auth), [props.auth])
-  const bootstrapped = useRef(false)
+/**
+ * Inner component — must be a child of QueryClientProvider so that
+ * useCurrentUser (react-query) is available.
+ */
+function AuthSync({ auth }: { auth: AuthStore }) {
+  const { data } = useCurrentUser()
 
   useEffect(() => {
-    // Bootstrap once on mount: check if the user is already authenticated
-    // via the httpOnly cookie by calling GET /users/me.
-    if (bootstrapped.current) return
-    bootstrapped.current = true
+    const { setAuth, clearAuth } = auth.getState()
+    if (data) {
+      setAuth(toJwtUser(data))
+    } else if (data === null) {
+      // null means 401 (unauthenticated); undefined means still loading — skip.
+      clearAuth()
+    }
+  }, [data, auth])
 
-    const { setAuth, clearAuth } = props.auth.getState()
+  return null
+}
 
-    apiClient
-      .get<CurrentUser>('/users/me')
-      .then((resp) => {
-        setAuth(toJwtUser(resp.data))
-      })
-      .catch((err: unknown) => {
-        const axiosErr = err as AxiosError
-        // 401 is expected for unauthenticated visitors — clear auth silently.
-        if (axiosErr.response?.status !== 401) {
-          // Non-401 errors (network, 5xx) — leave user as null (unauthenticated)
-          // rather than crashing. The guard will redirect to sign-in.
-        }
-        clearAuth()
-      })
-  }, [props.auth])
+export function AuthProvider(props: AuthProviderProps) {
+  const useAuth = useMemo(() => createUseAuthStore(props.auth), [props.auth])
 
   return (
     <AuthContext.Provider value={useAuth}>
+      <AuthSync auth={props.auth} />
       {props.children}
     </AuthContext.Provider>
   )

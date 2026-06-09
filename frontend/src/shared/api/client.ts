@@ -54,6 +54,14 @@ export const apiClient = axios.create({
   withCredentials: true,
 });
 
+/**
+ * Tag a request so the 401-redirect interceptor skips it.
+ * Used for GET /users/me: auth state is managed by AuthGuard (react-query),
+ * which handles the redirect itself. Without this flag, both the interceptor
+ * AND the guard would race to redirect on the same 401.
+ */
+export const SKIP_REDIRECT_ON_401 = '__skipRedirectOn401';
+
 const LOGOUT_PATH = '/auth/jwt/logout';
 const SIGN_IN_PATH = '/auth/sign-in';
 
@@ -76,11 +84,20 @@ apiClient.interceptors.response.use(
 
     const status = error.response?.status;
     const url = error.config?.url ?? '';
+    const skipRedirect = !!(error.config as Record<string, unknown> | undefined)?.[SKIP_REDIRECT_ON_401];
 
-    // On 401: redirect to sign-in. Skip for the logout endpoint itself to
-    // avoid redirect loops. No refresh — TrendPulse uses cookie-auth without
-    // a refresh token endpoint.
-    if (status === 401 && !url.includes(LOGOUT_PATH) && typeof window !== 'undefined') {
+    // On 401: redirect to sign-in.
+    // Skip when:
+    //  - the request itself is the logout endpoint (avoid redirect loop)
+    //  - the request is tagged SKIP_REDIRECT_ON_401 (e.g. GET /users/me,
+    //    which is polled by AuthGuard; the guard owns the redirect for that path)
+    //  - already on an auth page
+    if (
+      status === 401 &&
+      !skipRedirect &&
+      !url.includes(LOGOUT_PATH) &&
+      typeof window !== 'undefined'
+    ) {
       const here = window.location.pathname + window.location.search;
       const onAuth = window.location.pathname.startsWith('/auth/');
       if (!onAuth) {

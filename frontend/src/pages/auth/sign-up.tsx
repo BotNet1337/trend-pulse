@@ -33,9 +33,9 @@ export const SignUpPage: React.FC = () => {
     try {
       await registerMutation.mutateAsync()
       await navigate({ to: paths.auth.signIn, replace: true })
-    } catch (err: unknown) {
-      // Friendly message — do not reveal whether email already exists (AC5/no-enumeration)
-      setError(err instanceof Error ? err.message : 'Registration failed. Please try again.')
+    } catch {
+      // Static message — never reveal whether the email already exists (AC5 / no-enumeration).
+      setError('Could not complete registration. Please try again.')
     }
   }
 
