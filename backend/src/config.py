@@ -154,6 +154,10 @@ class Settings(BaseSettings):
     # for local dev which serves over plain http on :80 (TLS is prod-only, task-001)
     # — a Secure cookie is never sent back over http, breaking login/session locally.
     auth_cookie_secure: bool = True
+    # Swagger/Redoc/OpenAPI docs gating (TASK-019, security-relevant): docs are OFF by
+    # default (prod) to avoid exposing the full API schema externally.  Dev enables via
+    # env `SWAGGER_ENABLE=true`; prod must NOT set this flag.
+    swagger_enable: bool = False
 
     @property
     def database_url(self) -> str:

@@ -5,3 +5,6 @@
 auth_cookie_secure: "true"
 # Prod runs without debug.
 trendpulse_debug: "false"
+# SECURITY (TASK-019): the full OpenAPI schema / Swagger UI must NOT be exposed in
+# prod — docs/redoc/openapi.json return 404. (Settings default is also False.)
+swagger_enable: "false"

@@ -21,6 +21,10 @@ jwt_lifetime_seconds: "3600"
 # NOT be Secure or the browser/curl won't send it back. group_vars/prod.yml flips
 # this to "true".
 auth_cookie_secure: "false"
+# Swagger/Redoc/openapi.json gating (TASK-019): ON in dev for DX. SECURITY: the
+# full API schema must NOT be exposed in prod — group_vars/prod.yml flips this to
+# "false" (the app's Settings default is also False as a code-level safety net).
+swagger_enable: "true"
 # Prod deploy source (non-secret): the repo the deploy playbook checks out onto the
 # VPS, pinned to app_version for reproducible deploys. Override app_version per release.
 app_repo_url: "https://github.com/BotNet1337/trend-pulse.git"

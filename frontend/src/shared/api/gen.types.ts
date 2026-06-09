@@ -4,7 +4,27 @@
  */
 
 export interface paths {
-    "/health": {
+    "/account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Account
+         * @description Delete the authenticated user and all their data (cascade) -> 204.
+         */
+        delete: operations["delete_account_account_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/alerts": {
         parameters: {
             query?: never;
             header?: never;
@@ -12,10 +32,71 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Health
-         * @description Liveness probe — returns 200 without touching any backing service.
+         * List Alerts
+         * @description List the caller's alerts with pagination and plan-based history window.
+         *
+         *     Free plan → returns empty list + history_unavailable=True (not 403).
+         *     Pro/Team → returns alerts within the plan's history window (30/90 days).
+         *     Always tenant-scoped: only the caller's alerts are returned.
          */
-        get: operations["health_health_get"];
+        get: operations["list_alerts_alerts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/alerts/{alert_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Alert
+         * @description Get one alert detail. Foreign or missing alert → 404 (no existence leak).
+         */
+        get: operations["get_alert_alerts__alert_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/google/authorize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Oauth:Google.Jwt.Authorize */
+        get: operations["oauth_google_jwt_authorize_auth_google_authorize_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/google/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Oauth:Google.Jwt.Callback
+         * @description The response varies based on the authentication backend used.
+         */
+        get: operations["oauth_google_jwt_callback_auth_google_callback_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -75,15 +156,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/auth/google/authorize": {
+    "/billing/invoice": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Oauth:Google.Jwt.Authorize */
-        get: operations["oauth_google_jwt_authorize_auth_google_authorize_get"];
+        get?: never;
+        put?: never;
+        /**
+         * Create Invoice
+         * @description Create a NOWPayments invoice for the caller's chosen plan/period.
+         */
+        post: operations["create_invoice_billing_invoice_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/billing/ipn": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive Ipn
+         * @description Receive a NOWPayments IPN: verify HMAC over the RAW body, then apply.
+         */
+        post: operations["receive_ipn_billing_ipn_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Health
+         * @description Liveness probe — returns 200 without touching any backing service.
+         */
+        get: operations["health_health_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -92,7 +216,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/auth/google/callback": {
+    "/ready": {
         parameters: {
             query?: never;
             header?: never;
@@ -100,30 +224,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Oauth:Google.Jwt.Callback
-         * @description The response varies based on the authentication backend used.
+         * Ready
+         * @description Readiness: 200 when DB+Redis reachable, else 503 with per-dep markers.
          */
-        get: operations["oauth_google_jwt_callback_auth_google_callback_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/users/me/tenant": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Read My Tenant
-         * @description Protected example route (AC2): 401 without a token, tenant id with one.
-         */
-        get: operations["read_my_tenant_users_me_tenant_get"];
+        get: operations["ready_ready_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -155,7 +259,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/alerts": {
+    "/users/me/delivery-config": {
         parameters: {
             query?: never;
             header?: never;
@@ -163,23 +267,33 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List Alerts
-         * @description List the caller's alerts with pagination and plan-based history window.
+         * Get Delivery Config
+         * @description Return the authenticated user's delivery configuration (token masked).
          *
-         *     Free plan → returns empty list + history_unavailable=True (not 403).
-         *     Pro/Team → returns alerts within the plan's history window (30/90 days).
-         *     Always tenant-scoped: only the caller's alerts are returned.
+         *     `telegram_bot_token` is never returned as the full value — only a masked
+         *     representation showing the last 4 characters (or None if not set).
+         *     Tenant-scoped: reads only `current_user` data.
          */
-        get: operations["list_alerts_alerts_get"];
+        get: operations["get_delivery_config_users_me_delivery_config_get"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Patch Delivery Config
+         * @description Partial-update the authenticated user's delivery configuration.
+         *
+         *     - `webhook_url`: requires Pro+ plan (feature-gate → 403 on Free);
+         *       SSRF-validated via task-009 guard (private/localhost/non-https → 422).
+         *     - `telegram_bot_token`/`telegram_chat_id`: available on all plans.
+         *     - Only provided fields are updated (partial PATCH semantics).
+         *     - Returns the updated config with the bot token masked.
+         */
+        patch: operations["patch_delivery_config_users_me_delivery_config_patch"];
         trace?: never;
     };
-    "/alerts/{alert_id}": {
+    "/users/me/tenant": {
         parameters: {
             query?: never;
             header?: never;
@@ -187,10 +301,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get Alert
-         * @description Get one alert detail. Foreign or missing alert → 404 (no existence leak).
+         * Read My Tenant
+         * @description Protected example route (AC2): 401 without a token, tenant id with one.
          */
-        get: operations["get_alert_alerts__alert_id__get"];
+        get: operations["read_my_tenant_users_me_tenant_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -251,110 +365,6 @@ export interface paths {
         patch: operations["update_watchlist_watchlists__watchlist_id__patch"];
         trace?: never;
     };
-    "/billing/invoice": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Create Invoice
-         * @description Create a NOWPayments invoice for the caller's chosen plan/period.
-         */
-        post: operations["create_invoice_billing_invoice_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/billing/ipn": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Receive Ipn
-         * @description Receive a NOWPayments IPN: verify HMAC over the RAW body, then apply.
-         */
-        post: operations["receive_ipn_billing_ipn_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/users/me/delivery-config": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Delivery Config
-         * @description Return the authenticated user's delivery configuration (token masked).
-         */
-        get: operations["get_delivery_config_users_me_delivery_config_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * Patch Delivery Config
-         * @description Partial-update the authenticated user's delivery configuration.
-         */
-        patch: operations["patch_delivery_config_users_me_delivery_config_patch"];
-        trace?: never;
-    };
-    "/account": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Delete Account
-         * @description Delete the authenticated user and all their data (cascade) -> 204.
-         */
-        delete: operations["delete_account_account_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/ready": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Ready
-         * @description Readiness: 200 when DB+Redis reachable, else 503 with per-dep markers.
-         */
-        get: operations["ready_ready_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -364,8 +374,6 @@ export interface components {
          * @description Per-watchlist alert tuning (maps to Watchlist.threshold/min_channels/lang).
          */
         AlertConfig: {
-            /** Score Threshold */
-            score_threshold: number;
             /** Min Channels */
             min_channels: number;
             /**
@@ -373,6 +381,8 @@ export interface components {
              * @default en
              */
             notification_lang: string;
+            /** Score Threshold */
+            score_threshold: number;
         };
         /**
          * AlertListResponse
@@ -384,37 +394,37 @@ export interface components {
          *     the 30/90 day numbers inline (TASK-016 invariant: backend is source of truth).
          */
         AlertListResponse: {
+            /** History Unavailable */
+            history_unavailable: boolean;
             /** Items */
             items: components["schemas"]["AlertRead"][];
-            /** Total */
-            total: number;
             /** Limit */
             limit: number;
             /** Offset */
             offset: number;
-            /** History Unavailable */
-            history_unavailable: boolean;
+            /** Total */
+            total: number;
         };
         /**
          * AlertRead
          * @description Read-only projection of one alert row (with Cluster.topic join).
          */
         AlertRead: {
+            /** Channels Count */
+            channels_count: number;
+            /** Delivery Status */
+            delivery_status: string;
+            /**
+             * First Seen
+             * Format: date-time
+             */
+            first_seen: string;
             /** Id */
             id: number;
             /** Score */
             score: number;
             /** Topic */
             topic: string;
-            /**
-             * First Seen
-             * Format: date-time
-             */
-            first_seen: string;
-            /** Channels Count */
-            channels_count: number;
-            /** Delivery Status */
-            delivery_status: string;
         };
         /**
          * BillingPeriod
@@ -425,10 +435,15 @@ export interface components {
         BillingPeriod: "month";
         /** Body_auth_jwt_login_auth_jwt_login_post */
         Body_auth_jwt_login_auth_jwt_login_post: {
+            /** Client Id */
+            client_id?: string | null;
+            /**
+             * Client Secret
+             * Format: password
+             */
+            client_secret?: string | null;
             /** Grant Type */
             grant_type?: string | null;
-            /** Username */
-            username: string;
             /**
              * Password
              * Format: password
@@ -439,13 +454,8 @@ export interface components {
              * @default
              */
             scope: string;
-            /** Client Id */
-            client_id?: string | null;
-            /**
-             * Client Secret
-             * Format: password
-             */
-            client_secret?: string | null;
+            /** Username */
+            username: string;
         };
         /**
          * ChannelRef
@@ -456,6 +466,37 @@ export interface components {
             handle: string;
             /** @default telegram */
             kind: components["schemas"]["SourceKind"];
+        };
+        /**
+         * DeliveryConfigRead
+         * @description Read projection of the user's delivery configuration.
+         *
+         *     `telegram_bot_token_masked` is None if not set, or a masked string
+         *     (e.g. ``***gh1``) if set. The full token is NEVER included.
+         */
+        DeliveryConfigRead: {
+            /** Telegram Bot Token Masked */
+            telegram_bot_token_masked: string | null;
+            /** Telegram Chat Id */
+            telegram_chat_id: string | null;
+            /** Webhook Url */
+            webhook_url: string | null;
+        };
+        /**
+         * DeliveryConfigUpdate
+         * @description Partial-update body for PATCH /users/me/delivery-config.
+         *
+         *     All fields are optional; only provided fields are updated.
+         *     `webhook_url` must pass the server-side SSRF guard (task-009) and the
+         *     Pro+ feature-gate check before persisting.
+         */
+        DeliveryConfigUpdate: {
+            /** Telegram Bot Token */
+            telegram_bot_token?: string | null;
+            /** Telegram Chat Id */
+            telegram_chat_id?: string | null;
+            /** Webhook Url */
+            webhook_url?: string | null;
         };
         /** ErrorModel */
         ErrorModel: {
@@ -485,25 +526,25 @@ export interface components {
          * @description Create-invoice request body (validated at the boundary).
          */
         InvoiceRequest: {
-            plan: components["schemas"]["Plan"];
             /** @default month */
             period: components["schemas"]["BillingPeriod"];
+            plan: components["schemas"]["Plan"];
         };
         /**
          * InvoiceResponse
          * @description Invoice response: where to pay + the order id to reconcile the IPN.
          */
         InvoiceResponse: {
+            /** Amount */
+            amount: string;
+            /** Currency */
+            currency: string;
             /** Order Id */
             order_id: string;
             /** Payment Url */
             payment_url: string;
             /** Redirect Url */
             redirect_url: string | null;
-            /** Amount */
-            amount: string;
-            /** Currency */
-            currency: string;
         };
         /**
          * IpnAck
@@ -548,8 +589,6 @@ export interface components {
              * Format: email
              */
             email: string;
-            /** Password */
-            password: string;
             /**
              * Is Active
              * @default true
@@ -565,62 +604,38 @@ export interface components {
              * @default false
              */
             is_verified: boolean | null;
-        };
-        /**
-         * DeliveryConfigRead
-         * @description Delivery configuration read model (token masked).
-         *   telegram_bot_token_masked: "***<last4>" or null (never the full token).
-         */
-        DeliveryConfigRead: {
-            /** Telegram Bot Token Masked */
-            telegram_bot_token_masked: string | null;
-            /** Telegram Chat Id */
-            telegram_chat_id: string | null;
-            /** Webhook Url */
-            webhook_url: string | null;
-        };
-        /**
-         * DeliveryConfigUpdate
-         * @description Partial delivery configuration update (PATCH body).
-         *   All fields optional. webhook_url requires Pro+ plan.
-         */
-        DeliveryConfigUpdate: {
-            /** Telegram Bot Token (write-only) */
-            telegram_bot_token?: string | null;
-            /** Telegram Chat Id */
-            telegram_chat_id?: string | null;
-            /** Webhook Url (Pro+ feature-gated, SSRF-validated server-side) */
-            webhook_url?: string | null;
+            /** Password */
+            password: string;
         };
         /**
          * UserMeResponse
          * @description Public current-user payload (read-only, no secrets).
          */
         UserMeResponse: {
-            /** Id */
-            id: number;
             /**
              * Email
              * Format: email
              */
             email: string;
-            /** Plan */
-            plan: string;
+            /** Id */
+            id: number;
             /** Is Verified */
             is_verified: boolean;
+            /** Plan */
+            plan: string;
         };
         /**
          * UserRead
          * @description Public user representation returned by register / users routes.
          */
         UserRead: {
-            /** Id */
-            id: number;
             /**
              * Email
              * Format: email
              */
             email: string;
+            /** Id */
+            id: number;
             /**
              * Is Active
              * @default true
@@ -639,50 +654,50 @@ export interface components {
         };
         /** ValidationError */
         ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
             /** Location */
             loc: (string | number)[];
             /** Message */
             msg: string;
             /** Error Type */
             type: string;
-            /** Input */
-            input?: unknown;
-            /** Context */
-            ctx?: Record<string, never>;
         };
         /**
          * WatchlistCreate
          * @description Create payload: one topic + one channel + alert-config -> one watchlist row.
          */
         WatchlistCreate: {
+            alert_config: components["schemas"]["AlertConfig"];
+            channel: components["schemas"]["ChannelRef"];
             /** Topic */
             topic: string;
-            channel: components["schemas"]["ChannelRef"];
-            alert_config: components["schemas"]["AlertConfig"];
         };
         /**
          * WatchlistRead
          * @description Response model: the persisted watchlist row, tenant id included (AC1).
          */
         WatchlistRead: {
+            alert_config: components["schemas"]["AlertConfig"];
+            channel: components["schemas"]["ChannelRef"];
             /** Id */
             id: number;
-            /** User Id */
-            user_id: number;
             /** Topic */
             topic: string;
-            channel: components["schemas"]["ChannelRef"];
-            alert_config: components["schemas"]["AlertConfig"];
+            /** User Id */
+            user_id: number;
         };
         /**
          * WatchlistUpdate
          * @description Partial update: only supplied fields are applied (PATCH, `exclude_unset`).
          */
         WatchlistUpdate: {
+            alert_config?: components["schemas"]["AlertConfig"] | null;
+            channel?: components["schemas"]["ChannelRef"] | null;
             /** Topic */
             topic?: string | null;
-            channel?: components["schemas"]["ChannelRef"] | null;
-            alert_config?: components["schemas"]["AlertConfig"] | null;
         };
     };
     responses: never;
@@ -693,9 +708,32 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    health_health_get: {
+    delete_account_account_delete: {
         parameters: {
             query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_alerts_alerts_get: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of alerts to return (server silently clamps to max). */
+                limit?: number;
+                /** @description Number of alerts to skip. */
+                offset?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -708,7 +746,121 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HealthResponse"];
+                    "application/json": components["schemas"]["AlertListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_alert_alerts__alert_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                alert_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    oauth_google_jwt_authorize_auth_google_authorize_get: {
+        parameters: {
+            query?: {
+                scopes?: string[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuth2AuthorizeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    oauth_google_jwt_callback_auth_google_callback_get: {
+        parameters: {
+            query?: {
+                code?: string | null;
+                code_verifier?: string | null;
+                state?: string | null;
+                error?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -838,16 +990,18 @@ export interface operations {
             };
         };
     };
-    oauth_google_jwt_authorize_auth_google_authorize_get: {
+    create_invoice_billing_invoice_post: {
         parameters: {
-            query?: {
-                scopes?: string[];
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoiceRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -855,7 +1009,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OAuth2AuthorizeResponse"];
+                    "application/json": components["schemas"]["InvoiceResponse"];
                 };
             };
             /** @description Validation Error */
@@ -869,14 +1023,49 @@ export interface operations {
             };
         };
     };
-    oauth_google_jwt_callback_auth_google_callback_get: {
+    receive_ipn_billing_ipn_post: {
         parameters: {
-            query?: {
-                code?: string | null;
-                code_verifier?: string | null;
-                state?: string | null;
-                error?: string | null;
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IpnAck"];
+                };
             };
+        };
+    };
+    health_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
+    };
+    ready_ready_get: {
+        parameters: {
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -892,13 +1081,68 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
-            /** @description Bad Request */
-            400: {
+        };
+    };
+    get_users_me_users_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorModel"];
+                    "application/json": components["schemas"]["UserMeResponse"];
+                };
+            };
+        };
+    };
+    get_delivery_config_users_me_delivery_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryConfigRead"];
+                };
+            };
+        };
+    };
+    patch_delivery_config_users_me_delivery_config_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeliveryConfigUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryConfigRead"];
                 };
             };
             /** @description Validation Error */
@@ -928,91 +1172,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TenantResponse"];
-                };
-            };
-        };
-    };
-    get_users_me_users_me_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UserMeResponse"];
-                };
-            };
-        };
-    };
-    list_alerts_alerts_get: {
-        parameters: {
-            query?: {
-                /** @description Maximum number of alerts to return (server silently clamps to max). */
-                limit?: number;
-                /** @description Number of alerts to skip. */
-                offset?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AlertListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_alert_alerts__alert_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                alert_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AlertRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -1152,150 +1311,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WatchlistRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_invoice_billing_invoice_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["InvoiceRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["InvoiceResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    receive_ipn_billing_ipn_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IpnAck"];
-                };
-            };
-        };
-    };
-    delete_account_account_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    ready_ready_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-        };
-    };
-    get_delivery_config_users_me_delivery_config_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DeliveryConfigRead"];
-                };
-            };
-        };
-    };
-    patch_delivery_config_users_me_delivery_config_patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DeliveryConfigUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DeliveryConfigRead"];
                 };
             };
             /** @description Validation Error */

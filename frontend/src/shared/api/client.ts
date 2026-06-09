@@ -1,5 +1,4 @@
 import axios, { type AxiosError } from 'axios';
-import { resolveErrorMessage } from '@/shared/lib';
 
 interface ZodIssue {
   path?: Array<string | number>;
@@ -8,8 +7,12 @@ interface ZodIssue {
 
 interface ErrorBody {
   message?: string | ZodIssue[];
-  code?: number;
 }
+
+const GENERIC_ERROR_MESSAGE = 'Something went wrong. Please try again.';
+
+/** Return the backend-provided message, or a generic fallback when absent. */
+const resolveErrorMessage = (fallback?: string): string => fallback ?? GENERIC_ERROR_MESSAGE;
 
 const friendlyFieldName = (path: Array<string | number> | undefined): string => {
   if (!path || path.length === 0) return 'Field';
@@ -80,7 +83,7 @@ apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const data = error.response?.data as ErrorBody | undefined;
-    error.message = resolveErrorMessage(data?.code, extractMessage(data));
+    error.message = resolveErrorMessage(extractMessage(data));
 
     const status = error.response?.status;
     const url = error.config?.url ?? '';
