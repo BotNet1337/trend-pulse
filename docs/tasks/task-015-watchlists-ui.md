@@ -1,11 +1,11 @@
 ---
 id: TASK-015
 title: Watchlists UI — список/создание/редактирование/удаление, alert-config, UX лимитов плана
-status: planned          # planned → in-progress → review → done
+status: done             # planned → in-progress → review → done
 owner: frontend
 created: 2026-06-09
 updated: 2026-06-09
-baseline_commit: ""
+baseline_commit: "b55527ee46d9cf04f34c8cbb9d01e66882f9620f"
 branch: "gsd/phase-015-watchlists-ui"
 tags: [frontend, watchlists, crud, plan-limits, e2e]
 ---
@@ -96,21 +96,26 @@ TrendPulse (см. [`../product/overview.md`](../product/overview.md) §3) — wa
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
-baseline_commit: ""
+current_step: done
+baseline_commit: "b55527ee46d9cf04f34c8cbb9d01e66882f9620f"
 branch: "gsd/phase-015-watchlists-ui"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — build + Playwright e2e + real behavior через nginx)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (XSS/санитизация, secrets не в бандле, cookie/CSRF, SSRF в webhook-полях)
-- [ ] 6 ship (PR, squash-merged)
-- [ ] 7 learnings (auto)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — build + Playwright e2e + real behavior через nginx; 8/8 e2e за nginx, 61 unit)
+- [x] 5 review (auto, adversarial — PASS, 0 blocking)
+- [x] 5.5 security (PASS, 0 blocking — XSS-safe, tenant-isolation, no secrets)
+- [x] 6 ship (PR, squash-merged)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план по эталону task-003/004 и контексту: watchlist-CRUD UI поверх готового API task-004 (модель «один канал/watchlist», числовой id), форма alert-config (пороги скоринга), UX лимитов плана (402 quota→апселл, 403 feature→gate, 422→field, 404→not-found, 409→dup). frontend-only, backend не трогаем. deps: 014 (guard/current_user), backend 004 (watchlist API). locate+plan выполнены этим планированием — executor стартует с «3 do».)
-</content>
+
+### Step 3 do · 4 verify · 5 review · 5.5 security · loop-015 (frontend-only)
+- **do (TDD):** `entities/watchlist` (модель из gen.types `WatchlistRead`/`AlertConfig`/`ChannelRef`), `features/watchlists` (react-query list/get/create/update/delete + `alert-config-form` + `alert-config-validation`), `pages/watchlists/{list,create,detail}` за guard, `shared/lib/{backend-error,handle-format}`, `shared/components/{upsell-banner,empty-state}`. alert_config: `score_threshold` 0..100, `min_channels`≥1, `notification_lang` ISO-639-1 — из типов, не magic. Error-map: 402→quota-апселл, 403→feature-gate, 422→field (Pydantic detail[] устойчивый парс), 404→not-found, 409→dup. Коммиты dd0eeb8, 2d44cd9.
+- **verify (G2):** build/tsc/lint зелёные, vitest 61 (44 новых unit), Playwright 8/8 за nginx — AC1 create→list, AC2 list/edit/delete, AC3 bad-handle→422, AC4 реальный 402 (лимит Free=5)→апселл, AC5 409→dup, AC6 404→not-found, AC7 no-auth→guard. 403 — unit.
+- **review (opus) PASS + security (opus) PASS — 0 blocking.** Числа лимитов НЕ хардкожены; XSS-safe (JSX auto-escape); tenant-isolation (404=not-found); HANDLE_REGEX без ReDoS; типы из gen.types. LOW-фикс: `enabled:!Number.isNaN(id)`.
+- **Долг (→ C5/017):** роут `/billing` не зарегистрирован — апселл-ссылка ведёт в NotFound (task санкционирует заглушку до C5). LOW: detail-форма без реинициализации на фоновый рефетч.

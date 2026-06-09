@@ -16,6 +16,9 @@ import {
   ResetPasswordPage,
   SignInPage,
   SignUpPage,
+  WatchlistsListPage,
+  WatchlistCreatePage,
+  WatchlistDetailPage,
 } from '@/pages';
 import { AuthGuard } from './auth-guard';
 import { paths } from './path';
@@ -63,12 +66,12 @@ const protectedContentRoute = createRoute({
   component: ProtectedLayout,
 });
 
-// Home: redirect to account settings (placeholder for C2 watchlists dashboard)
+// Home: redirect to watchlists (the main dashboard)
 const indexRoute = createRoute({
   getParentRoute: () => protectedContentRoute,
   path: paths.home,
   beforeLoad: () => {
-    throw redirect({ to: paths.account.settings, replace: true });
+    throw redirect({ to: paths.watchlists.list, replace: true });
   },
   component: () => null,
 });
@@ -77,6 +80,25 @@ const accountSettingsRoute = createRoute({
   getParentRoute: () => protectedContentRoute,
   path: paths.account.settings,
   component: AccountSettingsPage,
+});
+
+// Watchlist routes — all behind protectedContentRoute (AuthGuard)
+const watchlistsListRoute = createRoute({
+  getParentRoute: () => protectedContentRoute,
+  path: paths.watchlists.list,
+  component: WatchlistsListPage,
+});
+
+const watchlistCreateRoute = createRoute({
+  getParentRoute: () => protectedContentRoute,
+  path: paths.watchlists.create,
+  component: WatchlistCreatePage,
+});
+
+const watchlistDetailRoute = createRoute({
+  getParentRoute: () => protectedContentRoute,
+  path: '/watchlists/$watchlistId',
+  component: WatchlistDetailPage,
 });
 
 const signInRoute = createRoute({
@@ -120,6 +142,9 @@ const routeTree = rootRoute.addChildren([
     protectedContentRoute.addChildren([
       indexRoute,
       accountSettingsRoute,
+      watchlistsListRoute,
+      watchlistCreateRoute,
+      watchlistDetailRoute,
     ]),
   ]),
   anonymousLayoutRoute.addChildren([

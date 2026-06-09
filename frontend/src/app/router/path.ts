@@ -11,4 +11,10 @@ export const paths = {
     forgotPassword: '/auth/password/forgot',
     resetPassword: '/auth/password/reset',
   },
+  watchlists: {
+    list: '/watchlists',
+    create: '/watchlists/new',
+    detail: (id: number | string) => `/watchlists/${id}`,
+  },
+  billing: '/billing',
 } as const;
