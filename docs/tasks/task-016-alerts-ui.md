@@ -109,7 +109,7 @@ lock: "loop-016"
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [x] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — build + Playwright e2e + real behavior через nginx)
+- [x] 4 verify (G2 — backend integration 9/9 + Playwright 4/4 e2e за nginx, vitest 76)
 - [ ] 5 review (auto, adversarial)
 - [ ] 5.5 security (XSS/санитизация, secrets не в бандле, cookie/CSRF, SSRF в webhook-полях)
 - [ ] 6 ship (PR, squash-merged)
