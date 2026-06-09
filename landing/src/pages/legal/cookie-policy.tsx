@@ -87,46 +87,28 @@ export function CookiePolicyPage() {
                   </thead>
                   <tbody>
                     <tr className="border-b border-border/50">
-                      <td className="py-2 pr-4 font-mono text-xs">pb_session</td>
-                      <td className="py-2 pr-4">Strictly necessary</td>
-                      <td className="py-2 pr-4">Session</td>
-                      <td className="py-2">Authenticated session</td>
-                    </tr>
-                    <tr className="border-b border-border/50">
-                      <td className="py-2 pr-4 font-mono text-xs">pb_csrf</td>
-                      <td className="py-2 pr-4">Strictly necessary</td>
-                      <td className="py-2 pr-4">Session</td>
-                      <td className="py-2">CSRF protection</td>
-                    </tr>
-                    <tr className="border-b border-border/50">
-                      <td className="py-2 pr-4 font-mono text-xs">pb_consent</td>
+                      <td className="py-2 pr-4 font-mono text-xs">tp_consent</td>
                       <td className="py-2 pr-4">Strictly necessary</td>
                       <td className="py-2 pr-4">12 months</td>
                       <td className="py-2">Stores your cookie choices</td>
                     </tr>
                     <tr className="border-b border-border/50">
-                      <td className="py-2 pr-4 font-mono text-xs">pb_theme</td>
+                      <td className="py-2 pr-4 font-mono text-xs">tp_theme</td>
                       <td className="py-2 pr-4">Functional</td>
                       <td className="py-2 pr-4">12 months</td>
                       <td className="py-2">Light/dark theme</td>
                     </tr>
                     <tr className="border-b border-border/50">
-                      <td className="py-2 pr-4 font-mono text-xs">pb_locale</td>
+                      <td className="py-2 pr-4 font-mono text-xs">tp_locale</td>
                       <td className="py-2 pr-4">Functional</td>
                       <td className="py-2 pr-4">12 months</td>
                       <td className="py-2">Language preference</td>
                     </tr>
-                    <tr className="border-b border-border/50">
+                    <tr>
                       <td className="py-2 pr-4 font-mono text-xs">_ga, _ga_*</td>
                       <td className="py-2 pr-4">Analytics</td>
                       <td className="py-2 pr-4">Up to 24 months</td>
                       <td className="py-2">Google Analytics 4</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2 pr-4 font-mono text-xs">__stripe_mid, __stripe_sid</td>
-                      <td className="py-2 pr-4">Strictly necessary</td>
-                      <td className="py-2 pr-4">Up to 12 months</td>
-                      <td className="py-2">Stripe fraud prevention</td>
                     </tr>
                   </tbody>
                 </table>
@@ -147,9 +129,6 @@ export function CookiePolicyPage() {
               <ul className="space-y-2">
                 <li>
                   <strong className="text-foreground">Google Analytics 4</strong> — usage analytics.
-                </li>
-                <li>
-                  <strong className="text-foreground">Stripe</strong> — payment fraud prevention.
                 </li>
                 <li>
                   <strong className="text-foreground">Sentry</strong> — error monitoring (may use localStorage).

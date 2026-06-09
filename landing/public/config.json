@@ -1,11 +1,70 @@
 {
-  "brandName": "PostBolt",
-  "siteUrl": "https://postbolt.org",
-  "domainName": "postbolt.org",
-  "contactEmail": "support@postbolt.org",
-  "topic": "Social",
-  "valueProp": "Social publishing across all your platforms",
-  "ctaText": "Get started",
+  "brandName": "TrendPulse",
+  "siteUrl": "https://trendpulse.app",
+  "domainName": "trendpulse.app",
+  "contactEmail": "support@trendpulse.app",
+  "topic": "Viral content detection",
+  "valueProp": "Detect viral Telegram content before it explodes",
+  "ctaText": "Get started free",
+  "signupUrl": "/sign-up",
+  "_signupUrlNote": "Relative path assumes landing and SPA are served from the same edge/domain (e.g., Cloudflare routing: /sign-up → SPA). To override for a separate SPA domain, set an absolute URL here, e.g. https://app.trendpulse.app/sign-up.",
+  "compliance": {
+    "dataRetentionHours": 48,
+    "publicChannelsOnly": true,
+    "publicChannelsNote": "TrendPulse monitors only public Telegram channels (@username). Private channels are not accessible.",
+    "retentionNote": "Raw message content is not stored beyond 48 hours. Only metadata and trend signals are retained."
+  },
+  "pricing": {
+    "plans": [
+      {
+        "id": "free",
+        "name": "Free",
+        "price": 0,
+        "currency": "USD",
+        "period": "forever",
+        "channels": 5,
+        "topics": 1,
+        "alertsPerDay": 5,
+        "historyDays": 0,
+        "delivery": ["telegram"],
+        "webhook": false,
+        "apiAccess": false,
+        "description": "Start tracking viral trends at no cost"
+      },
+      {
+        "id": "pro",
+        "name": "Pro",
+        "price": 19,
+        "currency": "USD",
+        "period": "month",
+        "channels": 100,
+        "topics": 5,
+        "alertsPerDay": -1,
+        "historyDays": 30,
+        "delivery": ["telegram", "webhook"],
+        "webhook": true,
+        "apiAccess": false,
+        "description": "For power users who need more coverage"
+      },
+      {
+        "id": "team",
+        "name": "Team",
+        "price": 79,
+        "currency": "USD",
+        "period": "month",
+        "channels": 500,
+        "topics": -1,
+        "alertsPerDay": -1,
+        "historyDays": 90,
+        "delivery": ["telegram", "webhook", "api"],
+        "webhook": true,
+        "apiAccess": true,
+        "description": "For teams tracking viral signals at scale"
+      }
+    ],
+    "paymentNote": "Payments accepted via cryptocurrency (NOWPayments). No credit card required.",
+    "paymentProcessor": "NOWPayments"
+  },
   "legal": {
     "entityName": "Sole Proprietor (FOP) Kharchenko Yaroslav Oleksandrovych",
     "entityShort": "FOP Kharchenko Y.O.",
@@ -14,9 +73,9 @@
     "jurisdiction": "Ukraine",
     "governingLaw": "the laws of Ukraine",
     "courts": "the competent courts located in Ukraine",
-    "effectiveDate": "April 8, 2026",
-    "privacyEmail": "support@postbolt.org",
-    "abuseEmail": "support@postbolt.org",
-    "securityEmail": "support@postbolt.org"
+    "effectiveDate": "June 9, 2026",
+    "privacyEmail": "privacy@trendpulse.app",
+    "abuseEmail": "abuse@trendpulse.app",
+    "securityEmail": "security@trendpulse.app"
   }
 }

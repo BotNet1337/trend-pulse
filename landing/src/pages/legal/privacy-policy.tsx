@@ -14,7 +14,8 @@ export function PrivacyPolicyPage() {
         <p>
           {SITE.brandName} respects your privacy and is committed to protecting your personal data. This Privacy Policy
           explains how we collect, use, store, and disclose information about you when you visit our website, create an
-          account, or use the {SITE.brandName} service for cross-platform social media publishing (the &quot;Service&quot;).
+          account, or use the {SITE.brandName} viral-content detection service (the &quot;Service&quot;).
+          {' '}<strong>Key facts: we monitor only public Telegram channels (@username); raw message content is not stored beyond 48 hours.</strong>
         </p>
       }
       items={[
@@ -29,13 +30,11 @@ export function PrivacyPolicyPage() {
                 registered at {SITE.legal.address}, is the data controller for personal data we process about our
                 customers and website visitors.
               </p>
-              <p>
-                For personal data contained in content that you publish to third-party social networks through the
-                Service, we act as a <strong>data processor</strong> on your behalf — see our{' '}
-                <Link to="/dpa" className="text-primary hover:underline">
-                  Data Processing Agreement
-                </Link>
-                .
+              <p className="mt-3">
+                {SITE.brandName} monitors only <strong>public Telegram channels</strong> (accessible via @username).
+                Private groups, personal chats, and paid-subscription channels are never accessed.
+                <strong> Raw message content is not stored beyond 48 hours.</strong> Only aggregated trend signals
+                (score, channel count, timestamps) are retained for the period covered by your plan.
               </p>
             </>
           ),
@@ -53,17 +52,17 @@ export function PrivacyPolicyPage() {
                 </li>
                 <li>
                   <strong className="text-foreground">Billing information:</strong> processed by our payment provider
-                  (e.g., Stripe). We store only a tokenised reference and the last four digits of your card.
+                  (NOWPayments — cryptocurrency). We store only a transaction reference and plan status; no card data is
+                  collected or stored.
                 </li>
                 <li>
-                  <strong className="text-foreground">Connected social accounts:</strong> when you connect Instagram,
-                  Facebook, YouTube, LinkedIn, X/Twitter, TikTok, Threads, Pinterest, Bluesky, Mastodon, or similar, we
-                  receive OAuth access and refresh tokens, the account/page ID, display name, and scopes granted. We do
-                  not receive your social-network password.
+                  <strong className="text-foreground">Alert configuration:</strong> channel list, topic keywords,
+                  delivery method (Telegram handle or webhook URL), and alert threshold settings.
                 </li>
                 <li>
-                  <strong className="text-foreground">Content you upload:</strong> posts, captions, hashtags, schedules,
-                  images, videos, alt text, metadata, drafts, and templates.
+                  <strong className="text-foreground">Webhook / API credentials:</strong> if you configure a webhook
+                  endpoint or API key, we store the URL and a hashed secret. We do not log request payloads beyond
+                  operational debugging (retained up to 72 h).
                 </li>
                 <li>
                   <strong className="text-foreground">Support communications:</strong> messages you send through email,
@@ -93,16 +92,17 @@ export function PrivacyPolicyPage() {
               <h3 className="font-semibold text-foreground mb-3 mt-6">Information from Third Parties</h3>
               <ul className="space-y-2">
                 <li>
-                  <strong className="text-foreground">Social platform metadata:</strong> post IDs, permalinks, publishing
-                  status, error codes, and high-level analytics returned by the platforms you publish to.
+                  <strong className="text-foreground">Telegram public channel data:</strong> message text, author, and
+                  timestamp from public channels you track. Raw content is discarded within 48 hours; only trend signals
+                  (score, channel count, timestamps) are retained per your plan's history window.
                 </li>
                 <li>
-                  <strong className="text-foreground">Payment provider:</strong> Stripe sends us subscription status,
-                  invoices, refunds, and fraud signals.
+                  <strong className="text-foreground">Payment processor (NOWPayments):</strong> transaction status,
+                  payment confirmations, and plan-activation events. No card data is processed by us.
                 </li>
                 <li>
-                  <strong className="text-foreground">Authentication providers:</strong> if you sign in with Google,
-                  Apple, or another OAuth provider, we receive your email, name, and provider user ID.
+                  <strong className="text-foreground">Authentication providers:</strong> if you sign in with Google or
+                  another OAuth provider, we receive your email, name, and provider user ID.
                 </li>
               </ul>
             </>
@@ -133,8 +133,9 @@ export function PrivacyPolicyPage() {
               </ul>
               <div className="bg-muted/50 p-4 rounded border border-border mt-4">
                 <p className="text-sm">
-                  <strong>Important:</strong> we do not sell your personal data. We do not use the content you publish
+                  <strong>Important:</strong> we do not sell your personal data. We do not use Telegram message content
                   to train machine-learning models. We do not read your content for advertising purposes.
+                  Raw message content is automatically discarded within 48 hours.
                 </p>
               </div>
             </>
@@ -148,10 +149,6 @@ export function PrivacyPolicyPage() {
               <p className="mb-3">We share personal data only with the following categories of recipients:</p>
               <ul className="space-y-2">
                 <li>
-                  <strong className="text-foreground">Social platforms you connect.</strong> When you publish a post,
-                  we transmit the content and scheduling parameters to the platform you selected.
-                </li>
-                <li>
                   <strong className="text-foreground">Subprocessors and infrastructure providers.</strong> Cloud
                   hosting, databases, object storage, email delivery, error monitoring, analytics, support tooling —
                   listed in Schedule 2 of our{' '}
@@ -161,8 +158,8 @@ export function PrivacyPolicyPage() {
                   .
                 </li>
                 <li>
-                  <strong className="text-foreground">Payment processor.</strong> Stripe (or equivalent) for billing
-                  and tax calculation.
+                  <strong className="text-foreground">Payment processor (NOWPayments).</strong> For transaction
+                  verification and plan-activation events. No card data is involved.
                 </li>
                 <li>
                   <strong className="text-foreground">Professional advisers.</strong> Lawyers, accountants, auditors,
@@ -214,19 +211,23 @@ export function PrivacyPolicyPage() {
               <p className="mb-3">We retain personal data only as long as necessary:</p>
               <ul className="space-y-2">
                 <li>
-                  <strong className="text-foreground">Account record:</strong> lifetime of your account plus 30 days.
+                  <strong className="text-foreground">Raw Telegram message content:</strong> automatically discarded
+                  within <strong>48 hours</strong> of ingestion. Only trend signals are retained.
                 </li>
                 <li>
-                  <strong className="text-foreground">Drafts and scheduled posts:</strong> until you delete them or
-                  close the account.
+                  <strong className="text-foreground">Trend signal history:</strong> per your plan — Free: not retained;
+                  Pro: 30 days; Team: 90 days.
                 </li>
                 <li>
-                  <strong className="text-foreground">Connected social-account tokens:</strong> until you disconnect or
-                  close {SITE.brandName}.
+                  <strong className="text-foreground">Account record:</strong> lifetime of your account plus 30 days
+                  after deletion.
                 </li>
                 <li>
-                  <strong className="text-foreground">Billing records and invoices:</strong> 7 years (Ukrainian tax
-                  law).
+                  <strong className="text-foreground">Alert configuration (channels, topics, webhooks):</strong> until
+                  you delete them or close the account.
+                </li>
+                <li>
+                  <strong className="text-foreground">Billing records and invoices:</strong> 7 years (Ukrainian tax law).
                 </li>
                 <li>
                   <strong className="text-foreground">Server and security logs:</strong> up to 12 months.
@@ -276,7 +277,7 @@ export function PrivacyPolicyPage() {
             <>
               <p className="mb-3">
                 We implement administrative, technical, and physical safeguards including encryption in transit (TLS
-                1.2+) and at rest (AES-256), access controls, audit logging, and regular backups. See{' '}
+                1.2+) and at rest (strong symmetric encryption), access controls, audit logging, and regular backups. See{' '}
                 <Link to="/security" className="text-primary hover:underline">
                   Security &amp; Compliance
                 </Link>{' '}

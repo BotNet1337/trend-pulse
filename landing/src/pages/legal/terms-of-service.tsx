@@ -44,9 +44,10 @@ export function TermsOfServicePage() {
           content: (
             <>
               <p className="mb-3">
-                {SITE.brandName} is a software-as-a-service tool that lets you connect accounts on third-party social
-                media platforms, draft and schedule content, and publish that content to those platforms on your
-                behalf.
+                {SITE.brandName} is a software-as-a-service tool that monitors public Telegram channels, detects viral
+                content trends, and delivers alerts to your configured delivery channels (Telegram bot, webhook, or API).
+                We monitor only public channels (@username); private groups and personal chats are not accessible.
+                Raw message content is not stored beyond 48 hours.
               </p>
               <p>
                 We do not own, control, or endorse any third-party platform, and we are not responsible for the
@@ -99,38 +100,35 @@ export function TermsOfServicePage() {
           content: (
             <>
               <p className="mb-3">
-                When you connect a social media account to {SITE.brandName}, you authorise us to access that account
-                using the OAuth scopes you grant. You represent that you have the right to connect each account and to
-                publish the content you submit.
+                When you configure channel tracking in {SITE.brandName}, you represent that the channels you add are
+                public and accessible to anyone. You must not attempt to access private groups, personal accounts, or
+                paid-subscription channels through the Service.
               </p>
               <p>
-                You are solely responsible for complying with the terms of service, community guidelines, and
-                applicable laws of every platform you connect (Meta Platform Terms, YouTube API Services Terms,
-                LinkedIn API Terms, X Developer Agreement, TikTok Developer Terms, and similar).
+                You are solely responsible for how you use the viral-trend data and alerts delivered by the Service,
+                and for complying with Telegram&apos;s terms of service, applicable copyright law, and any other
+                applicable regulations regarding the content you observe.
               </p>
             </>
           ),
         },
         {
           id: 'customer-content',
-          title: 'Customer Content',
+          title: 'Your Configuration Data',
           content: (
             <>
               <p className="mb-3">
-                &quot;Customer Content&quot; means any content (text, images, video, audio, metadata, hashtags,
-                schedules) you upload, create, or transmit through the Service.
+                &quot;Configuration Data&quot; means the channel lists, topic keywords, alert thresholds, webhook URLs,
+                and other settings you provide to configure the Service.
               </p>
               <ul className="space-y-2">
-                <li>You retain all ownership and intellectual-property rights in your Customer Content.</li>
+                <li>You retain all ownership of your Configuration Data.</li>
                 <li>
-                  You grant {SITE.brandName} a worldwide, non-exclusive, royalty-free licence to host, copy, transmit,
-                  transform (e.g., resize, transcode), and display Customer Content <strong>solely as necessary to
-                  operate, secure, and improve the Service</strong> and to publish the content to the platforms you
-                  have selected.
+                  You grant {SITE.brandName} a worldwide, non-exclusive, royalty-free licence to use your Configuration
+                  Data <strong>solely as necessary to operate, secure, and improve the Service</strong>.
                 </li>
                 <li>
-                  You represent that you own or have the right to use the Customer Content and that it does not
-                  infringe any third-party rights or violate any law.
+                  You represent that your Configuration Data does not violate any third-party rights or applicable law.
                 </li>
               </ul>
             </>
@@ -160,8 +158,12 @@ export function TermsOfServicePage() {
                   GST associated with your purchase.
                 </li>
                 <li>
-                  <strong className="text-foreground">Failed payments.</strong> We may suspend your account until the
-                  balance is paid.
+                  <strong className="text-foreground">Payment method.</strong> We accept cryptocurrency payments only
+                  (via NOWPayments). No credit card or bank transfer is accepted.
+                </li>
+                <li>
+                  <strong className="text-foreground">Failed payments.</strong> If a crypto payment is not confirmed,
+                  we may downgrade or suspend your account until payment is resolved.
                 </li>
               </ul>
               <div className="bg-muted/50 p-4 rounded border border-border mt-4">
@@ -218,7 +220,7 @@ export function TermsOfServicePage() {
           title: 'Service Availability and Changes',
           content: (
             <p>
-              We aim to keep the Service available 24/7 but do not guarantee uninterrupted access. We may modify,
+              We aim to keep the Service highly available but do not warrant uninterrupted access. We may modify,
               suspend, or discontinue any part of the Service at any time. We will give reasonable advance notice for
               material changes that adversely affect paying customers.
             </p>

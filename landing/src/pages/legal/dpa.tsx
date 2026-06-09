@@ -102,8 +102,8 @@ export function DpaOverviewPage() {
               <p className="mb-3">{SITE.brandName} implements the following technical and organisational measures:</p>
               <ul className="space-y-2">
                 <li>
-                  <strong className="text-foreground">Encryption.</strong> TLS 1.2+ in transit; AES-256 at rest;
-                  encryption of OAuth tokens at the application layer.
+                  <strong className="text-foreground">Encryption.</strong> TLS 1.2+ in transit; strong encryption at rest;
+                  encryption of secrets and credentials at the application layer.
                 </li>
                 <li>
                   <strong className="text-foreground">Access control.</strong> RBAC; least privilege; mandatory MFA;
@@ -163,9 +163,9 @@ export function DpaOverviewPage() {
                       <td className="py-2">Global</td>
                     </tr>
                     <tr className="border-b border-border/50">
-                      <td className="py-2 pr-4">Stripe Payments Europe, Ltd.</td>
-                      <td className="py-2 pr-4">Payment processing</td>
-                      <td className="py-2">Ireland / US</td>
+                      <td className="py-2 pr-4">NOWPayments</td>
+                      <td className="py-2 pr-4">Cryptocurrency payment processing</td>
+                      <td className="py-2">Global</td>
                     </tr>
                     <tr className="border-b border-border/50">
                       <td className="py-2 pr-4">Amazon Web Services, Inc.</td>

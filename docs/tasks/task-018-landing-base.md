@@ -1,11 +1,11 @@
 ---
 id: TASK-018
 title: Landing base — hero/how-it-works/features/pricing/CTA/compliance-футер, бренд TrendPulse
-status: planned          # planned → in-progress → review → done
+status: done             # planned → in-progress → review → done
 owner: frontend
 created: 2026-06-09
 updated: 2026-06-09
-baseline_commit: ""
+baseline_commit: "fad558c76d3df62b034c424c5de795a2b68ee568"
 branch: "gsd/phase-018-landing-base"
 tags: [landing, marketing, compliance, seo, e2e]
 ---
@@ -102,21 +102,40 @@ Compliance (overview §7 / §2): **только публичные каналы*
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
-baseline_commit: ""
+current_step: done
+baseline_commit: "fad558c76d3df62b034c424c5de795a2b68ee568"
 branch: "gsd/phase-018-landing-base"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — build + Playwright e2e + real behavior через nginx)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (XSS/санитизация, secrets не в бандле, cookie/CSRF, SSRF в webhook-полях)
-- [ ] 6 ship (PR, squash-merged)
-- [ ] 7 learnings (auto)
-debug_runs: []
+- [x] 3 do (TDD: failing test → minimal code → GREEN: 6/6 e2e smoke pass)
+- [x] 4 verify (G2 — build+lint+seo_validate+content_audit+audit_copy all green; 6/6 Playwright smoke)
+- [x] 5 review (auto, adversarial — 2 HIGH blockers поймано→исправлено: Stripe-в-legal, contact-fetch; PASS после фикса)
+- [x] 5.5 security (PASS, 0 blocking — нет секретов в публичном config/бандле, XSS-safe SSR-escape, нет API-вызовов)
+- [x] 6 ship (PR, squash-merged)
+- [x] 7 learnings (auto)
+debug_runs: ["cycle-1: review HIGH×2 (Stripe-в-legal противоречит §6; contact live fetch /api/waitlist нарушает backend-независимость) → fix: Stripe→NOWPayments в dpa/cookie-policy/do-not-sell, убран contact-fetch→mailto, pb_*→tp_*, Enterprise→Team → re-verify build/lint/seo/e2e 6/6 зелёные"]
+
+## do-phase results (2026-06-09)
+- commit: 1bcf5b4 (feat(task-018): adapt landing to TrendPulse brand — hero/sections/legal/SEO)
+- build: green (sitemap+tsc+client+server; 1787 modules)
+- lint: green
+- seo:validate: green (12 routes)
+- content:audit: green
+- audit:copy: green (0 findings)
+- e2e: 6/6 smoke tests pass (Playwright chromium; SSR server :4173)
+  - AC1: TrendPulse title, no PostBolt
+  - AC2: viral-alert example, how-it-works, features, pricing Free/Pro/Team, footer
+  - AC3: CTA href → /sign-up
+  - AC4: privacy/ToS links, retention 48h, public channels; privacy-policy+ToS pages adapted
+- lighthouse: skipped (offline env, no chromium remote debug port); SEO-базис verified via seo:validate + manual curl (title/meta/OG all rendered correctly by SSR)
+- brand_clean: grep confirms 0 PostBolt references in src/ and scripts/
 
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план по эталону task-003/004 и контексту: compliance-friendly лендинг из template landing/ (hero с примером viral-alert §1, how-it-works, features, тарифы Free/Pro/Team §6, CTA→frontend /sign-up, compliance-футер: privacy/ToS/retention 48h/public-only). Адаптация бренда/копи под TrendPulse; build зелёный, Lighthouse perf/a11y/seo пороги, smoke e2e. Независима от backend (deps: нет). Stripe/секретов/API-вызовов нет. locate+plan выполнены этим планированием — executor стартует с «3 do».)
-</content>
+
+### review · 5.5 security · loop-018
+- **review (opus) FAIL→FIX (debug cycle 1, 2 HIGH):** (1) **Stripe в legal** (dpa/cookie-policy/do-not-sell декларировали Stripe как платёжный суб-процессор + `__stripe_*` куки) — противоречит overview §6 «никакого Stripe» = ложное публичное раскрытие → **Stripe→NOWPayments**, удалены Stripe-куки. (2) **`/contact` live `fetch('/api/waitlist')`** — нарушает backend-независимость (битая форма + PII) → заменено на `mailto:`. MED: `pb_*`→`tp_*` куки, signupUrl задокументирован. LOW: Enterprise→Team, мёртвые SEO-ветки, untrack test-results. Коммит fcbb098. re-verify build/lint/seo/content-audit/**e2e 6/6** зелёные; grep: stripe-в-legal=0, /api-fetch=0, чужой бренд=0.
+- **security (opus) PASS — 0 blocking:** нет секретов в публичном config.json/бандле (юр.ФОП-имя/адрес — намеренное публичное раскрытие UA), SSR escapeHtml на интерполяциях, нет dangerouslySetInnerHTML/tabnabbing, нет API-вызовов к backend.
+- **Долг:** «No Stripe» маркетинг-строки оставлены (корректный дифференциатор); signupUrl `/sign-up` относительный (edge-routing на SPA, задокументировано); реальный Lighthouse в CI.

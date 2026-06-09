@@ -16,7 +16,7 @@ function canonicalFor(pathname: string): string {
 function routeMeta(pathname: string): { title: string; description: string } {
   const baseTitle = `${SITE.brandName}`;
   const baseDesc =
-    'Plan, schedule, and publish posts across all your social platforms from one workspace—one workflow instead of juggling every network separately.';
+    `${SITE.brandName} detects viral content from public Telegram channels in real time. Get alerts before trending topics explode — free plan available.`;
 
   switch (pathname) {
     case '/':
@@ -25,49 +25,45 @@ function routeMeta(pathname: string): { title: string; description: string } {
       return {
         title: `${baseTitle} — Pricing`,
         description:
-          'Early access pricing is evolving. Join the waitlist to get launch updates and the first available plans.',
-      };
-    case '/affiliate':
-      return {
-        title: `${baseTitle} — Affiliate Program`,
-        description:
-          `Share ${SITE.brandName} and earn commission on qualifying purchases. Program details may evolve during early access.`,
+          'Free, Pro ($19/mo), and Team ($79/mo) plans. Crypto payments only. Start tracking viral Telegram trends for free.',
       };
     case '/about':
       return {
-        title: `About ${baseTitle} — Cross-platform social publishing`,
-        description: `${SITE.brandName} is building a simpler way to plan, schedule, and publish across social platforms with a clear roadmap.`,
+        title: `About ${baseTitle} — Viral Telegram Content Detector`,
+        description: `${SITE.brandName} is building a real-time viral content detector for public Telegram channels. Public channels only, 48-hour retention.`,
       };
     case '/contact':
       return {
         title: `Contact ${baseTitle}`,
-        description: `Join early access, ask a question, or email ${SITE.contactEmail}.`,
+        description: `Questions about ${SITE.brandName}? Contact us or email ${SITE.contactEmail}.`,
       };
     case '/faq':
       return {
         title: `${baseTitle} — FAQ`,
-        description: 'Common questions about publishing, supported platforms, scheduling, privacy, and early access.',
+        description: 'Common questions about viral detection, Telegram channels, privacy, retention, and pricing.',
       };
     case '/privacy-policy':
-      return { title: `${baseTitle} — Privacy Policy`, description: `Privacy Policy for ${SITE.brandName}.` };
+      return {
+        title: `${baseTitle} — Privacy Policy`,
+        description: `Privacy Policy for ${SITE.brandName}. Public channels only, 48-hour raw content retention.`,
+      };
     case '/terms-of-service':
       return { title: `${baseTitle} — Terms of Service`, description: `Terms of Service for ${SITE.brandName}.` };
     case '/cookie-policy':
       return { title: `${baseTitle} — Cookie Policy`, description: `Cookie Policy for ${SITE.brandName}.` };
     case '/acceptable-use-policy':
       return { title: `${baseTitle} — Acceptable Use Policy`, description: `Acceptable Use Policy for ${SITE.brandName}.` };
-    case '/refund-policy':
-      return { title: `${baseTitle} — Refund Policy`, description: `Refund Policy for ${SITE.brandName}.` };
     case '/accessibility-statement':
       return { title: `${baseTitle} — Accessibility`, description: `Accessibility Statement for ${SITE.brandName}.` };
     case '/security':
-      return { title: `${baseTitle} — Security`, description: `Security practices and responsible disclosure.` };
+      return {
+        title: `${baseTitle} — Security`,
+        description: `Security practices and responsible disclosure for ${SITE.brandName}.`,
+      };
     case '/dpa':
-      return { title: `${baseTitle} — DPA Overview`, description: `Data Processing Addendum overview.` };
+      return { title: `${baseTitle} — DPA Overview`, description: `Data Processing Addendum overview for ${SITE.brandName}.` };
     case '/do-not-sell-or-share':
-      return { title: `${baseTitle} — Do Not Sell/Share`, description: `CCPA/CPRA opt-out information.` };
-    case '/coming-soon':
-      return { title: `${baseTitle} — Coming Soon`, description: `This page is coming soon.` };
+      return { title: `${baseTitle} — Do Not Sell/Share`, description: `CCPA/CPRA opt-out information for ${SITE.brandName}.` };
     default:
       return { title: `${baseTitle} — Not Found`, description: baseDesc };
   }
@@ -109,7 +105,7 @@ function buildJsonLd(pathname: string): string[] {
         availability: 'https://schema.org/PreOrder',
       },
       description:
-        'Plan, schedule, and publish social content across platforms from one workspace—early access roadmap in progress.',
+        'Real-time viral content detector for public Telegram channels. Get alerts when topics trend — free plan available.',
       url: SITE.siteUrl,
     });
   }

@@ -84,8 +84,12 @@ async function audit(): Promise<AuditResult> {
     // ignore layout-only files
     if (file.includes(`${path.sep}layouts${path.sep}`)) continue;
     const src = await fs.readFile(file, 'utf8');
-    // Legal pages render h1 inside LegalLayout
-    if (src.includes('<LegalLayout')) continue;
+    // Legal pages render h1 inside LegalLayout or LegalPage component
+    if (src.includes('<LegalLayout') || src.includes('<LegalPage')) continue;
+    // Section files are page fragments, not full pages — they don't need their own h1
+    if (file.includes(`${path.sep}sections${path.sep}`)) continue;
+    // Pages that compose sections (which contain h1) — HeroSection renders <h1>
+    if (src.includes('HeroSection') || src.includes('ContactSection')) continue;
     if (!src.includes('<h1')) {
       pagesMissingH1.push(path.relative(path.resolve(__dirname, '..'), file));
     }

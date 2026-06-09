@@ -50,9 +50,9 @@ export function RootLayout() {
       <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
         <div className="max-w-7xl mx-auto px-6 lg:px-20">
           <div className="flex items-center justify-between h-16">
-            <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+            <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity" aria-label={`${SITE.brandName} home`}>
               <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                <span className="text-primary-foreground font-bold">PB</span>
+                <span className="text-primary-foreground font-bold text-xs">TP</span>
               </div>
               <span className="font-semibold text-lg">{SITE.brandName}</span>
             </Link>
@@ -75,10 +75,10 @@ export function RootLayout() {
             <div className="hidden md:flex items-center gap-3">
               <ThemeToggle />
               <Button variant="ghost" asChild>
-                <Link to="/contact">Contact sales</Link>
+                <Link to="/contact">Contact</Link>
               </Button>
               <Button asChild>
-                <Link to="/" hash="get-started">Get started</Link>
+                <a href={(SITE as { signupUrl?: string }).signupUrl ?? '/sign-up'}>{SITE.ctaText}</a>
               </Button>
             </div>
 
@@ -130,13 +130,16 @@ export function RootLayout() {
                 <div className="flex flex-col gap-2 pt-4 border-t border-border">
                   <Button variant="ghost" asChild>
                     <Link to="/contact" onClick={() => setMobileMenuOpen(false)}>
-                      Contact sales
+                      Contact
                     </Link>
                   </Button>
                   <Button asChild>
-                    <Link to="/" hash="get-started" onClick={() => setMobileMenuOpen(false)}>
-                      Get started
-                    </Link>
+                    <a
+                      href={(SITE as { signupUrl?: string }).signupUrl ?? '/sign-up'}
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      {SITE.ctaText}
+                    </a>
                   </Button>
                 </div>
               </div>
@@ -153,14 +156,16 @@ export function RootLayout() {
         <div className="max-w-7xl mx-auto px-6 lg:px-20 py-12">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
             <div>
-              <Link to="/" className="flex items-center gap-2 mb-4 hover:opacity-80 transition-opacity w-fit">
+              <Link to="/" className="flex items-center gap-2 mb-4 hover:opacity-80 transition-opacity w-fit" aria-label={`${SITE.brandName} home`}>
                 <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <span className="text-primary-foreground font-bold">PB</span>
+                  <span className="text-primary-foreground font-bold text-xs">TP</span>
                 </div>
                 <span className="font-semibold text-lg">{SITE.brandName}</span>
               </Link>
               <p className="text-sm text-muted-foreground">{SITE.valueProp}</p>
-              <p className="text-sm text-muted-foreground mt-3">{SITE.legal.entityName}</p>
+              <p className="text-sm text-muted-foreground mt-3 font-medium">Compliance</p>
+              <p className="text-sm text-muted-foreground">Public channels only · 48-hour retention</p>
+              <p className="text-sm text-muted-foreground mt-2">{SITE.legal.entityName}</p>
               <p className="text-sm text-muted-foreground">{SITE.legal.address}</p>
             </div>
 
