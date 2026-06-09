@@ -14,12 +14,15 @@ export interface RunPrefetchArgs {
   pathname: string;
   search: URLSearchParams;
   /**
-   * `access_token` from the inbound `request.cookies`, hoisted into an
-   * `Authorization: Bearer …` header on the upstream axios client. The API
-   * only honours Bearer tokens, so omitting this means every fetcher will
-   * 401 and the whole hydration array is wiped to `[]`.
+   * Raw `Cookie` request header from the inbound SSR request
+   * (`req.headers.cookie`). Forwarded verbatim to the upstream API so that
+   * the httpOnly `fastapiusersauth` cookie authenticates the prefetch calls.
+   *
+   * When undefined the upstream calls land unauthenticated, prefetch fetchers
+   * return 401, and the runner drops all hydration to `[]`. The client will
+   * see an empty cache and AuthGuard will redirect to /auth/sign-in.
    */
-  accessToken: string | undefined;
+  cookieHeader: string | undefined;
   /**
    * Global timeout shared across every fetcher in the composition. The first
    * fetcher to take longer than this will be aborted; the rest are aborted
@@ -47,8 +50,8 @@ const isUnauthorized = (error: unknown): boolean => {
  * - Any single fetcher rejecting (timeout, network, 5xx) → it is dropped
  *   from the result, the rest survive. Hydration is best-effort.
  * - ANY fetcher returning 401 → the result is wiped to `[]`. The cookie is
- *   stale and we don't want to render pre-authenticated content; the client
- *   will see an empty cache, refetch, and AuthGate redirects to login.
+ *   absent/stale and we don't want to render pre-authenticated content; the
+ *   client will see an empty cache, refetch, and AuthGuard redirects to login.
  * - No matched route → `[]`.
  */
 export async function runPrefetch(args: RunPrefetchArgs): Promise<SerializedQuery[]> {
@@ -70,7 +73,7 @@ export async function runPrefetch(args: RunPrefetchArgs): Promise<SerializedQuer
 
   try {
     const api = createServerApiClient({
-      accessToken: args.accessToken,
+      cookieHeader: args.cookieHeader,
       signal: controller.signal,
     });
 
@@ -94,8 +97,16 @@ export async function runPrefetch(args: RunPrefetchArgs): Promise<SerializedQuer
         continue;
       }
 
+      // Log only message/status — never the raw error object, whose axios
+      // `config.headers` could carry the forwarded `Cookie` (session token).
+      const reason: unknown = result.reason;
+      const message = reason instanceof Error ? reason.message : String(reason);
+      const status =
+        typeof reason === 'object' && reason !== null && 'response' in reason
+          ? (reason as { response?: { status?: number } }).response?.status
+          : undefined;
       args.logger?.warn(
-        { err: result.reason, pathname: args.pathname },
+        { message, status, pathname: args.pathname },
         'SSR prefetch fetcher failed (best-effort, ignoring)',
       );
     }

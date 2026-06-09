@@ -3,7 +3,7 @@
 Surgical-change task docs produced by `trendpulse-plan` / `trendpulse-executor`.
 One row per `task-NNN-slug.md`. Newest at the bottom.
 
-Roadmap: [`../architecture/roadmap.md`](../architecture/roadmap.md). Epic A = Backend core (все done); эпики C (frontend SPA, TASK-013..017) и B (landing, TASK-018) — **done**. **Epic D = Hardening & growth** (TASK-019..033) — post-MVP волна: DX/CI, корректность скоринга, надёжность/observability, email/auth-completeness, монетизация (renewal/API-keys), SSR, API-hardening, второй источник (Twitter), security, GDPR-export.
+Roadmap: [`../architecture/roadmap.md`](../architecture/roadmap.md). Epic A = Backend core, B = landing, C = frontend SPA, D = Hardening & growth (TASK-019..028) — **done**; хвост D: 029 in-progress, 030/032/033 перепривязаны к волне E, 031 — триггер $2k MRR. **Epic E = Path to revenue** (TASK-034..055) — текущая волна: ops-фундамент (E0), первая польза (E1), качество сигнала (E2), витрина (E3), деньги без трения (E4), цены (E5), бизнес-метрики (E6), масштаб (E7), новые рынки (E8). Полные планы: [`../product/epics/`](../product/epics/README.md); болевые точки: [`../architecture/pain-points.md`](../architecture/pain-points.md). Номера TASK-041..055 зарезервированы за эпиками E2..E7 (док создаётся `trendpulse-plan` при взятии в работу).
 
 | ID | Title | Epic | Status | Owner | Deps | Updated |
 |----|-------|------|--------|-------|------|---------|
@@ -35,8 +35,15 @@ Roadmap: [`../architecture/roadmap.md`](../architecture/roadmap.md). Epic A = Ba
 | [TASK-026](./task-026-auth-verify-reset.md) | Auth completeness — verify + reset-password роутеры + email/templates + фронт-страницы | D | done | backend | 003, 014, 025 | 2026-06-09 |
 | [TASK-027](./task-027-subscription-renewal-notifications.md) | Subscription renewal/expiry-уведомления (Beat + notifier/email) | D | done | backend | 010, 009, 025 | 2026-06-09 |
 | [TASK-028](./task-028-api-keys-team.md) | API-ключи для Team-плана (api_keys, issue/revoke, X-API-Key auth, rate-limit keying) | D | done | backend | 003, 010 | 2026-06-09 |
-| [TASK-029](./task-029-frontend-ssr-enablement.md) | Frontend SSR enablement (TanStack hydration, cookie-forward) + manualChunks | D | planned | frontend | 013, 014 | 2026-06-09 |
+| [TASK-029](./task-029-frontend-ssr-enablement.md) | Frontend SSR enablement (TanStack hydration, cookie-forward) + manualChunks | D | done | frontend | 013, 014 | 2026-06-09 |
 | [TASK-030](./task-030-api-hardening-errors-versioning.md) | API hardening — единый error-envelope + machine-readable коды + /api/v1 версионирование | D | planned | backend | 019 | 2026-06-09 |
 | [TASK-031](./task-031-twitter-source.md) | Twitter/X source readiness (collector/twitter по ADR-001 + per-source лимиты) | D | planned | backend | 005 | 2026-06-09 |
 | [TASK-032](./task-032-security-hardening.md) | Security hardening — per-route rate-limit + CSRF в nginx + at-rest шифрование (app-level, опц.) | D | planned | infra | 011, 012 | 2026-06-09 |
 | [TASK-033](./task-033-gdpr-data-export.md) | GDPR data-export (GET /account/export, Art.20 portability) | D | planned | backend | 011 | 2026-06-09 |
+| [TASK-034](./task-034-pg-backup-restore-check.md) | Postgres backups — ежедневный дамп в object storage + restore-check | E0 | planned | infra | 012 | 2026-06-09 |
+| [TASK-035](./task-035-tg-pool-health.md) | TG-пул: целевой размер ≥3, health-метрика, self-alert опсам | E0 | planned | backend | 005, 024 | 2026-06-09 |
+| [TASK-036](./task-036-signal-latency-metric.md) | Метрика задержки сигнала p50/p95 «пост→алерт» + Redis memory watch | E0 | planned | backend | 008, 009, 022 | 2026-06-09 |
+| [TASK-037](./task-037-embedding-cache.md) | Кэш эмбеддингов по SHA-256 хэшу текста (Redis, TTL 48h) | E0 | planned | backend | 007 | 2026-06-09 |
+| [TASK-038](./task-038-curated-channel-packs.md) | Curated channel packs — каталог, GET /packs, подписка в 1 клик вне лимита CHANNELS | E1 | planned | backend | 004, 010 | 2026-06-09 |
+| [TASK-039](./task-039-onboarding-instant-value.md) | Onboarding instant value — showcase-тенант + GET /trending + экран после регистрации | E1 | planned | backend | 038 | 2026-06-09 |
+| [TASK-040](./task-040-free-plan-alert-delay.md) | Free-план: задержка алертов 15–30 мин (deliver_after + resweep-уважение) | E1 | planned | backend | 008, 010, 023 | 2026-06-09 |

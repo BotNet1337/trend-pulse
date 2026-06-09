@@ -32,7 +32,14 @@ export default defineConfig(({ command }) => {
       },
     },
     build: {
+      // SSR server reads dist/client/index.html (prodIndexHtmlPath in ssr.factory.ts)
+      // and serves static assets from dist/client/.
+      outDir: 'dist/client',
       rollupOptions: {
+        // Exclude server-side code from the client bundle.
+        // The server/ directory is executed by Node (tsx/fastify) and must NOT
+        // be bundled into the browser assets — it imports node-only modules
+        // (fastify, axios, fs, etc.) that are not available in the browser.
         external: (id) => {
           const normalizedId = id.replace(/\\/g, '/');
           return (
@@ -41,6 +48,52 @@ export default defineConfig(({ command }) => {
             normalizedId.startsWith('./server/') ||
             normalizedId.includes('server/client')
           );
+        },
+        output: {
+          // vendor-split manualChunks — eliminates the 729kB monolithic chunk
+          // warning by splitting vendor deps into separate cacheable chunks.
+          //
+          // IMPORTANT: react + react-dom MUST stay in the SAME chunk to prevent
+          // the "react singleton" problem where two different React instances
+          // coexist (breaks hooks). Do NOT split react from react-dom.
+          manualChunks(id) {
+            const normalizedId = id.replace(/\\/g, '/');
+
+            // react + react-dom → vendor-react (singleton, must be one chunk)
+            if (
+              normalizedId.includes('/node_modules/react/') ||
+              normalizedId.includes('/node_modules/react-dom/') ||
+              normalizedId.includes('/node_modules/react-error-boundary/') ||
+              normalizedId.includes('/node_modules/scheduler/')
+            ) {
+              return 'vendor-react';
+            }
+
+            // @tanstack/* → vendor-tanstack
+            if (normalizedId.includes('/node_modules/@tanstack/')) {
+              return 'vendor-tanstack';
+            }
+
+            // @radix-ui/* + clsx + class-variance-authority + tailwind-merge
+            // + lucide-react → vendor-ui
+            if (
+              normalizedId.includes('/node_modules/@radix-ui/') ||
+              normalizedId.includes('/node_modules/clsx/') ||
+              normalizedId.includes('/node_modules/class-variance-authority/') ||
+              normalizedId.includes('/node_modules/tailwind-merge/') ||
+              normalizedId.includes('/node_modules/lucide-react/')
+            ) {
+              return 'vendor-ui';
+            }
+
+            // react-hook-form + @hookform → vendor-forms
+            if (
+              normalizedId.includes('/node_modules/react-hook-form/') ||
+              normalizedId.includes('/node_modules/@hookform/')
+            ) {
+              return 'vendor-forms';
+            }
+          },
         },
       },
     },
