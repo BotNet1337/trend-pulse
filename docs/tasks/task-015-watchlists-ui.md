@@ -1,11 +1,11 @@
 ---
 id: TASK-015
 title: Watchlists UI — список/создание/редактирование/удаление, alert-config, UX лимитов плана
-status: planned          # planned → in-progress → review → done
+status: in-progress      # planned → in-progress → review → done
 owner: frontend
 created: 2026-06-09
 updated: 2026-06-09
-baseline_commit: ""
+baseline_commit: "b55527ee46d9cf04f34c8cbb9d01e66882f9620f"
 branch: "gsd/phase-015-watchlists-ui"
 tags: [frontend, watchlists, crud, plan-limits, e2e]
 ---
@@ -97,9 +97,9 @@ TrendPulse (см. [`../product/overview.md`](../product/overview.md) §3) — wa
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
 current_step: 3
-baseline_commit: ""
+baseline_commit: "b55527ee46d9cf04f34c8cbb9d01e66882f9620f"
 branch: "gsd/phase-015-watchlists-ui"
-lock: ""
+lock: "loop-015"
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [ ] 3 do (TDD: failing test → minimal code)
@@ -113,4 +113,3 @@ debug_runs: []
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план по эталону task-003/004 и контексту: watchlist-CRUD UI поверх готового API task-004 (модель «один канал/watchlist», числовой id), форма alert-config (пороги скоринга), UX лимитов плана (402 quota→апселл, 403 feature→gate, 422→field, 404→not-found, 409→dup). frontend-only, backend не трогаем. deps: 014 (guard/current_user), backend 004 (watchlist API). locate+plan выполнены этим планированием — executor стартует с «3 do».)
-</content>
