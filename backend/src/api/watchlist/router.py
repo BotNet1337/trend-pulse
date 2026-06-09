@@ -1,4 +1,4 @@
-"""Watchlist CRUD router (tenant-scoped, behind `current_user`).
+"""Watchlist CRUD router (tenant-scoped, behind `current_user` or `current_user_or_api_key`).
 
 Handlers are sync `def` (the repos are sync; FastAPI runs them in a threadpool).
 Domain errors map to HTTP at this boundary:
@@ -6,11 +6,16 @@ Domain errors map to HTTP at this boundary:
 - LimitExceededError      -> 402 (plan limit; full enforcement task-010)
 - DuplicateWatchlistError -> 409 (unique (user_id, channel_id, topic))
 - not found / other tenant-> 404 (no existence leak, ADR-002)
+
+TASK-028: GET (list/detail) accept cookie/JWT OR X-API-Key (current_user_or_api_key).
+Mutations (POST/PATCH/DELETE) remain cookie/JWT only (current_user) — minimal surface
+for API-key access.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from api.auth.api_key import current_user_or_api_key
 from api.deps import current_user, get_tenant_user_id
 from api.watchlist import service
 from api.watchlist.deps import get_db_session
@@ -45,18 +50,21 @@ def create_watchlist(
 
 
 @router.get("", response_model=list[WatchlistRead])
-def list_watchlists(
-    user: User = Depends(current_user),
+async def list_watchlists(
+    user: User = Depends(current_user_or_api_key),
     session: Session = Depends(get_db_session),
 ) -> list[WatchlistRead]:
-    """List only the caller's watchlists (tenant-scoped)."""
+    """List only the caller's watchlists (tenant-scoped).
+
+    Accepts cookie/JWT (UI) or X-API-Key header (programmatic, TASK-028).
+    """
     return service.list_for_user(session, user_id=get_tenant_user_id(user))
 
 
 @router.get("/{watchlist_id}", response_model=WatchlistRead)
-def get_watchlist(
+async def get_watchlist(
     watchlist_id: int,
-    user: User = Depends(current_user),
+    user: User = Depends(current_user_or_api_key),
     session: Session = Depends(get_db_session),
 ) -> WatchlistRead:
     """Get one owned watchlist; missing / other tenant's id -> 404."""

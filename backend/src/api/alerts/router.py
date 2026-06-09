@@ -1,6 +1,8 @@
 """Alerts read router — GET /alerts (list) + GET /alerts/{id} (detail).
 
-Read-only, tenant-scoped, behind `current_user`. No mutations of any kind.
+Read-only, tenant-scoped. Accepts cookie/JWT (UI) or X-API-Key header
+(programmatic access, TASK-028) via `current_user_or_api_key`.
+No mutations of any kind.
 History window and pagination limits come from billing.plans / service constants
 (no magic literals). Tenant-scope: only the caller's alerts are visible; a
 foreign or missing id returns 404 with no existence leak (ADR-002).
@@ -15,7 +17,8 @@ from sqlalchemy.orm import Session
 from api.alerts import service
 from api.alerts.schemas import AlertListResponse, AlertRead
 from api.alerts.service import DEFAULT_ALERTS_PAGE_SIZE, InvalidCursorError
-from api.deps import current_user, get_tenant_user_id
+from api.auth.api_key import current_user_or_api_key
+from api.deps import get_tenant_user_id
 from api.watchlist.deps import get_db_session
 from storage.models.users import User
 
@@ -26,7 +29,7 @@ _INVALID_CURSOR = "invalid cursor"
 
 
 @router.get("", response_model=AlertListResponse)
-def list_alerts(
+async def list_alerts(
     limit: int = Query(
         default=DEFAULT_ALERTS_PAGE_SIZE,
         ge=1,
@@ -36,7 +39,7 @@ def list_alerts(
         default=None,
         description="Opaque pagination cursor from previous response next_cursor field.",
     ),
-    user: User = Depends(current_user),
+    user: User = Depends(current_user_or_api_key),
     session: Session = Depends(get_db_session),
 ) -> AlertListResponse:
     """List the caller's alerts with cursor pagination and plan-based history window.
@@ -57,9 +60,9 @@ def list_alerts(
 
 
 @router.get("/{alert_id}", response_model=AlertRead)
-def get_alert(
+async def get_alert(
     alert_id: int,
-    user: User = Depends(current_user),
+    user: User = Depends(current_user_or_api_key),
     session: Session = Depends(get_db_session),
 ) -> AlertRead:
     """Get one alert detail. Foreign or missing alert → 404 (no existence leak)."""

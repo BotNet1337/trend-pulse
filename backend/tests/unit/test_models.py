@@ -49,6 +49,7 @@ def test_all_models_share_base_metadata() -> None:
         "alerts",
         "subscriptions",
         "billing_payments",
+        "api_keys",  # TASK-028: Team-plan API keys
     }
 
 

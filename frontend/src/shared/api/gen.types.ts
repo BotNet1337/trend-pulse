@@ -70,6 +70,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Api Keys
+         * @description List all API keys for the caller (masked: prefix/name/timestamps, no key/key_hash).
+         */
+        get: operations["list_api_keys_api_keys_get"];
+        put?: never;
+        /**
+         * Create Api Key
+         * @description Issue a new API key for the caller (Team plan only).
+         *
+         *     Free/Pro → PlanLimitExceeded → 403 (via api/main.py exception handler).
+         *     Plaintext key is returned ONCE in the response body and never stored in DB.
+         */
+        post: operations["create_api_key_api_keys_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api-keys/{key_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Api Key
+         * @description Soft-revoke an API key owned by the caller.
+         *
+         *     Unknown id or another tenant's id → 404 (no existence leak, ADR-002).
+         *     The key_hash row is kept for audit; revoked_at marks it inactive.
+         */
+        delete: operations["revoke_api_key_api_keys__key_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/forgot-password": {
         parameters: {
             query?: never;
@@ -393,6 +443,8 @@ export interface paths {
         /**
          * List Watchlists
          * @description List only the caller's watchlists (tenant-scoped).
+         *
+         *     Accepts cookie/JWT (UI) or X-API-Key header (programmatic, TASK-028).
          */
         get: operations["list_watchlists_watchlists_get"];
         put?: never;
@@ -495,6 +547,63 @@ export interface components {
             score: number;
             /** Topic */
             topic: string;
+        };
+        /**
+         * ApiKeyCreate
+         * @description Request body for POST /api-keys — only the human-readable name.
+         */
+        ApiKeyCreate: {
+            /**
+             * Name
+             * @description Human-readable label for the key (e.g. 'prod-integration').
+             */
+            name: string;
+        };
+        /**
+         * ApiKeyCreated
+         * @description Response for POST /api-keys — includes the plaintext key EXACTLY ONCE.
+         *
+         *     The `key` field is the plaintext. After this response the plaintext is gone;
+         *     it is not stored in the DB. The user must copy it immediately.
+         */
+        ApiKeyCreated: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Prefix */
+            prefix: string;
+        };
+        /**
+         * ApiKeyRead
+         * @description Read-only view of an API key (list / detail) — NO plaintext or key_hash.
+         *
+         *     Exposes only the prefix (for recognition), name, and timestamps. Safe to
+         *     return in list responses without exposing sensitive material.
+         */
+        ApiKeyRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Name */
+            name: string;
+            /** Prefix */
+            prefix: string;
+            /** Revoked At */
+            revoked_at: string | null;
         };
         /**
          * BillingPeriod
@@ -832,7 +941,9 @@ export interface operations {
                 /** @description Opaque pagination cursor from previous response next_cursor field. */
                 cursor?: string | null;
             };
-            header?: never;
+            header?: {
+                "X-API-Key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -861,7 +972,9 @@ export interface operations {
     get_alert_alerts__alert_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-API-Key"?: string | null;
+            };
             path: {
                 alert_id: number;
             };
@@ -877,6 +990,88 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AlertRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_api_keys_api_keys_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyRead"][];
+                };
+            };
+        };
+    };
+    create_api_key_api_keys_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApiKeyCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_api_key_api_keys__key_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -1427,7 +1622,9 @@ export interface operations {
     list_watchlists_watchlists_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-API-Key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1440,6 +1637,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WatchlistRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -1480,7 +1686,9 @@ export interface operations {
     get_watchlist_watchlists__watchlist_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-API-Key"?: string | null;
+            };
             path: {
                 watchlist_id: number;
             };

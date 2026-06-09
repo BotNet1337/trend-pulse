@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
+from api.auth.api_key import current_user_or_api_key
 from api.deps import current_user
 from api.main import app
 from api.watchlist.deps import get_db_session
@@ -80,13 +81,18 @@ def client(db_session_committing: Session, user: User) -> Iterator[TestClient]:
     def _session_override() -> Iterator[Session]:
         yield db_session_committing
 
+    # Override both current_user (mutations: POST/PATCH/DELETE) and
+    # current_user_or_api_key (read: GET /watchlists, GET /watchlists/{id}) —
+    # the latter was updated in TASK-028 to accept cookie OR X-API-Key.
     app.dependency_overrides[current_user] = lambda: user
+    app.dependency_overrides[current_user_or_api_key] = lambda: user
     app.dependency_overrides[get_db_session] = _session_override
     try:
         with TestClient(app) as test_client:
             yield test_client
     finally:
         app.dependency_overrides.pop(current_user, None)
+        app.dependency_overrides.pop(current_user_or_api_key, None)
         app.dependency_overrides.pop(get_db_session, None)
 
 
