@@ -111,8 +111,10 @@ test('AC2 — list → details → edit → delete', async ({ page }) => {
   await topicInput.fill('ethereum-updated');
   await page.getByRole('button', { name: /save|update/i }).click();
 
-  // Should show updated value
-  await expect(page.getByText('ethereum-updated')).toBeVisible({ timeout: 5000 });
+  // After save: success message shown and topic input retains updated value
+  await expect(page.getByRole('status')).toBeVisible({ timeout: 5000 });
+  // The topic input should have the updated value
+  await expect(page.locator('#edit-watchlist-topic')).toHaveValue('ethereum-updated', { timeout: 3000 });
 
   // Delete
   await page.goto('/watchlists');
@@ -155,10 +157,9 @@ test('AC3 — bad handle → 422 → field error shown', async ({ page }) => {
   // At minimum, the form should NOT navigate away and should show an error
   await expect(page).toHaveURL(/\/watchlists\/new/, { timeout: 3000 });
 
-  // Error message visible somewhere on the page — either client or server side
-  const errorText = page.getByText(/invalid|handle|@|must start/i);
-  const hasError = await errorText.isVisible({ timeout: 3000 }).catch(() => false);
-  expect(hasError).toBe(true);
+  // Error shown in the channel handle field's alert region
+  const fieldAlert = page.locator('[role="alert"]').first();
+  await expect(fieldAlert).toBeVisible({ timeout: 3000 });
 });
 
 // AC4 — quota exceeded → 402 → upsell banner shown
@@ -199,8 +200,11 @@ test('AC4 — plan limit exceeded → upsell banner (402)', async ({ page }) => 
   await page.getByRole('button', { name: /create|save/i }).click();
 
   // Should show upsell banner (402 → quota state), not raw error JSON
-  const upsellBanner = page.getByText(/upgrade|upsell|plan|billing|limit/i);
+  // Use role="alert" on the upsell banner div
+  const upsellBanner = page.getByRole('alert').first();
   await expect(upsellBanner).toBeVisible({ timeout: 5000 });
+  // Verify it contains the upgrade message (not raw JSON)
+  await expect(upsellBanner).toContainText(/plan|limit|upgrade/i);
 
   // Should NOT show raw JSON
   const rawJson = page.getByText(/\{.*"detail"/i);
@@ -255,9 +259,8 @@ test('AC6 — nonexistent watchlist id → not-found state', async ({ page }) =>
   // Navigate to a clearly nonexistent id
   await page.goto('/watchlists/999999999');
 
-  // Should show not-found state (not a crash)
-  const notFoundEl = page.getByText(/not found|does not exist|watchlist.*not/i);
-  await expect(notFoundEl).toBeVisible({ timeout: 5000 });
+  // Should show not-found heading (not a crash)
+  await expect(page.getByRole('heading', { name: /watchlist not found/i })).toBeVisible({ timeout: 5000 });
 
   // Should NOT show raw JSON/stack
   await expect(page.getByText(/"detail"/)).not.toBeVisible({ timeout: 2000 }).catch(() => {});
