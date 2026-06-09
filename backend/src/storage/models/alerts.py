@@ -25,6 +25,9 @@ class Alert(UserOwnedBase):
         UniqueConstraint("user_id", "cluster_id", name="uq_alerts_user_cluster"),
         Index("ix_alerts_user_id", "user_id"),
         Index("ix_alerts_user_first_seen", "user_id", "first_seen"),
+        # Composite index for the pending-sweep (task-023): accelerates
+        # `delivery_status = 'pending' AND first_seen < :cutoff` (cross-tenant).
+        Index("ix_alerts_status_first_seen", "delivery_status", "first_seen"),
     )
 
     cluster_id: Mapped[int] = mapped_column(ForeignKey("clusters.id"), nullable=False)

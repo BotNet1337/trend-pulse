@@ -227,7 +227,7 @@ export interface paths {
         };
         /**
          * Ready
-         * @description Readiness: 200 when DB+Redis reachable, else 503 with per-dep markers.
+         * @description Readiness: 200 when DB+Redis+Celery reachable, else 503 with per-dep markers.
          */
         get: operations["ready_ready_get"];
         put?: never;

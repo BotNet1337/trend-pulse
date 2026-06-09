@@ -1287,7 +1287,7 @@
     },
     "/ready": {
       "get": {
-        "description": "Readiness: 200 when DB+Redis reachable, else 503 with per-dep markers.",
+        "description": "Readiness: 200 when DB+Redis+Celery reachable, else 503 with per-dep markers.",
         "operationId": "ready_ready_get",
         "responses": {
           "200": {

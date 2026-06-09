@@ -78,6 +78,17 @@ _DEFAULT_ALERT_MAX_RETRIES = 5
 _DEFAULT_ALERT_RETRY_BACKOFF_SECONDS = 2
 _DEFAULT_ALERT_RETRY_BACKOFF_MAX_SECONDS = 600
 
+# Reliability — pending-sweep + Celery /ready (task-023). Named, non-secret
+# defaults; time is in SECONDS (CONVENTIONS). The grace window prevents the sweep
+# from racing in-flight dispatches (fresh pending < grace are never touched).
+# max_batch caps the re-enqueue burst so a long broker outage doesn't flood the
+# queue all at once. celery_ping_timeout bounds the control-bus inspect().ping()
+# so /ready never hangs on a slow control channel.
+_DEFAULT_PENDING_RESWEEP_GRACE_SECONDS = 300
+_DEFAULT_PENDING_RESWEEP_INTERVAL_SECONDS = 300
+_DEFAULT_PENDING_RESWEEP_MAX_BATCH = 500
+_DEFAULT_CELERY_PING_TIMEOUT_SECONDS = 2
+
 
 class Settings(BaseSettings):
     """Runtime configuration read from the process environment.
@@ -125,6 +136,18 @@ class Settings(BaseSettings):
     alert_max_retries: int = _DEFAULT_ALERT_MAX_RETRIES
     alert_retry_backoff_seconds: int = _DEFAULT_ALERT_RETRY_BACKOFF_SECONDS
     alert_retry_backoff_max_seconds: int = _DEFAULT_ALERT_RETRY_BACKOFF_MAX_SECONDS
+
+    # --- Reliability — pending-sweep + Celery /ready (task-023). Non-secret,
+    # settable; defaults above. ---
+    # Grace window (seconds): pending alerts younger than this are in-flight and
+    # must not be re-enqueued; only stale pending (older than grace) are swept.
+    pending_resweep_grace_seconds: int = _DEFAULT_PENDING_RESWEEP_GRACE_SECONDS
+    # Beat interval (seconds) for the resweep_pending_alerts task.
+    pending_resweep_interval_seconds: int = _DEFAULT_PENDING_RESWEEP_INTERVAL_SECONDS
+    # Max alerts re-enqueued per sweep tick (burst cap).
+    pending_resweep_max_batch: int = _DEFAULT_PENDING_RESWEEP_MAX_BATCH
+    # Timeout (seconds) for the Celery control-bus inspect().ping() in /ready.
+    celery_ping_timeout_seconds: int = _DEFAULT_CELERY_PING_TIMEOUT_SECONDS
 
     # --- Billing — NOWPayments (task-010, ADR-004). Secrets from sensitive.env;
     # empty defaults so the app boots without billing configured (endpoints 503). ---

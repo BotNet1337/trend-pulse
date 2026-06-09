@@ -7,6 +7,7 @@ literals (CONVENTIONS). Kept in its own module so `celery_app` imports it withou
 a cycle; task *names* come from `pipeline.constants` (no `celery_app` import).
 """
 
+from alerts.constants import RESWEEP_PENDING_ALERTS_TASK
 from compliance.constants import PURGE_EXPIRED_RAW_CONTENT_TASK
 from config import get_settings
 from pipeline.constants import ENQUEUE_BATCHES_TASK, SCORE_TICK_TASK
@@ -30,5 +31,13 @@ beat_schedule: dict[str, dict[str, object]] = {
     "purge-expired-raw-content": {
         "task": PURGE_EXPIRED_RAW_CONTENT_TASK,
         "schedule": float(_settings.retention_purge_interval_seconds),
+    },
+    # Pending-alert re-sweep (task-023): re-enqueue dispatch_alert for any
+    # `pending` alert older than `pending_resweep_grace_seconds`. Closes the
+    # reliability footgun where a broker/worker crash leaves alerts stuck in
+    # `pending` forever. Interval from settings, never a magic literal.
+    "resweep-pending-alerts": {
+        "task": RESWEEP_PENDING_ALERTS_TASK,
+        "schedule": float(_settings.pending_resweep_interval_seconds),
     },
 }
