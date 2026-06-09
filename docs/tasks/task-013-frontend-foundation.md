@@ -1,7 +1,7 @@
 ---
 id: TASK-013
 title: Frontend foundation — SPA scaffold (дизайн-система, API-клиент к TrendPulse, типы, e2e-харнесс, Docker)
-status: review           # planned → in-progress → review → done
+status: done             # planned → in-progress → review → done
 owner: frontend
 created: 2026-06-09
 updated: 2026-06-09
@@ -98,18 +98,18 @@ Backend-контракт (источник истины — реальные р�
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 6
+current_step: done
 baseline_commit: "155eb923ff51ba8b75b5672c79a92f50403548ed"
 branch: "gsd/phase-013-frontend-foundation"
-lock: "loop-013"
+lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [x] 3 do (TDD: failing test → minimal code)
 - [x] 4 verify (G2 — build + Playwright e2e + real behavior через nginx)
 - [x] 5 review (auto, adversarial — PASS, 0 blocking; 5 MED/LOW residue-чистка применена)
 - [x] 5.5 security (PASS, 0 blocking — cookie-auth/no-secrets verified; open-redirect MED захардненен)
-- [ ] 6 ship (PR, squash-merged)
-- [ ] 7 learnings (auto)
+- [x] 6 ship (PR #16, squash-merged)
+- [x] 7 learnings (auto)
 debug_runs: ["cycle-1: verify G2 fail → SSR-слой реф-проекта (Bearer/refresh/API_URL/COOKIE_SECRET) ронял контейнер → fix: статик-путь (frontend=nginx+Vite dist, без SSR node-сервера) + createRoot вместо hydrateRoot + eslint argsIgnorePattern + удаление visual-спеков чужого домена → re-verify PASS (5/5 smoke e2e зелёные за nginx)"]
 
 ## Details
