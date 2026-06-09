@@ -1,11 +1,11 @@
 ---
 id: TASK-014
 title: Auth flow UI — register/login/logout (httpOnly-cookie), Google OAuth, guarded-роуты, current_user
-status: planned          # planned → in-progress → review → done
+status: in-progress      # planned → in-progress → review → done
 owner: frontend
 created: 2026-06-09
 updated: 2026-06-09
-baseline_commit: ""
+baseline_commit: "2f90fcfa51ad3282978dc5c403f2c22e917d278f"
 branch: "gsd/phase-014-auth-flow-ui"
 tags: [frontend, auth, oauth, e2e, security]
 ---
@@ -102,9 +102,9 @@ TrendPulse (см. [`../product/overview.md`](../product/overview.md) §3) — mu
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
 current_step: 3
-baseline_commit: ""
+baseline_commit: "2f90fcfa51ad3282978dc5c403f2c22e917d278f"
 branch: "gsd/phase-014-auth-flow-ui"
-lock: ""
+lock: "loop-014"
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [ ] 3 do (TDD: failing test → minimal code)
@@ -118,4 +118,3 @@ debug_runs: []
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план по эталону task-003/004 и контексту: auth-флоу SPA на httpOnly-cookie поверх task-003 (register/login/logout, Google OAuth redirect, guard+возврат), `current_user` из новой тонкой backend-добавки `GET /users/me` (read-only, за `current_user`). deps: 013 (C1 фундамент), backend 003 (auth). Ядро auth не трогаем — только монтируем users-read-роут. locate+plan выполнены этим планированием — executor стартует с «3 do».)
-</content>
