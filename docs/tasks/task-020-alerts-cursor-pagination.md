@@ -1,11 +1,11 @@
 ---
 id: TASK-020
 title: Alerts — cursor (keyset) пагинация + составной индекс
-status: planned          # planned → in-progress → review → done
+status: done             # planned → in-progress → review → done
 owner: backend
 created: 2026-06-09
 updated: 2026-06-09
-baseline_commit: ""
+baseline_commit: "06bc76501401e9742577698c7d2ad39ea1a61b35"
 branch: "gsd/phase-020-alerts-cursor-pagination"
 tags: [epic-d, backend, frontend, perf]
 ---
@@ -99,20 +99,38 @@ task-016 добавил read-роут `GET /alerts` (read-only, tenant-scoped, `
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
-baseline_commit: ""
+current_step: done
+baseline_commit: "06bc76501401e9742577698c7d2ad39ea1a61b35"
 branch: "gsd/phase-020-alerts-cursor-pagination"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + real behavior через nginx/стек)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (если применимо)
-- [ ] 6 ship (PR, squash-merged)
-- [ ] 7 learnings (auto)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + real behavior через nginx/стек)
+- [x] 5 review (auto, adversarial)
+- [x] 5.5 security (если применимо)
+- [x] 6 ship (PR, squash-merged)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план по эталону task-016 и проверенным путям: task-016 оставил долг «cursor-пагинация для deep-offset»; модель `alerts.py` имеет `ix_alerts_user_id` + `uq_alerts_user_cluster`, сортировка ленты по `first_seen` → keyset `(first_seen DESC, id DESC)` + составной `ix_alerts_user_first_seen`; миграции chain `...0005_billing` → новая `0006`; фронт `features/alerts/{queries,api}` + `entities/alert` (task-016 infinite-хук) переводим на cursor; `gen.types.ts` регенерим из дампа task-019. Сохраняем tenant-scope + history-window из task-016. deps: 016. locate+plan выполнены — executor стартует с «3 do».)
+
+### do (loop-020, 2026-06-09)
+RED→GREEN. `schemas.py`: `AlertListResponse{items,next_cursor:str|None,history_unavailable}` (убраны total/limit/offset). `service.py`: keyset `ORDER BY first_seen DESC, id DESC LIMIT n+1`, предикат `tuple_(Alert.first_seen,Alert.id) < tuple_(literal(fs),literal(id))` (literal → BindParameter, параметризовано), opaque cursor `_encode/_decode_cursor` (base64url-JSON `[first_seen.isoformat(), id]`, round-trip UTC), `InvalidCursorError`; tenant-scope + history-window ДО keyset, Free→empty+history_unavailable; убран count/offset. `router.py`: `cursor:str|None` Query, убран offset, `InvalidCursorError→HTTP 422`. `models/alerts.py`: `Index("ix_alerts_user_first_seen","user_id","first_seen")` (старый ix_alerts_user_id оставлен — минимальный diff). Миграция `0006_alerts_user_first_seen_index.py` (rev 0006, down 0005, create/drop index). Тесты integration переписаны под cursor + AC1-якоря (no-dupes/gaps, insert-between, equal-first_seen tiebreaker, next_cursor=None, invalid→422). Фронт: gen.types регенерены офлайн, `api.ts ListAlertsParams{cursor?,limit?}`, `queries.ts useAlerts` infinite по `next_cursor` (initialPageParam null), новый unit `use-alerts-cursor.spec.ts`. list.tsx не тронут (абстракция hasNextPage/fetchNextPage).
+Проверки: integration 14/14 (ephemeral PG); `make ci-fast` зелёный (244 unit); frontend lint+tsc+build зелёные + 128 unit passed. Invalid cursor → 422 (строгий вариант).
+
+### verify (G2, loop-020, 2026-06-09)
+- `make ci-fast` зелёный (ruff/mypy strict 102 files/244 unit). 
+- AC2 — РЕАЛЬНАЯ миграция на чистой БД: `alembic upgrade head` (chain 0001→0006), `\di ix_alerts_user_first_seen` подтверждает индекс на alerts(user_id, first_seen); `alembic heads` = единственная `0006`; `downgrade -1` дропает индекс, re-upgrade восстанавливает; `test_migrations.py` 1 passed.
+- AC1/AC3/AC4 — integration `test_alerts_api.py` 14 passed (no-dupes/gaps, insert-between, tiebreaker, next_cursor=None, invalid→422, tenant-scope, Free history).
+- AC5 — frontend lint+tsc+build+`test:unit` (128) зелёные.
+- AC6 — `make build`+`make up` (чистый том): migration_runner применил 0006 в стеке; `GET /api/alerts` без auth→401 (guard жив); Playwright `alerts.spec.ts` все 4 passed за nginx. (Единственный фейл прогона — `watchlists.spec.ts:36 AC1` create-watchlist: pre-existing flaky таймаут, ВНЕ scope TASK-020 — alerts-спека изолированно 4/4.)
+
+### review + security (loop-020, 2026-06-09)
+**Review (opus): 0 CRITICAL/HIGH, APPROVE.** Keyset-корректность подтверждена (ORDER BY first_seen DESC,id DESC согласован с row-value предикатом `tuple_<`, fetch limit+1, tiebreaker id), обхода tenant-scope/history через cursor нет (cursor несёт только позицию, фильтры user_id/cutoff безусловны и ДО keyset), миграция чистая, scope соблюдён. 2 MEDIUM + 3 LOW — **исправлены/учтены**:
+- MEDIUM-1 (round-trip точность на равных first_seen) → tiebreaker-тест переведён на ненулевые микросекунды (123456) — ловит truncation/tz-drift.
+- MEDIUM-2 (unit дублировал логику вместо импорта) → вынес `alertsNextPageParam`/`ALERTS_INITIAL_PAGE_PARAM` из `queries.ts`, unit импортирует реальные хелперы.
+- LOW (dict без параметров в тестах) → `dict[str,object]`/`dict[str,int|str]`.
+**Security (opus): 0 CRITICAL/HIGH/MEDIUM, можно мержить.** SQL параметризован (`literal`→BindParameter, не f-string); обход tenant-scope через cursor НЕВОЗМОЖЕН (user.id из auth-сессии, фильтры безусловны, AND-семантика); DoS-лимиты на месте (кламп 100, fetch+1, декод до SQL); 422 без утечки стека. 2 LOW — **исправлены**: `_decode_cursor` теперь отклоняет `bool` как id и валидирует диапазон int8 (`_MIN/_MAX_CURSOR_ID`), иначе гигантский int мог дать 500 вместо 422 (нарушение AC3) — добавлен `test_out_of_range_cursor_id_not_500`. Перепроверка после фиксов: ci-fast 244, integration 15 passed, frontend lint/tsc/build/128 unit зелёные.

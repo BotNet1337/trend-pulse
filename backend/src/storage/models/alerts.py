@@ -24,6 +24,7 @@ class Alert(UserOwnedBase):
     __table_args__ = (
         UniqueConstraint("user_id", "cluster_id", name="uq_alerts_user_cluster"),
         Index("ix_alerts_user_id", "user_id"),
+        Index("ix_alerts_user_first_seen", "user_id", "first_seen"),
     )
 
     cluster_id: Mapped[int] = mapped_column(ForeignKey("clusters.id"), nullable=False)
