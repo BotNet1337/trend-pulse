@@ -1,11 +1,11 @@
 ---
 id: TASK-027
 title: Subscription renewal/expiry notifications — Beat-задача check_expiring_subscriptions (Telegram/email, идемпотентно)
-status: planned             # planned → in-progress → review → done
+status: done                # planned → in-progress → review → done
 owner: backend
 created: 2026-06-09
 updated: 2026-06-09
-baseline_commit: ""
+baseline_commit: "a14f2e28fc938378c2f5c4a68688cbef59bf6160"
 branch: "gsd/phase-027-subscription-renewal-notifications"
 tags: [epic-d, backend, billing, retention]
 ---
@@ -101,23 +101,36 @@ TrendPulse billing ([ADR-004](../architecture/adr-004-crypto-billing-nowpayments
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
-baseline_commit: ""
+current_step: done
+baseline_commit: "a14f2e28fc938378c2f5c4a68688cbef59bf6160"
 branch: "gsd/phase-027-subscription-renewal-notifications"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + real behavior через стек)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (если применимо)
-- [ ] 6 ship (PR, squash-merged)
-- [ ] 7 learnings (auto)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + real behavior через стек)
+- [x] 5 review (auto, adversarial)
+- [x] 5.5 security (opus — tenant-scope/PII/идемпотентность)
+- [x] 6 ship (PR, squash-merged)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план по эталону task-016/017 и контексту Epic D: реализовать ADR-004 §4 renewal-уведомления (пока не сделано). Beat-задача `check_expiring_subscriptions` сканирует `Subscription.expires_at` в окнах за 7/3/1 день (named constants), шлёт отдельный renewal-notification-тип (НЕ viral-alert, не через scorer/dispatch_alert, не в таблицу alerts) через Telegram (reuse task-009 notifier) и/или email (task-025). Идемпотентно — один раз per (subscription, window) через флаг/таблицу-трекинг + Alembic. effective_plan-downgrade (task-010) не дублируем. deps: 010 (billing/Subscription/effective_plan), 009 (Telegram-доставка/notifier), 025 (email-инфра). Security: tenant-scoped доставка. locate+plan выполнены этим планированием — executor стартует с «3 do».)
+
+
+
+### do+verify+review+security (loop-027, 2026-06-09)
+**do/verify:** Beat-задача `check_expiring_subscriptions` (billing/tasks.py) — email-first renewal (templates billing/renewal → SMTP→mailpit) для подписок в окнах 7/3/1 дн; идемпотентность через `Subscription.last_reminder_window` (миграция 0009 + partial-индекс ix_subscriptions_expires_at); beat-entry + celery include billing.tasks; renewal-шаблон (порт-стиль, safeHref). НЕ viral-alert (не в alerts/dispatch). G2 за стеком: письмо в mailpit РОВНО один раз (SENT_1=1/SENT_2=0), tenant-scoped, PII не в логах. integration 6/6, unit 27, ci-fast 324, test-cov 82.44%, миграция 0009 up/down + индекс подтверждён.
+**review (opus) + security (opus): 0 CRITICAL; 1 HIGH (=security LOW#6) — ИСПРАВЛЕН:**
+- HIGH (reset-при-продлении dead-code): ветка `current_window is None → reset` недостижима (query фильтрует `expires_at <= now+max(window)`), → после продления `last_reminder_window=1` навсегда блокировал новые напоминания (gate `>=`). **FIX:** gate на `==` (skip только точное окно) — внутри периода окна сужаются (каждое раз), после продления новое окно ШИРЕ последнего (`7 != 1` → шлём); reset-ветка удалена. Тест переписан (`test_renewed_period_resends_at_wider_window`).
+- Security LOW#3 (PII в логах): `exc_info=True` втягивал email из EmailSendError → лог только `type(exc).__name__`+ids.
+- MEDIUM: partial-индекс на expires_at (миграция+модель); commit per-subscription (expire_on_commit=False → robust exactly-once, без N+1); `_SECONDS_PER_DAY` использован; unused `_session` убран.
+- Security MEDIUM#2 (userName=user.email в письме): принято — письмо уходит САМОМУ владельцу (его email в его письме, не утечка), консистентно с auth-письмами TASK-026; docstring про ЛОГИ (а не тело) корректен.
+**security вердикт:** cross-tenant email leak НЕТ (join subscription→user, 1:1 unique, свежий user per-row); email-инъекция safe (EmailMessage); XSS/open-redirect нет (safeHref + base_url из settings); спам предотвращён идемпотентностью; SQL через ORM/bind-params.
+Перепроверка после фиксов: renewal unit 27, ci-fast 324, integration 6/6, миграция 0009+индекс.
+**Follow-up (LOW):** Telegram-канал renewal (email-first сейчас); FOR UPDATE при мульти-beat (сейчас один инстанс).
 
 ### Подсказки исполнителю (initial)
 - **Окна:** `RENEWAL_REMINDER_DAYS: tuple[int, ...] = (7, 3, 1)` в `billing/constants.py`. Query: подписки, где `expires_at` между `now` и `now + max(window)` дней И конкретное окно ещё не отправлено.

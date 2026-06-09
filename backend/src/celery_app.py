@@ -29,7 +29,7 @@ celery_app = Celery(
     # `compliance.tasks.purge_expired_raw_content` (task-011) are unrouted → they
     # land on the default `celery` queue the worker already consumes (no compose
     # change).
-    include=["pipeline.tasks", "alerts.tasks", "compliance.tasks"],
+    include=["pipeline.tasks", "alerts.tasks", "compliance.tasks", "billing.tasks"],
 )
 celery_app.conf.task_serializer = "json"
 celery_app.conf.accept_content = ["json"]

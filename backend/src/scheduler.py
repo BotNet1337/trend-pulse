@@ -8,6 +8,7 @@ a cycle; task *names* come from `pipeline.constants` (no `celery_app` import).
 """
 
 from alerts.constants import RESWEEP_PENDING_ALERTS_TASK
+from billing.constants import CHECK_EXPIRING_SUBSCRIPTIONS_TASK
 from compliance.constants import PURGE_EXPIRED_RAW_CONTENT_TASK
 from config import get_settings
 from pipeline.constants import ENQUEUE_BATCHES_TASK, SCORE_TICK_TASK
@@ -39,5 +40,12 @@ beat_schedule: dict[str, dict[str, object]] = {
     "resweep-pending-alerts": {
         "task": RESWEEP_PENDING_ALERTS_TASK,
         "schedule": float(_settings.pending_resweep_interval_seconds),
+    },
+    # Renewal notifications (task-027): scan subscriptions expiring within
+    # RENEWAL_REMINDER_DAYS (7/3/1) and send idempotent renewal reminder emails.
+    # Runs once per day (default) — sufficient for day-granularity reminder windows.
+    "check-expiring-subscriptions": {
+        "task": CHECK_EXPIRING_SUBSCRIPTIONS_TASK,
+        "schedule": float(_settings.renewal_check_interval_seconds),
     },
 }

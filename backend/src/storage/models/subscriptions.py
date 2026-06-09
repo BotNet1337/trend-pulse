@@ -16,7 +16,16 @@ are timezone-aware (never naive).
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, UniqueConstraint
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from storage.models.base import Base, utcnow
@@ -37,7 +46,15 @@ class Subscription(Base):
     """A user's current paid plan + expiry. One row per user (unique `user_id`)."""
 
     __tablename__ = "subscriptions"
-    __table_args__ = (UniqueConstraint("user_id", name="uq_subscriptions_user_id"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", name="uq_subscriptions_user_id"),
+        # Partial index for the renewal sweep (task-027): expires_at within window.
+        Index(
+            "ix_subscriptions_expires_at",
+            "expires_at",
+            postgresql_where=text("expires_at IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(
@@ -46,6 +63,11 @@ class Subscription(Base):
     plan: Mapped[str] = mapped_column(String(_PLAN_MAX), nullable=False)
     # NULL = no active paid period (the effective plan falls back to Free).
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Renewal-reminder idempotency (task-027): NULL initially; set to the current
+    # window (days) after a successful reminder send. The beat task skips only when
+    # this EQUALS the current window, so a renewed period (window widens past the
+    # last sent, e.g. 7 vs 1) re-triggers reminders without needing an explicit reset.
+    last_reminder_window: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )

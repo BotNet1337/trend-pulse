@@ -91,5 +91,26 @@
       "oldEmail": "old@example.com",
       "newEmail": "new@example.com"
     }
+  },
+  {
+    "eventName": "billing.renewal",
+    "templatePath": "billing/renewal",
+    "subject": "Your TrendPulse subscription is expiring soon",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "userName": { "type": "string" },
+        "planName": { "type": "string" },
+        "daysLeft": { "type": ["number", "string"] },
+        "renewUrl": { "type": "string" }
+      },
+      "required": ["userName", "planName", "daysLeft", "renewUrl"]
+    },
+    "previewDefaults": {
+      "userName": "Alex",
+      "planName": "pro",
+      "daysLeft": 3,
+      "renewUrl": "https://app.trendpulse.local/billing"
+    }
   }
 ]
