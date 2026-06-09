@@ -3,7 +3,7 @@
 Surgical-change task docs produced by `trendpulse-plan` / `trendpulse-executor`.
 One row per `task-NNN-slug.md`. Newest at the bottom.
 
-Roadmap: [`../architecture/roadmap.md`](../architecture/roadmap.md). Epic A = Backend core (детальные таски ниже, все done); эпики C (frontend SPA, TASK-013..017) и B (landing, TASK-018) теперь **детализированы** (ранее заглушки в roadmap).
+Roadmap: [`../architecture/roadmap.md`](../architecture/roadmap.md). Epic A = Backend core (все done); эпики C (frontend SPA, TASK-013..017) и B (landing, TASK-018) — **done**. **Epic D = Hardening & growth** (TASK-019..033) — post-MVP волна: DX/CI, корректность скоринга, надёжность/observability, email/auth-completeness, монетизация (renewal/API-keys), SSR, API-hardening, второй источник (Twitter), security, GDPR-export.
 
 | ID | Title | Epic | Status | Owner | Deps | Updated |
 |----|-------|------|--------|-------|------|---------|
@@ -25,3 +25,18 @@ Roadmap: [`../architecture/roadmap.md`](../architecture/roadmap.md). Epic A = Ba
 | [TASK-016](./task-016-alerts-ui.md) | Alerts UI — лента/история + детали (+ тонкий GET /alerts) | C | done | frontend | 014, 008, 009 | 2026-06-09 |
 | [TASK-017](./task-017-billing-account-ui.md) | Billing & Account UI — план/инвойс/delivery-config/удаление (GDPR) | C | done | frontend | 014, 010, 009, 011 | 2026-06-09 |
 | [TASK-018](./task-018-landing-base.md) | Landing base — hero/how-it-works/features/pricing/CTA/compliance | B | done | frontend | — | 2026-06-09 |
+| [TASK-019](./task-019-api-dx-swagger-client-gen.md) | API DX — SWAGGER_ENABLE gating + офлайн OpenAPI-дамп + автоген фронт-клиента + удаление error-codes | D | planned | backend | 013 | 2026-06-09 |
+| [TASK-020](./task-020-alerts-cursor-pagination.md) | Alerts cursor-пагинация + composite index (user_id, first_seen) | D | planned | backend | 016 | 2026-06-09 |
+| [TASK-021](./task-021-ci-foundation.md) | CI foundation — корневые workflows + conftest alembic-изоляция + dep-scan + coverage-gate | D | planned | infra | 001 | 2026-06-09 |
+| [TASK-022](./task-022-scoring-correctness.md) | Scoring correctness — posts.cluster_id FK + per-cluster score + Score retention + горячие индексы | D | planned | backend | 007, 008 | 2026-06-09 |
+| [TASK-023](./task-023-reliability-pending-sweep.md) | Reliability — pending-sweep Beat + Celery /ready + alerts-by-status метрика | D | planned | backend | 008, 009 | 2026-06-09 |
+| [TASK-024](./task-024-observability-sentry-trace.md) | Observability — Sentry (FastAPI+Celery) + correlation/trace-id | D | planned | backend | 011 | 2026-06-09 |
+| [TASK-025](./task-025-templates-email-service.md) | Templates service (порт из postbridge) + SMTP email-транспорт + mailpit + compose/provisioning | D | planned | infra | 001 | 2026-06-09 |
+| [TASK-026](./task-026-auth-verify-reset.md) | Auth completeness — verify + reset-password роутеры + email/templates + фронт-страницы | D | planned | backend | 003, 014, 025 | 2026-06-09 |
+| [TASK-027](./task-027-subscription-renewal-notifications.md) | Subscription renewal/expiry-уведомления (Beat + notifier/email) | D | planned | backend | 010, 009, 025 | 2026-06-09 |
+| [TASK-028](./task-028-api-keys-team.md) | API-ключи для Team-плана (api_keys, issue/revoke, X-API-Key auth, rate-limit keying) | D | planned | backend | 003, 010 | 2026-06-09 |
+| [TASK-029](./task-029-frontend-ssr-enablement.md) | Frontend SSR enablement (TanStack hydration, cookie-forward) + manualChunks | D | planned | frontend | 013, 014 | 2026-06-09 |
+| [TASK-030](./task-030-api-hardening-errors-versioning.md) | API hardening — единый error-envelope + machine-readable коды + /api/v1 версионирование | D | planned | backend | 019 | 2026-06-09 |
+| [TASK-031](./task-031-twitter-source.md) | Twitter/X source readiness (collector/twitter по ADR-001 + per-source лимиты) | D | planned | backend | 005 | 2026-06-09 |
+| [TASK-032](./task-032-security-hardening.md) | Security hardening — per-route rate-limit + CSRF в nginx + at-rest шифрование (app-level, опц.) | D | planned | infra | 011, 012 | 2026-06-09 |
+| [TASK-033](./task-033-gdpr-data-export.md) | GDPR data-export (GET /account/export, Art.20 portability) | D | planned | backend | 011 | 2026-06-09 |
