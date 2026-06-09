@@ -1,7 +1,7 @@
 ---
 id: TASK-017
 title: Billing & Account UI — план Free/Pro/Team, крипто-инвойс, delivery-config, удаление аккаунта (GDPR)
-status: in-progress      # planned → in-progress → review → done
+status: done             # planned → in-progress → review → done
 owner: frontend
 created: 2026-06-09
 updated: 2026-06-09
@@ -108,20 +108,26 @@ Backend-пробелы, которые C5 закрывает тонкими addi
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 5
+current_step: done
 baseline_commit: "7990c972617018b129c36af5cb87920165e89c2a"
 branch: "gsd/phase-017-billing-account-ui"
-lock: "loop-017"
+lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [x] 3 do (TDD: failing test → minimal code)
 - [x] 4 verify (G2 — backend integration 12/12 + Playwright 4/4 e2e за nginx, vitest 120)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (XSS/санитизация, secrets не в бандле, cookie/CSRF, SSRF в webhook-полях)
-- [ ] 6 ship (PR, squash-merged)
-- [ ] 7 learnings (auto)
+- [x] 5 review (auto, adversarial — PASS, 0 blocking; MED null-clear + LOWs fixed)
+- [x] 5.5 security (PASS, 0 blocking — SSRF task-009 reuse, token masked, plan-gating server-side, no secrets in bundle, no Stripe)
+- [x] 6 ship (PR, squash-merged)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план по эталону task-003/004 и контексту: экран плана Free/Pro/Team (план из GET /users/me), крипто-инвойс (POST /billing/invoice, никакого Stripe), delivery-config (тонкая backend-добавка GET/PATCH /users/me/delivery-config, SSRF webhook переиспользует task-009), удаление аккаунта (DELETE /account, GDPR, confirm). Security-чувствительно → стадия 5.5 обязательна. deps: 014 (guard/current_user), backend 010 (billing), 009 (delivery/SSRF), 011 (GDPR delete). Billing-ядро/IPN/SSRF не переписываем. locate+plan выполнены этим планированием — executor стартует с «3 do».)
+
+### Step 3 do · 4 verify · 5 review · 5.5 security · loop-017
+- **do (TDD):** backend `api/account/delivery_config.py` — `GET/PATCH /users/me/delivery-config` (токен маскирован `***last4`, webhook feature-gate Pro+ через `assert_within_limit(WEBHOOK_DELIVERY)`→403 на Free, SSRF-валидация webhook через task-009 `validate_webhook_url` reuse), `DeliveryConfigRead/Update` (`extra=forbid`). Frontend: `entities/plan`, `features/billing` (createInvoice+PlanComparison+InvoiceDisplay), `features/delivery-config`, `pages/billing` (`/billing` за guard — **закрывает долг C3**), account-settings delivery-форма + delete-confirm. gen.types регенерирован. Коммиты 8df21a0/0c9e300/17ab450/5527ba3.
+- **verify (G2):** backend integration **12/12**; build/tsc/lint зелёные, vitest 120; Playwright **4/4 за nginx** (AC1 invoice стаб NOWPayments, AC3 delivery happy/masked, AC4 webhook→upsell, AC6 delete confirm→204→logout). **Баг исправлен: Team price $49→$79** (overview §6/plans.py) — был и в коде, и в unit-тесте.
+- **review+security (opus) PASS — 0 blocking.** SSRF реально reuse task-009 (send-time PinnedIPTransport авторитет); токен write-only/masked, нет секретов в бандле; plan-gating серверный; IDOR tenant-scoped; delete за подтверждением→logout; no Stripe (сумма из InvoiceResponse). **Фиксы:** MED null-to-clear (PATCH по `model_fields_set`) + LOW (типы из gen.types, мёртвый тернарник). re-verify: integration 12/12, ci-fast 242, frontend зелёные.
+- **Долг:** реальный invoice e2e с NOWPayments-ключом; client webhook-валидация наивная (UX-only, серверный авторитетен).
