@@ -60,8 +60,19 @@ def effective_plan(session: Session, user: User) -> Plan:
 
 
 def _channel_usage(session: Session, user_id: int) -> int:
-    """Current channel count for the user (one watchlist row = one channel)."""
-    stmt = select(func.count()).select_from(Watchlist).where(Watchlist.user_id == user_id)
+    """Current channel count for the user — manual watchlists ONLY (pack rows excluded).
+
+    Pack rows (pack_slug IS NOT NULL) do NOT count toward the CHANNELS cap (TASK-038,
+    AC3): pack channels are a Free-funnel value and tracked via a separate PACKS limit.
+    This preserves backward-compatibility: existing rows with pack_slug=NULL are
+    unaffected; no behaviour change for users who have never subscribed to a pack.
+    """
+    stmt = (
+        select(func.count())
+        .select_from(Watchlist)
+        .where(Watchlist.user_id == user_id)
+        .where(Watchlist.pack_slug.is_(None))
+    )
     return int(session.scalar(stmt) or 0)
 
 
@@ -75,9 +86,25 @@ def _topic_usage(session: Session, user_id: int) -> int:
     return int(session.scalar(stmt) or 0)
 
 
+def _packs_usage(session: Session, user_id: int) -> int:
+    """Current count of distinct pack subscriptions for the user (TASK-038).
+
+    Counts distinct non-NULL pack_slug values in the user's watchlists. Each unique
+    pack_slug represents one subscribed pack. This is the usage counter for Resource.PACKS.
+    """
+    stmt = (
+        select(func.count(func.distinct(Watchlist.pack_slug)))
+        .select_from(Watchlist)
+        .where(Watchlist.user_id == user_id)
+        .where(Watchlist.pack_slug.is_not(None))
+    )
+    return int(session.scalar(stmt) or 0)
+
+
 _USAGE_COUNTERS = {
     Resource.CHANNELS: _channel_usage,
     Resource.TOPICS: _topic_usage,
+    Resource.PACKS: _packs_usage,
 }
 
 

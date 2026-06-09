@@ -4,6 +4,9 @@ Covers: channel cap per plan (Free 5 / Pro 100 / Team 500), boolean feature gati
 (webhook_delivery / api_access → 403), unlimited (`None`) always passes, and the
 expiry rollback (an expired Pro subscription → effective Free).
 
+TASK-038 additions: _channel_usage excludes pack rows (pack_slug IS NOT NULL),
+_packs_usage counts DISTINCT pack_slug, assert_within_limit(PACKS) raises at Free cap.
+
 The single entry under test is `billing.assert_within_limit`; `effective_plan`
 resolves the rollback. The session is mocked so these stay unit tests.
 """
@@ -13,7 +16,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from billing.limits import PlanLimitExceeded, assert_within_limit, effective_plan
+from billing.limits import (
+    PlanLimitExceeded,
+    _channel_usage,
+    _packs_usage,
+    assert_within_limit,
+    effective_plan,
+)
 from billing.plans import Plan, Resource
 from storage.models.base import utcnow
 from storage.models.subscriptions import Subscription
@@ -135,3 +144,73 @@ def test_expired_pro_blocks_channels_over_free_cap() -> None:
     with pytest.raises(PlanLimitExceeded) as exc:
         assert_within_limit(session, _user("pro"), Resource.CHANNELS)
     assert exc.value.code == 402
+
+
+# ─── TASK-038: PACKS resource + _channel_usage/_packs_usage helpers ───────────
+
+
+def test_channel_usage_returns_scalar_from_session() -> None:
+    """_channel_usage delegates to session.scalar() — result plumbed through correctly.
+
+    The SQL filter (pack_slug IS NULL) is verified by the integration test
+    test_pack_rows_do_not_consume_channel_limit (AC3). Here we confirm the helper
+    returns the integer the DB would return.
+    """
+    session = MagicMock()
+    session.scalar.return_value = 3
+    assert _channel_usage(session, user_id=1) == 3
+
+
+def test_channel_usage_treats_none_scalar_as_zero() -> None:
+    """_channel_usage coerces None (no rows) to 0."""
+    session = MagicMock()
+    session.scalar.return_value = None
+    assert _channel_usage(session, user_id=1) == 0
+
+
+def test_packs_usage_returns_distinct_count_from_session() -> None:
+    """_packs_usage delegates to session.scalar() — distinct pack_slug count plumbed through.
+
+    The SQL filter (pack_slug IS NOT NULL, COUNT DISTINCT) is verified by integration
+    test test_second_pack_returns_402_for_free_user (AC3). Here we confirm the helper
+    returns the session scalar value.
+    """
+    session = MagicMock()
+    session.scalar.return_value = 2
+    assert _packs_usage(session, user_id=1) == 2
+
+
+def test_packs_usage_treats_none_scalar_as_zero() -> None:
+    """_packs_usage coerces None (no pack rows) to 0."""
+    session = MagicMock()
+    session.scalar.return_value = None
+    assert _packs_usage(session, user_id=1) == 0
+
+
+def test_free_packs_at_cap_raises_402() -> None:
+    """assert_within_limit(PACKS) raises 402 when Free user is at cap (1 pack)."""
+    # Free plan PACKS cap = 1; usage=1 → adding one more would breach it.
+    session = _session_with(usage=1)
+    with pytest.raises(PlanLimitExceeded) as exc:
+        assert_within_limit(session, _user("free"), Resource.PACKS)
+    assert exc.value.code == 402
+
+
+def test_free_packs_under_cap_passes() -> None:
+    """assert_within_limit(PACKS) passes when Free user has 0 packs (cap=1)."""
+    session = _session_with(usage=0)
+    assert_within_limit(session, _user("free"), Resource.PACKS)  # should not raise
+
+
+def test_pro_packs_at_cap_raises_402() -> None:
+    """assert_within_limit(PACKS) raises 402 when Pro user is at cap (5 packs)."""
+    session = _session_with(usage=5, subscription=_active_sub(Plan.PRO))
+    with pytest.raises(PlanLimitExceeded) as exc:
+        assert_within_limit(session, _user("pro"), Resource.PACKS)
+    assert exc.value.code == 402
+
+
+def test_pro_packs_under_cap_passes() -> None:
+    """assert_within_limit(PACKS) passes when Pro user has 3 packs (cap=5)."""
+    session = _session_with(usage=3, subscription=_active_sub(Plan.PRO))
+    assert_within_limit(session, _user("pro"), Resource.PACKS)  # should not raise

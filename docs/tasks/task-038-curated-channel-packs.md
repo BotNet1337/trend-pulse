@@ -1,7 +1,7 @@
 ---
 id: TASK-038
 title: Curated channel packs — каталог наборов, GET /packs, подписка в 1 клик вне лимита CHANNELS
-status: planned
+status: done
 owner: backend
 created: 2026-06-09
 updated: 2026-06-09
@@ -117,19 +117,35 @@ Watchlist API: `api/watchlist/{router,schemas,service}.py` — эталон ст
 - **security (5.5):** input — slug по белому списку каталога (404 иначе); rate-limit существующий; tenant-scope AC5.
 
 ## Checkpoints
-current_step: 3
+current_step: done
 baseline_commit: "05cbdb8c7ec62af708412389ba98a788534d5f45"
-branch: ""
+branch: "gsd/phase-e1-curated-channel-packs"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + real behavior)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (user input/limits — применимо)
-- [ ] 6 ship (PR, squash-merged)
-- [ ] 7 learnings (auto)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + real behavior; см. Details)
+- [x] 5 review (auto, adversarial — pass; HIGH-гонка каналов исправлена в fix-цикле)
+- [x] 5.5 security (user input/limits — pass; mass-assignment закрыт extra='forbid', slug по whitelist)
+- [x] 6 ship (PR, squash-merged)
+- [x] 7 learnings (auto — записаны в docs/learnings.md до ship, в том же PR)
 debug_runs: []
 
 ## Details
 (initial — locate: Channel глобален + cross-tenant dedup → паки дёшевы для пула; unique (user_id, channel_id, topic) определяет skip-семантику; `assert_within_limit` — единственная точка лимитов (ADR-003) — расширяем Resource, не обходим; миграционный паттерн NNNN_slug. Решение «bulk-строки с pack_slug» выбрано как минимальный blast radius (ядро не тронуто). Состав первых паков — за owner'ом до ship.)
+
+2026-06-10 (do→ship): TDD (RED: 12 integration падали 404 → GREEN). Миграция 0011 (`pack_slug` varchar(64)
+NULL + индекс (user_id, pack_slug)) применена к dev. Каталог: 2 пака-плейсхолдера `crypto-ru` (8) и
+`tech-en` (6) — OWNER NOTE в data.py: заменить хэндлы curated-списком до прод-деплоя. G2 живым HTTP:
+GET /packs 200; subscribe → {created:8,skipped:0}, повтор идемпотентен (created:0, слот не съеден —
+проверка подписки ДО assert_within_limit); второй пак на Free → 402 PACKS; 5 ручных watchlist после
+пака — все 201 (_channel_usage фильтрует pack_slug IS NULL); unsubscribe → {deleted:8}, ручные целы;
+401 без auth; 404 на неизвестный slug; tenant-scope чист. Fix-цикл по ревью: (1) HIGH — get-or-create
+канала перенесён ВНУТРЬ per-row savepoint (гонка конкурентных подписок на новый канал больше не
+отравляет транзакцию; IntegrityError → rollback savepoint → re-SELECT) + детерминированный тест гонки;
+(2) добавлены unit-тесты лимитов (_channel_usage/_packs_usage/PACKS at-cap); (3) extractErrorMessage
+вынесен в module и тестируется реальный код; (4) tenant-derivation унифицирован через get_tenant_user_id.
+Известные ограничения (по Discussion): обновление состава пака после подписки не синкается
+(отписка+подписка); corner-case «все каналы пака уже в ручных watchlist» → created=0 и пак не помечен
+подписанным (задокументировано в service docstring). OpenAPI dump + gen.types регенерированы и входят
+в PR (CI drift-gate). Итог: 496+ backend, 138 frontend тестов, ruff/mypy/tsc/eslint чисто.

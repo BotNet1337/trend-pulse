@@ -584,6 +584,36 @@
         "title": "OAuth2AuthorizeResponse",
         "type": "object"
       },
+      "PackRead": {
+        "additionalProperties": false,
+        "description": "Catalog entry returned by GET /packs.",
+        "properties": {
+          "channels_count": {
+            "title": "Channels Count",
+            "type": "integer"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "topic": {
+            "title": "Topic",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "title",
+          "topic",
+          "channels_count"
+        ],
+        "title": "PackRead",
+        "type": "object"
+      },
       "Plan": {
         "description": "Subscription tiers (overview §6). String values match `users.plan`.",
         "enum": [
@@ -602,6 +632,26 @@
         "title": "SourceKind",
         "type": "string"
       },
+      "SubscribeResult": {
+        "additionalProperties": false,
+        "description": "Result of POST /packs/{slug}/subscribe.",
+        "properties": {
+          "created": {
+            "title": "Created",
+            "type": "integer"
+          },
+          "skipped": {
+            "title": "Skipped",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "created",
+          "skipped"
+        ],
+        "title": "SubscribeResult",
+        "type": "object"
+      },
       "TenantResponse": {
         "description": "Tenant identity payload for the protected example route.",
         "properties": {
@@ -614,6 +664,21 @@
           "user_id"
         ],
         "title": "TenantResponse",
+        "type": "object"
+      },
+      "UnsubscribeResult": {
+        "additionalProperties": false,
+        "description": "Result of DELETE /packs/{slug}/subscribe.",
+        "properties": {
+          "deleted": {
+            "title": "Deleted",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "title": "UnsubscribeResult",
         "type": "object"
       },
       "UserCreate": {
@@ -1811,6 +1876,131 @@
           }
         },
         "summary": "Health"
+      }
+    },
+    "/packs": {
+      "get": {
+        "description": "Return the full curated pack catalog (auth required — AC1).\n\nNo DB query: the catalog is a static in-memory structure. Auth is required\nso unauthenticated crawlers cannot enumerate the catalog.",
+        "operationId": "get_packs_packs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PackRead"
+                  },
+                  "title": "Response Get Packs Packs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Packs",
+        "tags": [
+          "packs"
+        ]
+      }
+    },
+    "/packs/{slug}/subscribe": {
+      "delete": {
+        "description": "Unsubscribe from a pack — deletes all watchlist rows with this pack_slug.\n\n- 404 if slug not in catalog (unknown pack — not just \"not subscribed\").\n- 200 with deleted=0 if the slug is valid but the user is not subscribed.\n- Manual watchlists (pack_slug IS NULL) are NEVER touched.",
+        "operationId": "unsubscribe_pack_packs__slug__subscribe_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnsubscribeResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Unsubscribe Pack",
+        "tags": [
+          "packs"
+        ]
+      },
+      "post": {
+        "description": "Subscribe to a curated pack — creates watchlist rows with pack_slug marker.\n\n- 404 if slug not in catalog.\n- 402 if the user has reached their PACKS plan limit (handled globally).\n- Idempotent: re-subscribing the same pack returns created=0, not an error.\n- Skip-conflicts (channel already watched manually) are counted in `skipped`.",
+        "operationId": "subscribe_pack_packs__slug__subscribe_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscribeResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Subscribe Pack",
+        "tags": [
+          "packs"
+        ]
       }
     },
     "/ready": {
