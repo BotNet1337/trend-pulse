@@ -11,6 +11,7 @@ from alerts.constants import RESWEEP_PENDING_ALERTS_TASK
 from billing.constants import CHECK_EXPIRING_SUBSCRIPTIONS_TASK
 from compliance.constants import PURGE_EXPIRED_RAW_CONTENT_TASK
 from config import get_settings
+from observability.constants import EMIT_SIGNAL_LATENCY_TASK
 from pipeline.constants import ENQUEUE_BATCHES_TASK, SCORE_TICK_TASK
 
 _settings = get_settings()
@@ -47,5 +48,12 @@ beat_schedule: dict[str, dict[str, object]] = {
     "check-expiring-subscriptions": {
         "task": CHECK_EXPIRING_SUBSCRIPTIONS_TASK,
         "schedule": float(_settings.renewal_check_interval_seconds),
+    },
+    # Signal latency + Redis memory metric (task-036): emit p50/p95 for delivered
+    # alerts (e2e and delivery cuts) plus Redis INFO memory. Read-only, lightweight
+    # (single SQL aggregate + Redis INFO). Default every 300s, window default 3600s.
+    "emit-signal-latency": {
+        "task": EMIT_SIGNAL_LATENCY_TASK,
+        "schedule": float(_settings.latency_emit_interval_seconds),
     },
 }

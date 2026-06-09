@@ -111,6 +111,12 @@ _DEFAULT_FRONTEND_BASE_URL = "http://localhost"
 # Daily cadence is sufficient because reminder windows are in whole days (7/3/1).
 _DEFAULT_RENEWAL_CHECK_INTERVAL_SECONDS: int = 86_400
 
+# Signal latency metric (TASK-036). Named, non-secret defaults; time in SECONDS.
+# `latency_emit_interval_seconds`: how often the Beat task fires (default 5 min).
+# `latency_window_seconds`: sliding window of delivered alerts to measure (default 1h).
+_DEFAULT_LATENCY_EMIT_INTERVAL_SECONDS: int = 300
+_DEFAULT_LATENCY_WINDOW_SECONDS: int = 3600
+
 # TG account pool health + ops self-alert (TASK-035). Named, non-secret defaults.
 # `pool_min_healthy` is the operational target: fewer healthy accounts = degraded
 # (warn metric + self-alert). POOL_MIN=1 remains the hard floor in collector/constants
@@ -236,6 +242,12 @@ class Settings(BaseSettings):
     # --- Renewal notifications (TASK-027). Non-secret, settable; default above.
     # Beat interval (seconds) for the check_expiring_subscriptions task. ---
     renewal_check_interval_seconds: int = _DEFAULT_RENEWAL_CHECK_INTERVAL_SECONDS
+
+    # --- Signal latency metric (TASK-036). Non-secret, settable; defaults above.
+    # Beat interval (seconds) for the emit_signal_latency_task.
+    # Sliding window (seconds) of delivered alerts included in the metric. ---
+    latency_emit_interval_seconds: int = _DEFAULT_LATENCY_EMIT_INTERVAL_SECONDS
+    latency_window_seconds: int = _DEFAULT_LATENCY_WINDOW_SECONDS
 
     # --- Email — templates service + SMTP transport (TASK-025). ---
     # Templates service URL — non-secret, from deploy.env; dev → compose service.

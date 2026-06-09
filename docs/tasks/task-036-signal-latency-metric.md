@@ -1,7 +1,7 @@
 ---
 id: TASK-036
 title: Метрика задержки сигнала p50/p95 «пост→алерт» + Redis memory watch
-status: planned
+status: done
 owner: backend
 created: 2026-06-09
 updated: 2026-06-09
@@ -92,19 +92,34 @@ tags: [epic-e0, backend, observability, pain-p3, pain-p7]
 - **security:** не применимо (read-only агрегаты) — 5.5 скип с пометкой.
 
 ## Checkpoints
-current_step: 3
+current_step: done
 baseline_commit: "05cbdb8c7ec62af708412389ba98a788534d5f45"
-branch: ""
+branch: "gsd/phase-e0-signal-latency-metric"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + real behavior)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (n/a — read-only)
-- [ ] 6 ship (PR, squash-merged)
-- [ ] 7 learnings (auto)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + real behavior; см. Details)
+- [x] 5 review (auto, adversarial — pass; MEDIUM точные p95-ассерты добавлены, факт 338s)
+- [x] 5.5 security (N/A — read-only агрегаты, скип по test plan)
+- [x] 6 ship (PR, squash-merged)
+- [x] 7 learnings (auto — записаны в docs/learnings.md до ship, в том же PR)
 debug_runs: []
 
 ## Details
 (initial — locate: полный тайм-чейн уже в моделях (`posts.posted_at`/`fetched_at`, `alerts.first_seen`/`delivered_at`, `posts.cluster_id` FK с task-022) — миграции НЕ нужны; паттерн — `alert_status.py` + `log_event`; Beat-паттерн — 5 существующих периодик в `scheduler.py`. PERCENTILE_CONT доступен в Postgres из коробки. Это «прибор» для главного KPI продукта — скорости; данные отсюда триггерят TASK-053.)
+
+2026-06-10 (do→ship): TDD 8 unit (RED→GREEN) + 5 integration (реальный Postgres). SQL: один запрос,
+PERCENTILE_CONT(0.5/0.95) WITHIN GROUP по GREATEST(EXTRACT(EPOCH …), 0); CTE min_post (MIN(posted_at)
+per cluster) LEFT JOIN — кластер без постов выпадает из e2e (NULL игнорится перцентилем), остаётся в
+delivery/count; count_negative через FILTER; окно — make_interval(secs => :window_seconds) (bind-param;
+обычный INTERVAL ':n seconds' bind не принимает). Beat: emit-signal-latency (300s default), task в
+observability/tasks.py, оба emit'а независимо best-effort. G2 живьём (in-process против dev Postgres+Redis):
+сидированный алерт (post -300s, first_seen -120s, delivered now) → signal_latency {e2e_p50_s:300.0,
+delivery_p50_s:120.0, count:1}; redis_memory {used/peak/max}; битый Redis-порт → warn, без падения;
+сид удалён. Review pass: добавлены точные p95-ассерты (PERCENTILE_CONT(0.95) над [70,140,360] = 338 —
+ревьюер сначала насчитал 332, факт из БД 338, формула idx=0.95*(n-1)). Отклонение от Scope: unit-тест
+лежит в tests/unit/ (плоско), не tests/unit/observability/ — конвенция репо (db-фикстуры только в
+integration). Принято к сведению: count = delivery-разрез (алерты без постов входят); индекс по
+delivered_at не нужен при 48h-ретенции (seq scan ок — зафиксировано как accepted). После мержа TASK-040 —
+добавить фильтр deliver_after IS NULL (см. Discussion).
