@@ -23,5 +23,5 @@ Roadmap: [`../architecture/roadmap.md`](../architecture/roadmap.md). Epic A = Ba
 | [TASK-014](./task-014-auth-flow-ui.md) | Auth flow UI — register/login/logout, Google OAuth, guard, current_user | C | done | frontend | 013, 003 | 2026-06-09 |
 | [TASK-015](./task-015-watchlists-ui.md) | Watchlists UI — CRUD, alert-config, UX лимитов плана | C | done | frontend | 014, 004 | 2026-06-09 |
 | [TASK-016](./task-016-alerts-ui.md) | Alerts UI — лента/история + детали (+ тонкий GET /alerts) | C | done | frontend | 014, 008, 009 | 2026-06-09 |
-| [TASK-017](./task-017-billing-account-ui.md) | Billing & Account UI — план/инвойс/delivery-config/удаление (GDPR) | C | planned | frontend | 014, 010, 009, 011 | 2026-06-09 |
+| [TASK-017](./task-017-billing-account-ui.md) | Billing & Account UI — план/инвойс/delivery-config/удаление (GDPR) | C | done | frontend | 014, 010, 009, 011 | 2026-06-09 |
 | [TASK-018](./task-018-landing-base.md) | Landing base — hero/how-it-works/features/pricing/CTA/compliance | B | planned | frontend | — | 2026-06-09 |

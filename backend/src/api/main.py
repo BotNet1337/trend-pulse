@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
+from api.account import delivery_config_router
 from api.alerts import router as alerts_router
 from api.auth import (
     UserCreate,
@@ -138,6 +139,10 @@ app.include_router(watchlist_router)
 
 # --- Billing (invoice behind current_user; IPN raw-body, no auth). ---
 app.include_router(billing_router)
+
+# --- Delivery-config read/patch (TASK-017 C5): GET/PATCH /users/me/delivery-config
+# — behind current_user, feature-gated webhook_url (Pro+), SSRF-validated. ---
+app.include_router(delivery_config_router)
 
 # --- GDPR account deletion (DELETE /account, behind current_user) + ops
 # readiness probe (GET /ready), task-011. ---

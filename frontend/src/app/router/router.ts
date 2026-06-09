@@ -11,6 +11,7 @@ import {
   AlertDetailPage,
   AlertsListPage,
   AnonymousLayout,
+  BillingPage,
   ConfirmEmailChangePage,
   ConfirmEmailPage,
   ForgotPasswordPage,
@@ -82,6 +83,12 @@ const accountSettingsRoute = createRoute({
   getParentRoute: () => protectedContentRoute,
   path: paths.account.settings,
   component: AccountSettingsPage,
+});
+
+const billingRoute = createRoute({
+  getParentRoute: () => protectedContentRoute,
+  path: paths.billing,
+  component: BillingPage,
 });
 
 // Alerts routes — all behind protectedContentRoute (AuthGuard)
@@ -157,6 +164,7 @@ const routeTree = rootRoute.addChildren([
     protectedContentRoute.addChildren([
       indexRoute,
       accountSettingsRoute,
+      billingRoute,
       alertsListRoute,
       alertDetailRoute,
       watchlistsListRoute,
