@@ -16,6 +16,7 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from api.account import delivery_config_router
 from api.alerts import router as alerts_router
+from api.api_keys import router as api_keys_router
 from api.auth import (
     UserCreate,
     UserRead,
@@ -177,6 +178,9 @@ def read_my_tenant(user: User = Depends(current_user)) -> TenantResponse:
 # current_user, returns email/plan/is_verified.  Must be mounted BEFORE
 # watchlist so the `/users/me` path is not shadowed by a more-specific prefix. ---
 app.include_router(users_me_router)
+
+# --- API keys (Team plan, feature-gated; TASK-028). ---
+app.include_router(api_keys_router)
 
 # --- Alerts read (tenant-scoped, read-only, behind current_user; TASK-016 C4). ---
 app.include_router(alerts_router)

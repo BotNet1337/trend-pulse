@@ -23,6 +23,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
+from api.auth.api_key import current_user_or_api_key
 from api.deps import current_user
 from api.main import app
 from api.watchlist.deps import get_db_session
@@ -116,13 +117,18 @@ def client(db_session_committing: Session, user: User) -> Iterator[TestClient]:
     def _session_override() -> Iterator[Session]:
         yield db_session_committing
 
+    # Override both current_user (for routes that use it directly) and
+    # current_user_or_api_key (for GET /alerts + GET /watchlists read-routes
+    # updated in TASK-028 to accept both cookie and X-API-Key).
     app.dependency_overrides[current_user] = lambda: user
+    app.dependency_overrides[current_user_or_api_key] = lambda: user
     app.dependency_overrides[get_db_session] = _session_override
     try:
         with TestClient(app) as test_client:
             yield test_client
     finally:
         app.dependency_overrides.pop(current_user, None)
+        app.dependency_overrides.pop(current_user_or_api_key, None)
         app.dependency_overrides.pop(get_db_session, None)
 
 
@@ -134,12 +140,14 @@ def free_client(db_session_committing: Session, free_user: User) -> Iterator[Tes
         yield db_session_committing
 
     app.dependency_overrides[current_user] = lambda: free_user
+    app.dependency_overrides[current_user_or_api_key] = lambda: free_user
     app.dependency_overrides[get_db_session] = _session_override
     try:
         with TestClient(app) as test_client:
             yield test_client
     finally:
         app.dependency_overrides.pop(current_user, None)
+        app.dependency_overrides.pop(current_user_or_api_key, None)
         app.dependency_overrides.pop(get_db_session, None)
 
 

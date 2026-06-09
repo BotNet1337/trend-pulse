@@ -1,11 +1,11 @@
 ---
 id: TASK-028
 title: API keys for Team plan — issue/list/revoke + X-API-Key auth backend (hashed at-rest, feature-gated)
-status: planned             # planned → in-progress → review → done
+status: done                # planned → in-progress → review → done
 owner: backend
 created: 2026-06-09
 updated: 2026-06-09
-baseline_commit: ""
+baseline_commit: "1c896b76b1d259e88445bfbd2ce44b9b2a1c018b"
 branch: "gsd/phase-028-api-keys-team"
 tags: [epic-d, backend, api, billing, security]
 ---
@@ -103,23 +103,33 @@ Auth ([ADR-003](../architecture/adr-003-monorepo-and-auth.md), task-003): fastap
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
-baseline_commit: ""
+current_step: done
+baseline_commit: "1c896b76b1d259e88445bfbd2ce44b9b2a1c018b"
 branch: "gsd/phase-028-api-keys-team"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + real behavior через стек)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (если применимо)
-- [ ] 6 ship (PR, squash-merged)
-- [ ] 7 learnings (auto)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + real behavior через стек)
+- [x] 5 review (auto, adversarial)
+- [x] 5.5 security (opus — обязательна; хэш/constant-time/feature-gate/поверхность)
+- [x] 6 ship (PR, squash-merged)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план по эталону task-016/017 и контексту Epic D: Team-план продаёт API access (Resource.API_ACCESS/_TEAM_API в plans.py), механизма нет. Таблица `api_keys` (хранить только key_hash+prefix, plaintext один раз при создании; Alembic), эндпоинты issue/list/revoke за current_user (issue feature-gated через reuse `assert_within_limit(API_ACCESS)`→403 на Free/Pro), `X-API-Key` auth-backend резолвит user по key_hash constant-time для read-эндпоинтов (alerts/watchlists), rate-limit keying по api-key-принципалу (api/rate_limit.py). Read-сервисы и feature-gate не переписываем. deps: 003 (auth/fastapi-users), 010 (billing/plans/limits). Security 5.5 ОБЯЗАТЕЛЬНА: хэширование (no plaintext at-rest), constant-time compare, feature-gate серверный, поверхность только read. locate+plan выполнены этим планированием — executor стартует с «3 do».)
+
+
+
+### do+verify+review+security (loop-028, 2026-06-09)
+**do/verify:** таблица `api_keys` (key_hash sha256 + prefix at-rest, миграция 0010 + индексы prefix/unique key_hash + FK CASCADE); `POST/GET/DELETE /api-keys` (issue feature-gated Team через `assert_within_limit(API_ACCESS)`→403 Free/Pro, list masked, revoke soft) за `current_user`; `X-API-Key` backend `current_user_or_api_key` (cookie-first, sync resolve через run_in_threadpool) на read-роутах alerts(все GET)+watchlists(GET only); rate-limit keying `apikey:<sha256[:16]>` (без DB); resolve constant-time (`secrets.compare_digest`, narrow по prefix) + downgrade-gate. gen.types/openapi регенерены (+3 роута). G2 за nginx: Free→403, Team→201 plaintext раз, X-API-Key→GET /alerts 200, list masked, revoke→401, мутация ключом→401, cookie-флоу жив; БД — только key_hash (нет plaintext), ключ не в логах. integration 35, unit 21, ci-fast 345, test-cov 82.6%, миграция 0010 up/down.
+**review (opus) + security (opus, обязательна): 0 CRITICAL/HIGH.** Исправлены MEDIUM:
+- (review×2) resolve дублировал plan-логику (ручной `PLAN_LIMITS[plan][API_ACCESS]` + всегда-истинный `in FEATURE_RESOURCES`) → заменено на reuse `assert_within_limit`+`except PlanLimitExceeded→None` (единый источник истины, инвариант «не катать свою проверку плана»).
+- (security) `last_used_at` write на каждый resolve (write-amplification на hot read-path) → throttle (`_LAST_USED_THROTTLE_SECONDS=60`).
+- (LOW) убраны тавтологии `... or True` в unit-тестах (заменены на проверку длины hash / `flush.assert_not_called`), dead `_make_client`, unused `MSG_API_KEY_INVALID`, `in`→`startswith`.
+**security вердикт:** no-plaintext at-rest (sha256, 256-бит энтропия — соль/KDF не нужны), constant-time (compare_digest, нет oracle — неизвестный/revoked/downgraded → одинаковый generic 401), feature-gate серверный, поверхность ТОЛЬКО read (мутации/billing/api-keys-CRUD — cookie-only), tenant/IDOR (revoke чужого→404), X-API-Key в header (не query→не в логах/Referer), ORM bind-params. Follow-up (LOW, не блокер): лимит НЕуспешных resolve по IP (brute-force defense-in-depth; 256-бит энтропия делает нереальным).
 
 ### Подсказки исполнителю (initial)
 - **Генерация:** `secret = secrets.token_urlsafe(32)`; `plaintext = f"{API_KEY_PREFIX}{prefix}_{secret}"` (или `tp_<random>`); `prefix` = первые N символов (named const) — хранить для отображения/narrow-lookup; `key_hash = hashlib.sha256(plaintext.encode()).hexdigest()`.

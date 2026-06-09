@@ -105,6 +105,117 @@
         "title": "AlertRead",
         "type": "object"
       },
+      "ApiKeyCreate": {
+        "additionalProperties": false,
+        "description": "Request body for POST /api-keys — only the human-readable name.",
+        "properties": {
+          "name": {
+            "description": "Human-readable label for the key (e.g. 'prod-integration').",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ApiKeyCreate",
+        "type": "object"
+      },
+      "ApiKeyCreated": {
+        "additionalProperties": false,
+        "description": "Response for POST /api-keys — includes the plaintext key EXACTLY ONCE.\n\nThe `key` field is the plaintext. After this response the plaintext is gone;\nit is not stored in the DB. The user must copy it immediately.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "prefix": {
+            "title": "Prefix",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "prefix",
+          "key",
+          "created_at"
+        ],
+        "title": "ApiKeyCreated",
+        "type": "object"
+      },
+      "ApiKeyRead": {
+        "additionalProperties": false,
+        "description": "Read-only view of an API key (list / detail) — NO plaintext or key_hash.\n\nExposes only the prefix (for recognition), name, and timestamps. Safe to\nreturn in list responses without exposing sensitive material.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "prefix": {
+            "title": "Prefix",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "prefix",
+          "created_at",
+          "last_used_at",
+          "revoked_at"
+        ],
+        "title": "ApiKeyRead",
+        "type": "object"
+      },
       "BillingPeriod": {
         "description": "Billing period for an invoice. Crypto has no native subscriptions, so the\nonly supported period is a calendar month; the duration lives in `PERIOD_DAYS`.",
         "enum": [
@@ -835,6 +946,22 @@
               "description": "Opaque pagination cursor from previous response next_cursor field.",
               "title": "Cursor"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
           }
         ],
         "responses": {
@@ -883,6 +1010,22 @@
               "title": "Alert Id",
               "type": "integer"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
           }
         ],
         "responses": {
@@ -915,6 +1058,123 @@
         "summary": "Get Alert",
         "tags": [
           "alerts"
+        ]
+      }
+    },
+    "/api-keys": {
+      "get": {
+        "description": "List all API keys for the caller (masked: prefix/name/timestamps, no key/key_hash).",
+        "operationId": "list_api_keys_api_keys_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ApiKeyRead"
+                  },
+                  "title": "Response List Api Keys Api Keys Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Api Keys",
+        "tags": [
+          "api-keys"
+        ]
+      },
+      "post": {
+        "description": "Issue a new API key for the caller (Team plan only).\n\nFree/Pro → PlanLimitExceeded → 403 (via api/main.py exception handler).\nPlaintext key is returned ONCE in the response body and never stored in DB.",
+        "operationId": "create_api_key_api_keys_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiKeyCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Create Api Key",
+        "tags": [
+          "api-keys"
+        ]
+      }
+    },
+    "/api-keys/{key_id}": {
+      "delete": {
+        "description": "Soft-revoke an API key owned by the caller.\n\nUnknown id or another tenant's id → 404 (no existence leak, ADR-002).\nThe key_hash row is kept for audit; revoked_at marks it inactive.",
+        "operationId": "revoke_api_key_api_keys__key_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key_id",
+            "required": true,
+            "schema": {
+              "title": "Key Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Revoke Api Key",
+        "tags": [
+          "api-keys"
         ]
       }
     },
@@ -1698,8 +1958,26 @@
     },
     "/watchlists": {
       "get": {
-        "description": "List only the caller's watchlists (tenant-scoped).",
+        "description": "List only the caller's watchlists (tenant-scoped).\n\nAccepts cookie/JWT (UI) or X-API-Key header (programmatic, TASK-028).",
         "operationId": "list_watchlists_watchlists_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -1714,6 +1992,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -1823,6 +2111,22 @@
             "schema": {
               "title": "Watchlist Id",
               "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-API-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
             }
           }
         ],

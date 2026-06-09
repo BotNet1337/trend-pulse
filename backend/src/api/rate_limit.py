@@ -1,16 +1,22 @@
 """API rate limiting (task-011, overview §7) — slowapi, Redis-backed.
 
-Per-key request budget (default `RATE_LIMIT_PER_MINUTE`), where the key is the
-authenticated `user_id` when available, else the client IP (so one tenant cannot
-exhaust another's budget, and anonymous traffic is throttled per source). Storage
-is the shared Redis (`Settings.redis_url`) so the limit is enforced consistently
-across all api replicas — never an in-process counter.
+Per-key request budget (default `RATE_LIMIT_PER_MINUTE`), where the key is:
+  1. `apikey:<sha256[:16]>` when an X-API-Key header is present (TASK-028, no DB);
+  2. `user:<id>` when an authenticated JWT/cookie is present (no DB);
+  3. `ip:<addr>` for anonymous traffic.
+
+Keying by api-key principal (not IP) ensures one tenant's key does not exhaust
+another's budget behind NAT/proxy.  The sha256 truncation (16 chars) avoids
+logging the full key material in slowapi's Redis key while keeping the key space
+collision-free for practical purposes.
 
 Exceeding the limit raises `RateLimitExceeded`, mapped by `rate_limit_handler` to
 a clear `429` JSON body. The default limit string is built from settings (no magic
 literal). slowapi degrades by RAISING if Redis is unreachable rather than failing
 open silently (edge case: we do not mask a broken limiter).
 """
+
+import hashlib
 
 import jwt
 from slowapi import Limiter
@@ -26,6 +32,10 @@ from config import get_settings
 # fastapi-users JWTStrategy defaults (api/auth/backend.py): HS256 + this audience.
 _JWT_ALGORITHM = "HS256"
 _JWT_AUDIENCE = ["fastapi-users:auth"]
+
+# Prefix length for per-apikey rate-limit key derivation (no DB; hash truncation).
+_APIKEY_HASH_PREFIX_LEN = 16
+_X_API_KEY_HEADER = "x-api-key"
 
 
 def _resolve_user_id(request: Request) -> str | None:
@@ -62,15 +72,28 @@ def _resolve_user_id(request: Request) -> str | None:
 
 
 def rate_limit_key(request: Request) -> str:
-    """Key requests by authenticated user id when present, else client IP.
+    """Key requests by principal: api-key > user-id > client IP.
 
-    The user id is resolved by decoding the auth token (no DB); anonymous/auth
-    routes fall back to the remote address. Prefixing keeps the two key spaces from
-    colliding (a user id and an IP could otherwise coincide as strings).
+    Priority:
+    1. X-API-Key header present → `apikey:<sha256[:16]>` (no DB, per-key bucket).
+       The sha256 hash avoids including raw key material in Redis key names while
+       still giving a per-key limit (collision-free for practical purposes).
+    2. Authenticated JWT/cookie → `user:<id>` (decoded, no DB).
+    3. Anonymous → `ip:<addr>`.
+
+    Prefixes keep the three key spaces from colliding.
     """
+    # Priority 1: X-API-Key header (TASK-028 — per-key bucket, no DB).
+    api_key_value = request.headers.get(_X_API_KEY_HEADER)
+    if api_key_value:
+        key_digest = hashlib.sha256(api_key_value.encode()).hexdigest()
+        return f"apikey:{key_digest[:_APIKEY_HASH_PREFIX_LEN]}"
+
+    # Priority 2: JWT/cookie user id.
     user_id = _resolve_user_id(request)
     if user_id is not None:
         return f"user:{user_id}"
+
     return f"ip:{get_remote_address(request)}"
 
 
