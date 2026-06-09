@@ -1,11 +1,11 @@
 ---
 id: TASK-016
 title: Alerts UI — лента/история алертов + детальный просмотр (+ тонкий backend GET /alerts)
-status: planned          # planned → in-progress → review → done
+status: done             # planned → in-progress → review → done
 owner: frontend
 created: 2026-06-09
 updated: 2026-06-09
-baseline_commit: ""
+baseline_commit: "68f48afd8f100b4adeb4f1a6cfabf11dcbf52520"
 branch: "gsd/phase-016-alerts-ui"
 tags: [frontend, alerts, backend-read-endpoint, e2e]
 ---
@@ -102,21 +102,26 @@ TrendPulse (см. [`../product/overview.md`](../product/overview.md) §1, §4): 
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
-baseline_commit: ""
+current_step: done
+baseline_commit: "68f48afd8f100b4adeb4f1a6cfabf11dcbf52520"
 branch: "gsd/phase-016-alerts-ui"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — build + Playwright e2e + real behavior через nginx)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (XSS/санитизация, secrets не в бандле, cookie/CSRF, SSRF в webhook-полях)
-- [ ] 6 ship (PR, squash-merged)
-- [ ] 7 learnings (auto)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — backend integration 9/9 + Playwright 4/4 e2e за nginx, vitest 76)
+- [x] 5 review (auto, adversarial — PASS, 0 blocking)
+- [x] 5.5 security (PASS, 0 blocking — no-IDOR/tenant-scope, plan-gating server-side, limit-clamp)
+- [x] 6 ship (PR, squash-merged)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план по эталону task-003/004 и контексту: лента/история/детали алертов + тонкая backend-добавка `GET /alerts` (read-only, tenant-scoped, пагинация, окно истории из PLAN_LIMITS поверх таблицы alerts task-008/009), UX пустого состояния и лимита истории (Free — апселл). deps: 014 (guard/current_user), backend 008 (scorer), 009 (delivery). Scorer/delivery не трогаем — только читаем. locate+plan выполнены этим планированием — executor стартует с «3 do».)
-</content>
+
+### Step 3 do · 4 verify · 5 review · 5.5 security · loop-016
+- **do (TDD):** backend `api/alerts/{router,service,schemas}.py` — `GET /alerts` list + `GET /alerts/{id}` detail, read-only, tenant-scoped (`Alert.user_id`), пагинация (`DEFAULT=20`/`MAX=100` clamp), окно истории из `PLAN_LIMITS[Resource.HISTORY]` (Free=0→`history_unavailable`+пусто, Pro 30д/Team 90д), topic join с Cluster. `AlertRead` `extra=forbid` (не светит delivery_attempts/cluster_id/user_id). Frontend: `entities/alert`, `features/alerts` (useAlerts infinite + useAlert), `pages/alerts/{list,detail}` за guard, empty-state vs history-unavailable+апселл. gen.types регенерирован. Коммиты 33cda3f/9da57e8/86ba376.
+- **verify (G2):** backend integration **9/9** (401, tenant-only, поля, пагинация, limit-clamp, detail-own, detail-foreign→404, Free history-unavailable); build/tsc/lint зелёные, vitest 76; Playwright **4/4 за nginx** (AC1/AC3/AC4/AC6).
+- **review+security (opus) PASS — 0 blocking.** IDOR закрыт (token-derived user_id, foreign→404 generic, нет утечки полей), plan-gating server-side, limit-clamp (no DoS), bind-params, XSS-safe, типы из gen.types. **LOW defense-in-depth применён:** `Cluster.user_id == user.id` в list+detail join (integration 9/9 остались зелёными). `le=` намеренно НЕ добавлен (service clamp капит MAX; тест ассертит clamp).
+- **Долг:** чтение через `AlertRepository` (сейчас прямой select — tenant-scope корректен); unit `test_alerts_read.py`; cursor-пагинация для deep-offset; e2e populated-ленты с сидом.

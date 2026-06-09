@@ -155,6 +155,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Alerts
+         * @description List the caller's alerts with pagination and plan-based history window.
+         *
+         *     Free plan → returns empty list + history_unavailable=True (not 403).
+         *     Pro/Team → returns alerts within the plan's history window (30/90 days).
+         *     Always tenant-scoped: only the caller's alerts are returned.
+         */
+        get: operations["list_alerts_alerts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/alerts/{alert_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Alert
+         * @description Get one alert detail. Foreign or missing alert → 404 (no existence leak).
+         */
+        get: operations["get_alert_alerts__alert_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/watchlists": {
         parameters: {
             query?: never;
@@ -305,6 +349,48 @@ export interface components {
              * @default en
              */
             notification_lang: string;
+        };
+        /**
+         * AlertListResponse
+         * @description Paginated list response envelope for GET /alerts.
+         *
+         *     `history_unavailable` is True when the caller's plan has no history window
+         *     (Free plan, HISTORY == 0). The UI must show the plan-upgrade upsell.
+         *     The plan window is enforced backend-side; the frontend MUST NOT hard-code
+         *     the 30/90 day numbers inline (TASK-016 invariant: backend is source of truth).
+         */
+        AlertListResponse: {
+            /** Items */
+            items: components["schemas"]["AlertRead"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** History Unavailable */
+            history_unavailable: boolean;
+        };
+        /**
+         * AlertRead
+         * @description Read-only projection of one alert row (with Cluster.topic join).
+         */
+        AlertRead: {
+            /** Id */
+            id: number;
+            /** Score */
+            score: number;
+            /** Topic */
+            topic: string;
+            /**
+             * First Seen
+             * Format: date-time
+             */
+            first_seen: string;
+            /** Channels Count */
+            channels_count: number;
+            /** Delivery Status */
+            delivery_status: string;
         };
         /**
          * BillingPeriod
@@ -812,6 +898,71 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserMeResponse"];
+                };
+            };
+        };
+    };
+    list_alerts_alerts_get: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of alerts to return (server silently clamps to max). */
+                limit?: number;
+                /** @description Number of alerts to skip. */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_alert_alerts__alert_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                alert_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
