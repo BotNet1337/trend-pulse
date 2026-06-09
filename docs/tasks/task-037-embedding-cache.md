@@ -1,7 +1,7 @@
 ---
 id: TASK-037
 title: Кэш эмбеддингов по SHA-256 хэшу нормализованного текста (Redis, TTL 48h)
-status: planned
+status: done
 owner: backend
 created: 2026-06-09
 updated: 2026-06-09
@@ -99,19 +99,31 @@ I/O-слое `batch_processor`. Hit/miss — в structured-лог. DoD = AC.
 - **security:** не применимо (нет user-input/секретов) — 5.5 скип с пометкой.
 
 ## Checkpoints
-current_step: 3
+current_step: done
 baseline_commit: "05cbdb8c7ec62af708412389ba98a788534d5f45"
-branch: ""
+branch: "gsd/phase-e0-embedding-cache"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + real behavior)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (n/a)
-- [ ] 6 ship (PR, squash-merged)
-- [ ] 7 learnings (auto)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + real behavior; см. Details)
+- [x] 5 review (auto, adversarial — pass; MEDIUM element-validation + 2 LOW исправлены)
+- [x] 5.5 security (N/A — нет user-input/секретов, скип по test plan)
+- [x] 6 ship (PR, squash-merged)
+- [x] 7 learnings (auto — записаны в docs/learnings.md до ship, в том же PR)
 debug_runs: []
 
 ## Details
 (initial — locate: `embed.run` чистый с инжектируемым encoder (тестам удобно), вызов в `_run_pipeline` (pure) ← `process_user_batch` (I/O) — кэш кладём на I/O-границу, чистота конвенции сохранена; key/TTL-паттерны готовы (`raw:{kind}:{handle}`, `RAW_POST_TTL_SECONDS`); мок-паттерн Redis в test_batch_processor.py есть. fakeredis в зависимостях нет — мок/MagicMock. Это заплатка до TASK-052 (глобальный pipeline); cache hit-rate из логов покажет, когда 052 пора.)
+
+2026-06-10 (do→ship): TDD (RED: 8 падений → GREEN: 381 unit, ruff/mypy чисто). Дизайн: `embed_with_cache`
+на I/O-слое process_user_batch; `_run_pipeline(posts, vectors=None)` — опциональные предвычисленные
+вектора, чистота цепочки сохранена, embed.py не тронут. Принятый tradeoff: dedup+normalize гоняются
+дважды (на I/O-слое для ключей и в чистой цепочке) — pure-python, субмиллисекунды; устранение — в
+TASK-052 (передавать normalized в _run_pipeline). G2 на живом dev-Redis: miss → ключи embed:{model}:{sha256}
+c TTL=172800 и dim=384; hit → энкодер не вызван, вектора идентичны; битый ключ → recompute+overwrite, warn.
+Review-фиксы: (1) MEDIUM — валидация элементов кэша (list корректной длины из строк проходил и ронял бы
+cluster.run) → элементы обязаны быть int/float не-bool, иначе miss+overwrite; (2) дедуп одинаковых
+miss-текстов внутри батча (1 вызов энкодера на уникальный текст); (3) setex-цикл → redis.pipeline
+(один round-trip, fail-open сохранён). Real-model прогон скипнут: sentence-transformers только в
+worker-образе (arch §7) — поведенческий контракт полностью покрыт fake-encoder'ом против реального Redis.

@@ -4,6 +4,8 @@ Lives apart from `pipeline.tasks` (which imports `celery_app`) so `scheduler` an
 `celery_app` can reference task names / queue names without a circular import.
 """
 
+from typing import Final
+
 # Celery task names — the orchestration contract consumed by routes + beat.
 RUN_USER_BATCH_TASK = "pipeline.tasks.run_user_batch"
 ENQUEUE_BATCHES_TASK = "pipeline.tasks.enqueue_active_user_batches"
@@ -18,6 +20,15 @@ SCORE_TICK_TASK = "pipeline.tasks.score_tick"
 BATCH_QUEUE = "batch"
 # Static scorer queue (ADR-002 §2): a single global tick, not per-tenant.
 SCORE_QUEUE = "score:global"
+
+# --- Embedding cache (task-037) — named, never magic literals. ---
+# TTL for cached embedding vectors in Redis. Semantically aligned with the 48h
+# raw-post retention window (both expire together), but defined independently so
+# either can change without affecting the other.
+EMBEDDING_CACHE_TTL_SECONDS: Final = 48 * 60 * 60
+# Redis key prefix for embedding cache entries.
+# Full key format: embed:{model_name}:{sha256(normalized_text)}
+EMBEDDING_CACHE_KEY_PREFIX: Final = "embed"
 
 # --- Pipeline algorithm internals (task-007) — named, never magic literals. ---
 # MinHash permutation count: the dedup accuracy/cost knob (more permutations →
