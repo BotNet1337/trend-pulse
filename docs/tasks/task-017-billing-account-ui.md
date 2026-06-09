@@ -1,11 +1,11 @@
 ---
 id: TASK-017
 title: Billing & Account UI — план Free/Pro/Team, крипто-инвойс, delivery-config, удаление аккаунта (GDPR)
-status: planned          # planned → in-progress → review → done
+status: in-progress      # planned → in-progress → review → done
 owner: frontend
 created: 2026-06-09
 updated: 2026-06-09
-baseline_commit: ""
+baseline_commit: "7990c972617018b129c36af5cb87920165e89c2a"
 branch: "gsd/phase-017-billing-account-ui"
 tags: [frontend, billing, account, gdpr, delivery-config, security, e2e]
 ---
@@ -109,9 +109,9 @@ Backend-пробелы, которые C5 закрывает тонкими addi
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
 current_step: 3
-baseline_commit: ""
+baseline_commit: "7990c972617018b129c36af5cb87920165e89c2a"
 branch: "gsd/phase-017-billing-account-ui"
-lock: ""
+lock: "loop-017"
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [ ] 3 do (TDD: failing test → minimal code)
@@ -125,4 +125,3 @@ debug_runs: []
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план по эталону task-003/004 и контексту: экран плана Free/Pro/Team (план из GET /users/me), крипто-инвойс (POST /billing/invoice, никакого Stripe), delivery-config (тонкая backend-добавка GET/PATCH /users/me/delivery-config, SSRF webhook переиспользует task-009), удаление аккаунта (DELETE /account, GDPR, confirm). Security-чувствительно → стадия 5.5 обязательна. deps: 014 (guard/current_user), backend 010 (billing), 009 (delivery/SSRF), 011 (GDPR delete). Billing-ядро/IPN/SSRF не переписываем. locate+plan выполнены этим планированием — executor стартует с «3 do».)
-</content>
