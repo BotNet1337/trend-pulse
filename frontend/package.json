@@ -1,5 +1,5 @@
 {
-  "name": "aggregator",
+  "name": "trendpulse-frontend",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -7,7 +7,7 @@
     "dev": "cross-env NODE_ENV=development tsx server/main.ts",
     "build": "cross-env NODE_ENV=production tsc -b && vite build",
     "start": "cross-env NODE_ENV=production tsx --tsconfig tsconfig.app.json server/main.ts",
-    "types:gen": "openapi-typescript \"$API_URL/docs-json\" -o src/shared/api/gen.types.ts",
+    "gen:api": "openapi-typescript /api/openapi.json -o src/shared/api/gen.types.ts",
     "lint": "eslint .",
     "preview": "vite preview",
     "test:unit": "vitest run",

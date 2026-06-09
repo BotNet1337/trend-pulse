@@ -1,94 +1,47 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-const { getMock, createServerApiClientMock } = vi.hoisted(() => {
-  const getMock = vi.fn();
-  const createServerApiClientMock = vi.fn(() => ({ get: getMock }));
-  return { getMock, createServerApiClientMock };
-});
-
-vi.mock('../../../../../server/client', () => ({
-  createServerApiClient: createServerApiClientMock,
-  serverApiClient: { get: getMock },
-}));
+/**
+ * runPrefetch spec — TrendPulse C1.
+ *
+ * In C1 the route-map is empty (no SSR prefetch routes), so runPrefetch
+ * always returns []. The full SSR hydration tests land in C3 with watchlists.
+ */
+import { describe, expect, it } from 'vitest';
 
 import { runPrefetch } from '../../../../../server/ssr/prefetch/run';
 
 describe('runPrefetch', () => {
-  beforeEach(() => {
-    getMock.mockReset();
-    createServerApiClientMock.mockClear();
+  it('returns [] when the path does not match any pattern (route-map empty in C1)', async () => {
+    const queries = await runPrefetch({
+      pathname: '/account/settings',
+      search: new URLSearchParams(),
+      accessToken: 'test-token',
+    });
+    expect(queries).toEqual([]);
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it('returns [] when the path does not match any pattern', async () => {
+  it('returns [] for auth paths (public, no SSR hydration)', async () => {
     const queries = await runPrefetch({
       pathname: '/auth/sign-in',
       search: new URLSearchParams(),
-      accessToken: 'x',
+      accessToken: undefined,
     });
     expect(queries).toEqual([]);
-    expect(createServerApiClientMock).not.toHaveBeenCalled();
   });
 
-  it('runs every fetcher for the matched composition and returns survivors', async () => {
-    getMock.mockImplementation(async (url: string) => ({
-      data:
-        url === '/workspaces'
-          ? { data: [], meta: { pagination: {} } }
-          : url === '/workspaces/ws-1'
-            ? { id: 'ws-1' }
-            : { data: [], meta: { pagination: {} } },
-    }));
-
+  it('returns [] for root path (redirects to protected content client-side)', async () => {
     const queries = await runPrefetch({
-      pathname: '/workspaces/ws-1/posts',
+      pathname: '/',
       search: new URLSearchParams(),
-      accessToken: 'x',
+      accessToken: 'test-token',
     });
-
-    expect(queries.length).toBe(4);
-    expect(createServerApiClientMock).toHaveBeenCalledOnce();
-    expect(createServerApiClientMock.mock.calls[0][0].accessToken).toBe('x');
+    expect(queries).toEqual([]);
   });
 
-  it('drops a single failing fetcher but keeps the rest', async () => {
-    getMock.mockImplementation(async (url: string) => {
-      if (url === '/workspaces/ws-1/channels') {
-        throw new Error('upstream blew up');
-      }
-      return { data: { data: [], meta: { pagination: {} } } };
-    });
-
+  it('returns [] for unknown paths', async () => {
     const queries = await runPrefetch({
-      pathname: '/workspaces/ws-1',
+      pathname: '/this-does-not-exist',
       search: new URLSearchParams(),
-      accessToken: 'x',
+      accessToken: undefined,
     });
-
-    expect(queries.length).toBe(2);
-  });
-
-  it('wipes everything when any fetcher returns 401', async () => {
-    const error = Object.assign(new Error('Unauthorized'), {
-      isAxiosError: true,
-      response: { status: 401, data: 'unauthorized' },
-      toJSON: () => ({}),
-    });
-
-    getMock.mockImplementation(async (url: string) => {
-      if (url === '/workspaces/ws-1/channels') throw error;
-      return { data: { data: [], meta: { pagination: {} } } };
-    });
-
-    const queries = await runPrefetch({
-      pathname: '/workspaces/ws-1',
-      search: new URLSearchParams(),
-      accessToken: 'stale',
-    });
-
     expect(queries).toEqual([]);
   });
 });

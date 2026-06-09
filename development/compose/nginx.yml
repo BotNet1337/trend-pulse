@@ -19,6 +19,8 @@ services:
     depends_on:
       api:
         condition: service_healthy
+      frontend:
+        condition: service_healthy
 
 networks:
   edge:

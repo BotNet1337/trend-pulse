@@ -1,6 +1,4 @@
 export * from './auth'
 export * from './index'
 export * from './error'
-export * from './workspaces'
 export * from './account'
-export * from './moderation'

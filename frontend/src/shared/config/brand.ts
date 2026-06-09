@@ -1,12 +1,12 @@
 /**
  * Brand configuration. Override via Vite env at build time:
- *   VITE_BRAND_NAME=MyBrand
+ *   VITE_BRAND_NAME=TrendPulse
  *   VITE_HELP_URL=https://...
  *
- * Falls back to "PostBolt" so the app boots cleanly without a custom env.
+ * Falls back to "TrendPulse" (the product name) when env is not set.
  */
-const DEFAULT_BRAND_NAME = "PostBolt"
-const DEFAULT_HELP_URL = "https://postbolt.io/docs"
+const DEFAULT_BRAND_NAME = "TrendPulse"
+const DEFAULT_HELP_URL = "https://trendpulse.app/docs"
 
 export const BRAND_NAME: string =
   import.meta.env?.VITE_BRAND_NAME?.trim() || DEFAULT_BRAND_NAME

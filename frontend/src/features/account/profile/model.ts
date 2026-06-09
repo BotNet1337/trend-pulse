@@ -2,16 +2,14 @@ import { useQuery } from "@tanstack/react-query"
 
 import { useAuth } from "@/app/providers/use-auth"
 
-import { findUser, findUserPath, type FindUserResponse } from "./api"
+import { findUser, findMyTenantPath, type FindUserResponse } from "./api"
 
 export const meQueryKey = (userId: string): ReadonlyArray<string> =>
-  [findUserPath, userId] as const
+  [findMyTenantPath, userId] as const
 
 /**
- * Loads the currently-authenticated user via `GET /users/:userId`. Source
- * of truth for the auth-store is the JWT (which only carries id + email +
- * provider); this query fetches the richer profile (name, avatar, timestamps)
- * from the IAM module.
+ * Returns the current user's tenant info via GET /users/me/tenant.
+ * Enabled only when the auth store has a userId (i.e. user is logged in).
  */
 export const useMe = () => {
   const authStore = useAuth()
@@ -19,7 +17,7 @@ export const useMe = () => {
 
   return useQuery<FindUserResponse>({
     queryKey: meQueryKey(userId),
-    queryFn: () => findUser({ userId }),
+    queryFn: () => findUser(),
     enabled: userId.length > 0,
   })
 }

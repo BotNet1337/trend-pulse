@@ -1,38 +1,106 @@
-import type React from "react"
-import { Link, useNavigate } from "@tanstack/react-router"
+/**
+ * Sign-in page — TrendPulse C1 foundation placeholder.
+ * Full auth flow implementation: task-014.
+ */
+import React, { useState } from 'react'
+import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 
-import { paths } from "@/app/router/path"
-import { AUTH_HERO, AuthShell, SignInForm } from "@/features"
+import { paths } from '@/app/router/path'
+import { apiClient } from '@/shared/api'
+import { Button } from '@/shared/components/button'
+import { Input } from '@/shared/components/input'
+import { Label } from '@/shared/components/label'
+import { BRAND_NAME } from '@/shared/config'
 
 export const SignInPage: React.FC = () => {
   const navigate = useNavigate()
+  const search = useSearch({ strict: false }) as { redirect?: string }
 
-  const onSuccess = async () => {
-    await navigate({ to: paths.workspaces.list, replace: true })
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [pending, setPending] = useState(false)
+
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    setPending(true)
+    try {
+      const form = new URLSearchParams()
+      form.set('username', email)
+      form.set('password', password)
+      await apiClient.post('/auth/jwt/login', form, {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      })
+      const redirectTo = search.redirect ?? paths.home
+      await navigate({ to: redirectTo, replace: true })
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Sign-in failed. Please try again.')
+    } finally {
+      setPending(false)
+    }
   }
 
   return (
-    <AuthShell hero={AUTH_HERO.signIn}>
-      <div className="flex flex-col gap-2">
-        <h2 className="m-0 font-bold text-2xl leading-[1.2] tracking-[-0.02em]">
-          Welcome back
-        </h2>
-        <p className="m-0 text-sm text-muted-foreground leading-[1.5]">
-          Enter your credentials to sign in to your account
-        </p>
-      </div>
+    <div className="auth-light min-h-dvh flex items-center justify-center bg-background text-foreground px-4">
+      <div className="w-full max-w-sm flex flex-col gap-6">
+        <div className="flex flex-col gap-2 text-center">
+          <h1 className="text-2xl font-bold tracking-tight">{BRAND_NAME}</h1>
+          <h2 className="text-lg font-semibold">Welcome back</h2>
+          <p className="text-sm text-muted-foreground">
+            Enter your credentials to sign in to your account
+          </p>
+        </div>
 
-      <SignInForm onSuccess={onSuccess} />
+        <form onSubmit={(e) => void onSubmit(e)} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              disabled={pending}
+              placeholder="you@example.com"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="password">Password</Label>
+            <Input
+              id="password"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              disabled={pending}
+              placeholder="••••••••"
+            />
+          </div>
 
-      <div className="text-center text-sm text-muted-foreground">
-        Don&apos;t have an account?{" "}
-        <Link
-          to={paths.auth.signUp}
-          className="text-foreground underline underline-offset-[3px] hover:text-brand"
-        >
-          Sign up
-        </Link>
+          {error && (
+            <p className="text-sm text-destructive" role="alert">{error}</p>
+          )}
+
+          <Button type="submit" disabled={pending} className="w-full">
+            {pending ? 'Signing in…' : 'Sign in'}
+          </Button>
+        </form>
+
+        <div className="text-center text-sm text-muted-foreground flex flex-col gap-1">
+          <Link to={paths.auth.forgotPassword} className="underline underline-offset-2 hover:text-foreground">
+            Forgot password?
+          </Link>
+          <span>
+            Don&apos;t have an account?{' '}
+            <Link to={paths.auth.signUp} className="text-foreground underline underline-offset-2">
+              Sign up
+            </Link>
+          </span>
+        </div>
       </div>
-    </AuthShell>
+    </div>
   )
 }

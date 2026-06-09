@@ -12,21 +12,17 @@ export default defineConfig(({ command }) => {
     server: {
       port: Number(process.env.PORT ?? 4000),
       allowedHosts: [
-        'app.postbridge.local',
-        'api.postbridge.local',
-        'storage.postbridge.local',
-        'postbridge-frontend',
+        'localhost',
+        '127.0.0.1',
+        'trendpulse.local',
+        'frontend',
       ],
-      // HMR проксируется через nginx по /__vite_hmr → postbridge-frontend:24678.
-      // host НЕ задаём: bind возьмётся из server.host (true → 0.0.0.0), а
-      // браузер использует location.hostname (=app.postbridge.local).
-      // clientPort: 443 — браузер ходит через TLS-терминатор; port: 24678 —
-      // dedicated WS-сервер Vite (минует Fastify catch-all).
+      // HMR для локальной разработки без nginx.
+      // В production-стеке (make up) фронтенд отдаётся SSR-сервером за nginx.
       hmr: {
-        protocol: 'wss',
-        clientPort: 443,
+        protocol: 'ws',
+        clientPort: Number(process.env.PORT ?? 4000),
         path: '/__vite_hmr',
-        port: 24678,
       },
       ...isDev ? { host: true } : {},
     },
