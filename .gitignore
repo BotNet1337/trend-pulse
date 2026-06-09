@@ -6,6 +6,11 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
+# Coverage artifacts (make test-cov / pytest-cov, TASK-021)
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
 
 # Node (landing/ + frontend/, populated in epics B/C)
 node_modules/

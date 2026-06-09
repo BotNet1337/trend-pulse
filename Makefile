@@ -18,9 +18,9 @@ GEN_DUMP_ENV := JWT_SECRET=dump OAUTH_STATE_SECRET=dump GOOGLE_CLIENT_ID=dump GO
 ANSIBLE_DIR := ops/ansible
 TF_DIR      := ops/terraform
 
-.PHONY: help up dev-up dev-infra-up down build logs ps restart sh migrate \
+.PHONY: help up dev-up dev-infra-up down build logs logs-once ps restart sh migrate \
         ansible-unpack tf-validate ansible-lint ansible-check \
-        lint fmt typecheck test test-integration ci ci-fast \
+        lint fmt typecheck test test-cov test-integration ci ci-fast \
         gen-openapi gen-types openapi-drift-check
 
 # Default target: list everything.
@@ -52,6 +52,7 @@ help:
 	@echo "    test-integration pytest -m integration"
 	@echo "    ci               fmt-check + lint + typecheck + FULL test + openapi-drift-check"
 	@echo "    ci-fast          fmt-check + lint + typecheck + test (not integration)"
+	@echo "    test-cov         unit tests with coverage gate (≥80%, from [tool.coverage.report])"
 	@echo "  OpenAPI contract (TASK-019 — offline, no make up required):"
 	@echo "    gen-openapi      dump app.openapi() → $(OPENAPI_DUMP) (no server)"
 	@echo "    gen-types        regen $(GEN_TYPES) from the committed dump"
@@ -78,6 +79,10 @@ restart:
 # --- Ops ---
 logs:
 	$(COMPOSE) logs -f
+
+# Non-following log dump (bounded) — for CI/diagnostics where `logs -f` would hang.
+logs-once:
+	$(COMPOSE) logs --no-color --tail=500
 
 ps:
 	$(COMPOSE) ps
@@ -122,6 +127,9 @@ test:
 
 test-integration:
 	$(UV) pytest -m integration
+
+test-cov:
+	$(UV) pytest -m 'not integration' --cov
 
 ci:
 	$(UV) ruff format --check .

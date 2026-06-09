@@ -1,0 +1,198 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches: [main]
+
+# Least privilege: PR checks only read the repo (defense-in-depth, not relying on
+# the org default). No job here writes contents/packages.
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # --------------------------------------------------------------------------
+  # backend: ruff format-check + lint + mypy + unit tests + coverage gate
+  # --------------------------------------------------------------------------
+  backend:
+    name: Backend (lint + type + unit + coverage)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        run: uv sync --directory backend
+
+      - name: Run ci-fast (fmt-check + lint + mypy + unit tests)
+        run: make ci-fast
+
+      - name: Run coverage gate (unit tests, fail_under=80)
+        run: make test-cov
+
+  # --------------------------------------------------------------------------
+  # openapi-contract: drift check between committed schema and generated types
+  # Requires BOTH Python (gen-openapi) and Node (gen-types) toolchains.
+  # --------------------------------------------------------------------------
+  openapi-contract:
+    name: OpenAPI contract drift check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        run: uv sync --directory backend
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies (for gen-types)
+        run: npm ci
+        working-directory: frontend
+
+      - name: Check OpenAPI drift
+        run: make openapi-drift-check
+
+  # --------------------------------------------------------------------------
+  # frontend: eslint + tsc + vitest unit tests
+  # --------------------------------------------------------------------------
+  frontend:
+    name: Frontend (lint + tsc + unit tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: TypeScript check
+        run: npx tsc -b
+
+      - name: Unit tests (vitest)
+        run: npm run test:unit
+
+  # --------------------------------------------------------------------------
+  # landing: eslint + build
+  # --------------------------------------------------------------------------
+  landing:
+    name: Landing (lint + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: landing
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: landing/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+  # --------------------------------------------------------------------------
+  # dep-scan: pip-audit (backend Python) + npm audit (frontend + landing)
+  # Threshold: high/critical.
+  # NOTE: continue-on-error=true on specific steps where existing unfixable CVEs
+  # are present (see TODO comments). Hard-fail where deps are clean.
+  # --------------------------------------------------------------------------
+  dep-scan:
+    name: Dependency security scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Export backend requirements from uv.lock
+        run: uv export --format requirements-txt --no-emit-project --directory backend > /tmp/backend-req.txt
+
+      - name: pip-audit backend (fail on NEW high+, known CVEs ignored by id)
+        # Known upstream CVEs are ignored BY ID (explicit, visible) so the gate
+        # still hard-fails on any NEW vulnerability. TODO(TASK-021 follow-up):
+        # upgrade pillow>=12.2 (PYSEC-2026-165, CVE-2026-25990/40192/42309/42310/42311)
+        # and pytest>=9 (CVE-2025-71176), then drop the matching --ignore-vuln flags.
+        run: >-
+          uvx --python 3.12 pip-audit -r /tmp/backend-req.txt
+          --ignore-vuln PYSEC-2026-165
+          --ignore-vuln CVE-2026-25990
+          --ignore-vuln CVE-2026-40192
+          --ignore-vuln CVE-2026-42309
+          --ignore-vuln CVE-2026-42310
+          --ignore-vuln CVE-2026-42311
+          --ignore-vuln CVE-2025-71176
+
+      - name: npm audit frontend (high+)
+        # frontend has 0 vulnerabilities — hard fail on any new high/critical
+        run: npm audit --audit-level=high
+        working-directory: frontend
+
+      - name: npm audit landing (high+)
+        # TODO(TASK-021): landing has 12 vulnerabilities (7 high, 1 critical) in
+        # @fastify/middie, fastify, fast-uri, path-to-regexp, minimatch, picomatch, flatted.
+        # Some fixes require breaking changes (--force). Track in a dedicated dep-update task.
+        # Until resolved, continue-on-error to maintain visibility without blocking PRs.
+        run: npm audit --audit-level=high
+        working-directory: landing
+        continue-on-error: true
