@@ -3,7 +3,7 @@
 Surgical-change task docs produced by `trendpulse-plan` / `trendpulse-executor`.
 One row per `task-NNN-slug.md`. Newest at the bottom.
 
-Roadmap: [`../architecture/roadmap.md`](../architecture/roadmap.md). Epic A = Backend core (детальные таски ниже); эпики B (landing) / C (frontend) — заглушки в roadmap, детализируются позже.
+Roadmap: [`../architecture/roadmap.md`](../architecture/roadmap.md). Epic A = Backend core (детальные таски ниже, все done); эпики C (frontend SPA, TASK-013..017) и B (landing, TASK-018) теперь **детализированы** (ранее заглушки в roadmap).
 
 | ID | Title | Epic | Status | Owner | Deps | Updated |
 |----|-------|------|--------|-------|------|---------|
@@ -19,3 +19,9 @@ Roadmap: [`../architecture/roadmap.md`](../architecture/roadmap.md). Epic A = Ba
 | [TASK-010](./task-010-billing-nowpayments.md) | Billing — крипто (NOWPayments) Free/Pro/Team + limits | A | done | backend | 003, 004 | 2026-06-08 |
 | [TASK-011](./task-011-compliance-ops.md) | Compliance & ops — 48h retention, GDPR, rate-limit, observability | A | done | infra | 002, 005, 009 | 2026-06-08 |
 | [TASK-012](./task-012-ops-iac.md) | Ops / IaC — Terraform (внешние сервисы) + Ansible (prod/secrets) | A | done | infra | 001 | 2026-06-08 |
+| [TASK-013](./task-013-frontend-foundation.md) | Frontend foundation — SPA scaffold (дизайн-система, API-клиент, типы, e2e, Docker) | C | planned | frontend | 001, 003 | 2026-06-09 |
+| [TASK-014](./task-014-auth-flow-ui.md) | Auth flow UI — register/login/logout, Google OAuth, guard, current_user | C | planned | frontend | 013, 003 | 2026-06-09 |
+| [TASK-015](./task-015-watchlists-ui.md) | Watchlists UI — CRUD, alert-config, UX лимитов плана | C | planned | frontend | 014, 004 | 2026-06-09 |
+| [TASK-016](./task-016-alerts-ui.md) | Alerts UI — лента/история + детали (+ тонкий GET /alerts) | C | planned | frontend | 014, 008, 009 | 2026-06-09 |
+| [TASK-017](./task-017-billing-account-ui.md) | Billing & Account UI — план/инвойс/delivery-config/удаление (GDPR) | C | planned | frontend | 014, 010, 009, 011 | 2026-06-09 |
+| [TASK-018](./task-018-landing-base.md) | Landing base — hero/how-it-works/features/pricing/CTA/compliance | B | planned | frontend | — | 2026-06-09 |

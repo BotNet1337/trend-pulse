@@ -1,0 +1,12 @@
+AI Port — AI Crawling Policy
+
+Contact: support@ai-port.me
+Website: https://ai-port.me
+
+Policy:
+- You may crawl this site for indexing and discovery.
+- Please do not use this site’s content to train machine learning models without permission.
+
+Sitemap: https://ai-port.me/sitemap.xml
+
+
