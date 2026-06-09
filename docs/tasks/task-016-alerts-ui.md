@@ -1,11 +1,11 @@
 ---
 id: TASK-016
 title: Alerts UI — лента/история алертов + детальный просмотр (+ тонкий backend GET /alerts)
-status: planned          # planned → in-progress → review → done
+status: in-progress      # planned → in-progress → review → done
 owner: frontend
 created: 2026-06-09
 updated: 2026-06-09
-baseline_commit: ""
+baseline_commit: "68f48afd8f100b4adeb4f1a6cfabf11dcbf52520"
 branch: "gsd/phase-016-alerts-ui"
 tags: [frontend, alerts, backend-read-endpoint, e2e]
 ---
@@ -103,9 +103,9 @@ TrendPulse (см. [`../product/overview.md`](../product/overview.md) §1, §4): 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
 current_step: 3
-baseline_commit: ""
+baseline_commit: "68f48afd8f100b4adeb4f1a6cfabf11dcbf52520"
 branch: "gsd/phase-016-alerts-ui"
-lock: ""
+lock: "loop-016"
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [ ] 3 do (TDD: failing test → minimal code)
@@ -119,4 +119,3 @@ debug_runs: []
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план по эталону task-003/004 и контексту: лента/история/детали алертов + тонкая backend-добавка `GET /alerts` (read-only, tenant-scoped, пагинация, окно истории из PLAN_LIMITS поверх таблицы alerts task-008/009), UX пустого состояния и лимита истории (Free — апселл). deps: 014 (guard/current_user), backend 008 (scorer), 009 (delivery). Scorer/delivery не трогаем — только читаем. locate+plan выполнены этим планированием — executor стартует с «3 do».)
-</content>
