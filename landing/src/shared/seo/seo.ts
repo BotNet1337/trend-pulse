@@ -53,8 +53,6 @@ function routeMeta(pathname: string): { title: string; description: string } {
       return { title: `${baseTitle} — Cookie Policy`, description: `Cookie Policy for ${SITE.brandName}.` };
     case '/acceptable-use-policy':
       return { title: `${baseTitle} — Acceptable Use Policy`, description: `Acceptable Use Policy for ${SITE.brandName}.` };
-    case '/refund-policy':
-      return { title: `${baseTitle} — Refund Policy`, description: `Refund Policy for ${SITE.brandName}.` };
     case '/accessibility-statement':
       return { title: `${baseTitle} — Accessibility`, description: `Accessibility Statement for ${SITE.brandName}.` };
     case '/security':
@@ -66,8 +64,6 @@ function routeMeta(pathname: string): { title: string; description: string } {
       return { title: `${baseTitle} — DPA Overview`, description: `Data Processing Addendum overview for ${SITE.brandName}.` };
     case '/do-not-sell-or-share':
       return { title: `${baseTitle} — Do Not Sell/Share`, description: `CCPA/CPRA opt-out information for ${SITE.brandName}.` };
-    case '/coming-soon':
-      return { title: `${baseTitle} — Coming Soon`, description: `This page is coming soon.` };
     default:
       return { title: `${baseTitle} — Not Found`, description: baseDesc };
   }

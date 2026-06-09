@@ -163,9 +163,9 @@ export function DpaOverviewPage() {
                       <td className="py-2">Global</td>
                     </tr>
                     <tr className="border-b border-border/50">
-                      <td className="py-2 pr-4">Stripe Payments Europe, Ltd.</td>
-                      <td className="py-2 pr-4">Payment processing</td>
-                      <td className="py-2">Ireland / US</td>
+                      <td className="py-2 pr-4">NOWPayments</td>
+                      <td className="py-2 pr-4">Cryptocurrency payment processing</td>
+                      <td className="py-2">Global</td>
                     </tr>
                     <tr className="border-b border-border/50">
                       <td className="py-2 pr-4">Amazon Web Services, Inc.</td>

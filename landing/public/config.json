@@ -7,6 +7,7 @@
   "valueProp": "Detect viral Telegram content before it explodes",
   "ctaText": "Get started free",
   "signupUrl": "/sign-up",
+  "_signupUrlNote": "Relative path assumes landing and SPA are served from the same edge/domain (e.g., Cloudflare routing: /sign-up → SPA). To override for a separate SPA domain, set an absolute URL here, e.g. https://app.trendpulse.app/sign-up.",
   "compliance": {
     "dataRetentionHours": 48,
     "publicChannelsOnly": true,

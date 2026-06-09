@@ -44,7 +44,7 @@ export function DoNotSellOrSharePage() {
                   Cloudflare, AWS).
                 </li>
                 <li>
-                  <strong className="text-foreground">Payment processors</strong> (e.g., Stripe).
+                  <strong className="text-foreground">Payment processors</strong> (e.g., NOWPayments).
                 </li>
                 <li>
                   <strong className="text-foreground">Analytics providers</strong> (e.g., Google Analytics 4) — where
