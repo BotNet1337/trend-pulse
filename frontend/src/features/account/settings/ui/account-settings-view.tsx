@@ -1,7 +1,11 @@
 import * as React from "react"
 
 import { useAuth } from "@/app/providers/use-auth"
+import { useCurrentUser } from "@/entities/viewer/model"
+import { type PlanId, PLAN_FREE } from "@/entities/plan"
 import { Button } from "@/shared/components/button"
+import { DeliveryConfigForm } from "@/features/delivery-config/ui/delivery-config-form"
+import { useDeliveryConfig, useUpdateDeliveryConfig } from "@/features/delivery-config/model"
 import { DeleteAccountDialog } from "../../delete/ui/delete-account-dialog"
 import { ChangePasswordDialog } from "../../password/ui/change-password-dialog"
 import { ChangeEmailDialog } from "../../email/ui/change-email-dialog"
@@ -12,6 +16,12 @@ export const AccountSettingsView: React.FC = () => {
   const userId = user?.userId ?? ""
   const email = user?.email ?? ""
   const provider = user?.provider ?? "email"
+
+  const { data: currentUser } = useCurrentUser()
+  const currentPlan = (currentUser?.plan ?? PLAN_FREE) as PlanId
+
+  const { data: deliveryConfig } = useDeliveryConfig()
+  const updateDeliveryMutation = useUpdateDeliveryConfig()
 
   const [deleteOpen, setDeleteOpen] = React.useState(false)
   const [changePasswordOpen, setChangePasswordOpen] = React.useState(false)
@@ -116,6 +126,32 @@ export const AccountSettingsView: React.FC = () => {
             </Button>
           </div>
         </div>
+      </section>
+
+      {/* Delivery configuration — Telegram + webhook (TASK-017 AC2/AC3/AC4/AC5) */}
+      <section
+        data-testid="delivery-config-section"
+        className="rounded-2xl border border-border bg-background p-6"
+      >
+        <header className="mb-5 flex flex-col gap-1">
+          <h3 className="m-0 text-base font-semibold">Notification delivery</h3>
+          <p className="m-0 text-xs text-muted-foreground">
+            Configure how TrendPulse delivers alerts to you.
+          </p>
+        </header>
+
+        {deliveryConfig ? (
+          <DeliveryConfigForm
+            current={deliveryConfig}
+            currentPlan={currentPlan}
+            isSaving={updateDeliveryMutation.isPending}
+            onSave={async (data) => {
+              await updateDeliveryMutation.mutateAsync(data)
+            }}
+          />
+        ) : (
+          <div className="py-4 text-sm text-muted-foreground">Loading delivery settings…</div>
+        )}
       </section>
 
       <section

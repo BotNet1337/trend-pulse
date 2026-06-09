@@ -1,4 +1,5 @@
 export * from './auth'
+export * from './billing'
 export * from './index'
 export * from './error'
 export * from './account'
