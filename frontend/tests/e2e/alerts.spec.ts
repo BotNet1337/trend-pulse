@@ -103,6 +103,6 @@ test("AC3 — nonexistent alert id shows not-found state", async ({ page }) => {
 
   // Should show not-found state (404), not a crash
   await expect(
-    page.getByText(/not found|alert not found|doesn't exist|no alert/i),
+    page.getByRole("heading", { name: /alert not found/i }),
   ).toBeVisible({ timeout: 8_000 });
 });

@@ -38,13 +38,15 @@ export function useAlerts() {
 
 // ─── useAlert — single alert detail ──────────────────────────────────────────
 
-/** Get a single alert by id. Throws on 404 (caught by the page). */
+/** Get a single alert by id. Does NOT throw — error is handled by the detail page. */
 export function useAlert(id: number) {
   return useQuery({
     queryKey: alertQueryKey(id),
     queryFn: () => getAlert(id),
     enabled: !Number.isNaN(id),
     staleTime: 30_000,
+    // Never throw — the detail page reads `error` and renders not-found state.
+    throwOnError: false,
     retry: (failureCount, error) => {
       const status = (error as { response?: { status?: number } }).response?.status;
       if (status === 404) return false;

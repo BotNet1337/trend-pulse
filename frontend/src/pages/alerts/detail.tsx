@@ -39,8 +39,8 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export const AlertDetailPage: React.FC = () => {
-  const { alertId } = useParams({ from: '/alerts/$alertId' });
-  const numericId = parseInt(alertId, 10);
+  const { alertId } = useParams({ strict: false }) as { alertId?: string };
+  const numericId = alertId ? parseInt(alertId, 10) : NaN;
   const logoutMutation = useLogout();
 
   const { data: alert, isLoading, error } = useAlert(numericId);
