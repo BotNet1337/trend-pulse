@@ -102,13 +102,13 @@ TrendPulse (см. [`../product/overview.md`](../product/overview.md) §1, §4): 
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
+current_step: 4
 baseline_commit: "68f48afd8f100b4adeb4f1a6cfabf11dcbf52520"
 branch: "gsd/phase-016-alerts-ui"
 lock: "loop-016"
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
+- [x] 3 do (TDD: failing test → minimal code)
 - [ ] 4 verify (G2 — build + Playwright e2e + real behavior через nginx)
 - [ ] 5 review (auto, adversarial)
 - [ ] 5.5 security (XSS/санитизация, secrets не в бандле, cookie/CSRF, SSRF в webhook-полях)
