@@ -29,7 +29,5 @@ rules/
 # Keys
 *.pem
 
-tests/visual/__screenshots__/
-tests/visual/playwright-report/
-tests/visual/.auth/
+playwright-report/
 test-results/

@@ -1,20 +1,11 @@
 /**
  * SSR prefetch fetchers spec — TrendPulse C1.
  *
- * C1 fetchers are all no-op stubs (returning null). Real fetchers land in C3
- * when watchlists SSR prefetch is implemented.
+ * C1 has no real prefetch: the only fetcher is a no-op placeholder returning
+ * null. Real named fetchers (watchlists) land in C3 (task-015).
  */
 import { describe, expect, it } from 'vitest';
-import {
-  fetchWorkspacesList,
-  fetchWorkspaceById,
-  fetchChannelsList,
-  fetchPostsList,
-  fetchPostById,
-  fetchWorkspacePublications,
-  fetchDashboard,
-  fetchModerationQueue,
-} from '../../../../../server/ssr/prefetch/fetchers';
+import { fetchPlaceholder } from '../../../../../server/ssr/prefetch/fetchers';
 import type { FetcherCtx } from '../../../../../server/ssr/prefetch/types';
 import type { AxiosInstance } from 'axios';
 
@@ -25,22 +16,14 @@ const makeCtx = (): FetcherCtx => ({
   search: new URLSearchParams(),
 });
 
-describe('C1 stub fetchers', () => {
-  const stubs = [
-    { name: 'fetchWorkspacesList', fn: fetchWorkspacesList },
-    { name: 'fetchWorkspaceById', fn: fetchWorkspaceById },
-    { name: 'fetchChannelsList', fn: fetchChannelsList },
-    { name: 'fetchPostsList', fn: fetchPostsList },
-    { name: 'fetchPostById', fn: fetchPostById },
-    { name: 'fetchWorkspacePublications', fn: fetchWorkspacePublications },
-    { name: 'fetchDashboard', fn: fetchDashboard },
-    { name: 'fetchModerationQueue', fn: fetchModerationQueue },
-  ];
+describe('C1 placeholder fetcher', () => {
+  it('fetchPlaceholder returns null (nothing to hydrate)', async () => {
+    const result = await fetchPlaceholder(makeCtx());
+    expect(result).toBeNull();
+  });
 
-  for (const { name, fn } of stubs) {
-    it(`${name} returns null (C1 stub)`, async () => {
-      const result = await fn(makeCtx());
-      expect(result).toBeNull();
-    });
-  }
+  it('fetchPlaceholder returns null regardless of params', async () => {
+    const result = await fetchPlaceholder({ ...makeCtx(), params: { id: '1' } });
+    expect(result).toBeNull();
+  });
 });

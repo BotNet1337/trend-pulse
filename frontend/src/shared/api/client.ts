@@ -57,7 +57,7 @@ export const apiClient = axios.create({
 const LOGOUT_PATH = '/auth/jwt/logout';
 const SIGN_IN_PATH = '/auth/sign-in';
 
-const isSafeRedirect = (raw: string): boolean => {
+export const isSafeRedirect = (raw: string): boolean => {
   if (typeof raw !== 'string' || raw.length === 0) return false;
   if (!raw.startsWith('/')) return false;
   if (raw.startsWith('//')) return false;

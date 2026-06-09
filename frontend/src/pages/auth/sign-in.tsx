@@ -6,7 +6,7 @@ import React, { useState } from 'react'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 
 import { paths } from '@/app/router/path'
-import { apiClient } from '@/shared/api'
+import { apiClient, isSafeRedirect } from '@/shared/api'
 import { Button } from '@/shared/components/button'
 import { Input } from '@/shared/components/input'
 import { Label } from '@/shared/components/label'
@@ -32,7 +32,10 @@ export const SignInPage: React.FC = () => {
       await apiClient.post('/auth/jwt/login', form, {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       })
-      const redirectTo = search.redirect ?? paths.home
+      // Harden against open-redirect: only honour internal same-origin paths
+      // from the attacker-controllable `?redirect=` param (A01 / unvalidated redirect).
+      const redirectTo =
+        search.redirect && isSafeRedirect(search.redirect) ? search.redirect : paths.home
       await navigate({ to: redirectTo, replace: true })
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Sign-in failed. Please try again.')

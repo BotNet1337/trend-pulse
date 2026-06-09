@@ -9,18 +9,6 @@
  */
 import type { Fetcher } from './types';
 
-// No-op fetcher placeholder — returns null (nothing to hydrate).
+// No-op fetcher placeholder — returns null (nothing to hydrate). Real named
+// TrendPulse fetchers (watchlists) are introduced in C3 (task-015).
 export const fetchPlaceholder: Fetcher = async () => null;
-
-// Re-exports to keep the public API shape stable for future C3 additions.
-export {
-  fetchPlaceholder as fetchWorkspacesList,
-  fetchPlaceholder as fetchWorkspaceById,
-  fetchPlaceholder as fetchChannelsList,
-  fetchPlaceholder as fetchPostsList,
-  fetchPlaceholder as fetchPostById,
-  fetchPlaceholder as fetchCalendarPosts,
-  fetchPlaceholder as fetchDashboard,
-  fetchPlaceholder as fetchModerationQueue,
-  fetchPlaceholder as fetchWorkspacePublications,
-};
