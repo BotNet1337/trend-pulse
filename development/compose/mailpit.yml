@@ -1,0 +1,20 @@
+# Mailpit — local catch-all SMTP sink + web UI for development.
+# Catches all outbound email from backend (api/worker) so nothing reaches real
+# inboxes in dev. SMTP on :1025 (internal-only), web UI on :8025.
+# NOTE: port 8025 is published ONLY for local dev convenience. In a production
+# profile this port mapping should be removed — mailpit is not deployed in prod.
+services:
+  mailpit:
+    image: ${MAILPIT_IMAGE}
+    environment:
+      MP_SMTP_BIND_ADDR: "0.0.0.0:1025"
+    networks:
+      - internal
+    # Web UI published for local dev only — not in prod profile.
+    ports:
+      - "8025:8025"
+    restart: unless-stopped
+
+networks:
+  internal:
+    external: false

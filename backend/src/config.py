@@ -99,6 +99,19 @@ _DEFAULT_PENDING_RESWEEP_INTERVAL_SECONDS = 300
 _DEFAULT_PENDING_RESWEEP_MAX_BATCH = 500
 _DEFAULT_CELERY_PING_TIMEOUT_SECONDS = 2
 
+# Email — templates service + SMTP transport (TASK-025). Named, non-secret
+# defaults — never magic literals (CONVENTIONS). Dev defaults point to the
+# local compose services (templates:3100, mailpit:1025). SMTP credentials are
+# intentionally empty by default; mailpit does not require authentication.
+# `smtp_from` is non-secret (a display name + address); set via deploy.env.
+_DEFAULT_TEMPLATES_SERVICE_URL = "http://templates:3100"
+_DEFAULT_SMTP_HOST = "mailpit"
+_DEFAULT_SMTP_PORT = 1025
+_DEFAULT_SMTP_FROM = "TrendPulse <noreply@trendpulse.local>"
+_DEFAULT_EMAIL_RENDER_TIMEOUT_SECONDS = 10
+# Bound the SMTP connect/send so a hung mail server can't block a Celery worker.
+_DEFAULT_SMTP_TIMEOUT_SECONDS = 10
+
 
 class Settings(BaseSettings):
     """Runtime configuration read from the process environment.
@@ -191,6 +204,24 @@ class Settings(BaseSettings):
     # default (prod) to avoid exposing the full API schema externally.  Dev enables via
     # env `SWAGGER_ENABLE=true`; prod must NOT set this flag.
     swagger_enable: bool = False
+
+    # --- Email — templates service + SMTP transport (TASK-025). ---
+    # Templates service URL — non-secret, from deploy.env; dev → compose service.
+    templates_service_url: str = _DEFAULT_TEMPLATES_SERVICE_URL
+    # SMTP parameters — host/port/from are non-secret (deploy.env); credentials
+    # are secrets (sensitive.env, default empty → mailpit dev mode / no auth).
+    smtp_host: str = _DEFAULT_SMTP_HOST
+    smtp_port: int = _DEFAULT_SMTP_PORT
+    # Credentials — empty default; mailpit does not require authentication.
+    # In production, set SMTP_USER / SMTP_PASSWORD via sensitive.env / vault.
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = _DEFAULT_SMTP_FROM
+    smtp_starttls: bool = False
+    # Render timeout (seconds) for HTTP calls to the templates service.
+    email_render_timeout_seconds: int = _DEFAULT_EMAIL_RENDER_TIMEOUT_SECONDS
+    # SMTP connect/send timeout (seconds) — bounds a hung mail server.
+    smtp_timeout_seconds: int = _DEFAULT_SMTP_TIMEOUT_SECONDS
 
     # --- Observability — Sentry (TASK-024). DSN is a secret (sensitive.env); empty
     # default → Sentry off. Non-secret settings have named-constant defaults above.---

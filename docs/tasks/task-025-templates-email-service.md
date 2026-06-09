@@ -1,11 +1,11 @@
 ---
 id: TASK-025
 title: Templates service (port) + SMTP email transport + mailpit (инфра-фундамент email)
-status: planned             # planned → in-progress → review → done
+status: done                # planned → in-progress → review → done
 owner: backend
 created: 2026-06-09
 updated: 2026-06-09
-baseline_commit: ""
+baseline_commit: "c954af0e7f89d4d64d3a37d77fdd6acf01d19736"
 branch: "gsd/phase-025-templates-email-service"
 tags: [epic-d, backend, email, infra, templates]
 ---
@@ -106,16 +106,18 @@ compose/infra: `development/compose/*.yml` (по сервису: `api.yml`/`work
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
-baseline_commit: ""
+current_step: done
+baseline_commit: "c954af0e7f89d4d64d3a37d77fdd6acf01d19736"
 branch: "gsd/phase-025-templates-email-service"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + real behavior через стек)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (если применимо)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + real behavior через стек)
+- [x] 5 review (auto, adversarial)
+- [x] 5.5 security (opus — обязательна; SMTP header-injection, XSS в письмах, секреты)
+- [x] 6 ship (PR, squash-merged)
+- [x] 7 learnings (auto)
 - [ ] 6 ship (PR, squash-merged)
 - [ ] 7 learnings (auto)
 debug_runs: []
@@ -123,6 +125,23 @@ debug_runs: []
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план по эталону task-016/017 и контексту Epic D: порт проверенного templates-сервиса (Node/Fastify+react-email) из postbridge → `apps/trendPulse/templates/` (отбросить publications, адаптировать auth-шаблоны под бренд), compose-сервисы `templates`+`mailpit` (internal-сеть, версии из version.env), backend generic-SMTP email-модуль (`notifications/email.py`: render-client к templates `/render` + aiosmtplib SMTP-sender; конфиг из env, без вендор-лока). Это инфра-фундамент для task-026 (verify/reset письма) и task-027 (renewal-уведомления). deps: 001 (dev-environment/compose/Makefile/version.env). Security 5.5: SMTP creds из env, no hardcode. locate+plan выполнены этим планированием — executor стартует с «3 do».)
+
+### do (loop-025, 2026-06-09)
+Порт сервиса `templates/` из postbridge ЦЕЛИКОМ (server/**, src/components/**, src/templates/auth/** [5 шаблонов], Dockerfile [параметризован NODE_VERSION], package(+lock), все tsconfig*, eslint, public/, src/assets/) — publications отброшены; бренд PostBolt/PostBridge → TrendPulse (grep=0 по всем файлам вкл. SVG). Создан `templates.json` (TrendPulse auth-схема: verify-email/reset-password/welcome/email-change-requested/email-changed с props). Compose: `templates.yml` (internal, build NODE_VERSION, SCHEMA_PATH, healthcheck /health) + `mailpit.yml` (`axllent/mailpit:v1.21`, SMTP :1025 internal, web-ui :8025 dev-only); добавлены в include; `version.env` +MAILPIT_IMAGE/TEMPLATES_IMAGE. Backend `notifications/email.py`: `render_email` (httpx sync POST `/render/<template>`), `send_email` (stdlib smtplib+EmailMessage), `send_templated_email`; settings templates_service_url/smtp_*; `httpx` добавлен в [project].dependencies. Env в ansible-источник (deploy.env.j2/group_vars + sensitive.env.j2 SMTP_USER/PASSWORD с `| default('')`). Тесты: unit test_email 12 (mock httpx/SMTP, no-hardcode, ошибки), integration test_email_delivery (mailpit API, skip без стека).
+**Проверки:** node build+lint зелёные; smoke /health={status:ok,templates:5}, /render/auth/verify-email→200 TrendPulse-HTML, /render/publications/published→404; `make ci-fast` 295 passed; test-cov 82.54%; import-check OK; grep чужого бренда=0.
+**Steering пользователя (mid-do):** «скопируй всё из проекта, удали лишние templates, backend адаптируй под схему» → довёл порт до ПОЛНОЙ копии (докопированы tsconfig.app/node.json, public/, src/assets/ — email-флоу их не использует [inline data-URI иконки, нет static-сервинга], но порт теперь дословный); publications удалены; backend = thin render-client + SMTP под контракт сервиса. Ребренд TrendPulse сохранён (требование + no-foreign-brand).
+
+### verify + review + security (loop-025, 2026-06-09)
+**verify (G2 за стеком):** ci-fast 295, test-cov 82.54%; node build/lint + smoke (/health, /render/auth/verify-email→200 TrendPulse, publications→404); `make up` — templates+mailpit healthy (3100 internal-only, web-ui 8025 dev); backend рендерит verify-email через templates и **доставляет письмо в mailpit** (subject «Verify your TrendPulse email», HTML с TrendPulse+verifyUrl — дословно через mailpit API). 1 фикс: healthcheck `localhost`→`127.0.0.1` (Alpine резолвит localhost в IPv6, Fastify слушает IPv4).
+**review (opus): 0 CRITICAL, 1 HIGH — исправлен.** HIGH: `render_email` не оборачивал транспортные ошибки httpx (down/timeout/bad-json) → нарушал инвариант «errors always explicit» → обёрнуто в `EmailRenderError` (+2 теста). MEDIUM/LOW (render.handler try/catch, loadComponent catch{}, main.ts console) — унаследованы из дословного порта, internal-only → follow-up.
+**security (opus, обязательна): 0 CRITICAL, 2 HIGH-эквивалент — исправлены.**
+- SMTP header-injection — PASS by-design (stdlib `EmailMessage` отклоняет CRLF в заголовках).
+- HIGH (XSS): URL-props (verifyUrl/resetUrl/dashboardUrl/confirmUrl) не ограничены `http(s)` → `javascript:`/`data:` href в письмах → добавлен `safeHref()` guard в button.tsx (все кнопки) + raw `<a>` в welcome.tsx (не-http(s) → `#`).
+- MEDIUM (worker hang): `smtplib.SMTP` без timeout → `timeout=smtp_timeout_seconds` (новый setting) + except расширен на `OSError`/socket.timeout.
+- MEDIUM (plaintext creds в проде): `smtp_starttls` дефолт False (dev/mailpit) → `group_vars/prod.yml smtp_starttls:"true"` (прод-креды только по TLS).
+- SSRF/path-traversal/секреты/USER node/non-root/preview-prod-off — PASS. DoS bodyLimit + interpolate-whitelist — follow-up (internal-only).
+Перепроверка: node build/lint зелёные, ci-fast 297, test-cov ≥80%, бренд-grep=0.
+**Follow-up для TASK-026/027:** валидировать `to`/`subject` на входе backend (defense-in-depth); не прокидывать `template`/URL из сырого user-ввода; (port-inherited) bodyLimit на render-сервисе.
 
 ### Подсказки исполнителю (initial)
 - **Источник порта:** `/Users/macbookpro16/work/postbridge/apps/templates/` — копировать `server/`, `src/components/`, `src/templates/auth/`, `Dockerfile`, `package.json`, `package-lock.json`, `tsconfig*.json`, `eslint.config.js`, нужные `public/` ассеты. НЕ копировать `src/templates/publications/`, `node_modules/`.

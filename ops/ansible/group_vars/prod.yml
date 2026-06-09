@@ -8,3 +8,6 @@ trendpulse_debug: "false"
 # SECURITY (TASK-019): the full OpenAPI schema / Swagger UI must NOT be exposed in
 # prod — docs/redoc/openapi.json return 404. (Settings default is also False.)
 swagger_enable: "false"
+# SECURITY (TASK-025): prod SMTP uses real credentials → STARTTLS MUST be on so
+# user/password are never sent in plaintext (dev/mailpit default is false).
+smtp_starttls: "true"
