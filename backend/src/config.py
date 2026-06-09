@@ -106,6 +106,11 @@ _DEFAULT_CELERY_PING_TIMEOUT_SECONDS = 2
 # verify/reset deeplinks that point at the frontend pages.
 _DEFAULT_FRONTEND_BASE_URL = "http://localhost"
 
+# Renewal notifications (TASK-027). Named, non-secret default — once per day.
+# The beat task `check_expiring_subscriptions` runs at this interval (seconds).
+# Daily cadence is sufficient because reminder windows are in whole days (7/3/1).
+_DEFAULT_RENEWAL_CHECK_INTERVAL_SECONDS: int = 86_400
+
 # Email — templates service + SMTP transport (TASK-025). Named, non-secret
 # defaults — never magic literals (CONVENTIONS). Dev defaults point to the
 # local compose services (templates:3100, mailpit:1025). SMTP credentials are
@@ -217,6 +222,10 @@ class Settings(BaseSettings):
     # group_vars. Dev default → same-host nginx on :80.  Value is used by
     # UserManager hooks to build verify/reset deeplinks for frontend pages. ---
     frontend_base_url: str = _DEFAULT_FRONTEND_BASE_URL
+
+    # --- Renewal notifications (TASK-027). Non-secret, settable; default above.
+    # Beat interval (seconds) for the check_expiring_subscriptions task. ---
+    renewal_check_interval_seconds: int = _DEFAULT_RENEWAL_CHECK_INTERVAL_SECONDS
 
     # --- Email — templates service + SMTP transport (TASK-025). ---
     # Templates service URL — non-secret, from deploy.env; dev → compose service.

@@ -33,7 +33,7 @@ Roadmap: [`../architecture/roadmap.md`](../architecture/roadmap.md). Epic A = Ba
 | [TASK-024](./task-024-observability-sentry-trace.md) | Observability — Sentry (FastAPI+Celery) + correlation/trace-id | D | done | backend | 011 | 2026-06-09 |
 | [TASK-025](./task-025-templates-email-service.md) | Templates service (порт из postbridge) + SMTP email-транспорт + mailpit + compose/provisioning | D | done | infra | 001 | 2026-06-09 |
 | [TASK-026](./task-026-auth-verify-reset.md) | Auth completeness — verify + reset-password роутеры + email/templates + фронт-страницы | D | done | backend | 003, 014, 025 | 2026-06-09 |
-| [TASK-027](./task-027-subscription-renewal-notifications.md) | Subscription renewal/expiry-уведомления (Beat + notifier/email) | D | planned | backend | 010, 009, 025 | 2026-06-09 |
+| [TASK-027](./task-027-subscription-renewal-notifications.md) | Subscription renewal/expiry-уведомления (Beat + notifier/email) | D | done | backend | 010, 009, 025 | 2026-06-09 |
 | [TASK-028](./task-028-api-keys-team.md) | API-ключи для Team-плана (api_keys, issue/revoke, X-API-Key auth, rate-limit keying) | D | planned | backend | 003, 010 | 2026-06-09 |
 | [TASK-029](./task-029-frontend-ssr-enablement.md) | Frontend SSR enablement (TanStack hydration, cookie-forward) + manualChunks | D | planned | frontend | 013, 014 | 2026-06-09 |
 | [TASK-030](./task-030-api-hardening-errors-versioning.md) | API hardening — единый error-envelope + machine-readable коды + /api/v1 версионирование | D | planned | backend | 019 | 2026-06-09 |
