@@ -33,6 +33,9 @@ export function useWatchlist(id: number) {
   return useQuery({
     queryKey: watchlistQueryKey(id),
     queryFn: () => getWatchlist(id),
+    // Skip the request for a malformed id (e.g. /watchlists/abc → NaN); the
+    // detail page renders not-found from the NaN guard without a spurious 404.
+    enabled: !Number.isNaN(id),
     staleTime: 30_000,
     retry: (failureCount, error) => {
       // Don't retry 404 — it's a terminal state
