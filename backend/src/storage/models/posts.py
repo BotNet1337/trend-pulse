@@ -18,9 +18,16 @@ _EXTERNAL_ID_MAX = 128
 
 class Post(UserOwnedBase):
     __tablename__ = "posts"
-    __table_args__ = (Index("ix_posts_user_id", "user_id"),)
+    __table_args__ = (
+        Index("ix_posts_user_id", "user_id"),
+        Index("ix_posts_cluster", "cluster_id"),
+        Index("ix_posts_user_channel_posted", "user_id", "channel_id", "posted_at"),
+    )
 
     channel_id: Mapped[int] = mapped_column(ForeignKey("channels.id"), nullable=False)
+    cluster_id: Mapped[int | None] = mapped_column(
+        ForeignKey("clusters.id", ondelete="SET NULL"), nullable=True
+    )
     external_id: Mapped[str] = mapped_column(String(_EXTERNAL_ID_MAX), nullable=False)
     views: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     forwards: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

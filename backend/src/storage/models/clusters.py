@@ -20,7 +20,10 @@ _TOPIC_MAX = 255
 
 class Cluster(UserOwnedBase):
     __tablename__ = "clusters"
-    __table_args__ = (Index("ix_clusters_user_id", "user_id"),)
+    __table_args__ = (
+        Index("ix_clusters_user_id", "user_id"),
+        Index("ix_clusters_user_updated", "user_id", "updated_at"),
+    )
 
     topic: Mapped[str] = mapped_column(String(_TOPIC_MAX), nullable=False)
     embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIM), nullable=False)

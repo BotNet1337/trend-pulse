@@ -1,11 +1,11 @@
 ---
 id: TASK-022
 title: Scoring correctness — posts↔cluster FK + per-cluster score + retention/upsert + горячие индексы
-status: planned          # planned → in-progress → review → done
+status: done             # planned → in-progress → review → done
 owner: backend
 created: 2026-06-09
 updated: 2026-06-09
-baseline_commit: ""
+baseline_commit: "b77952d6a56595c168f326e1a4c903588964e62d"
 branch: "gsd/phase-022-scoring-correctness"
 tags: [epic-d, backend, scorer, data-model, perf]
 ---
@@ -104,16 +104,18 @@ tags: [epic-d, backend, scorer, data-model, perf]
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
-baseline_commit: ""
+current_step: done
+baseline_commit: "b77952d6a56595c168f326e1a4c903588964e62d"
 branch: "gsd/phase-022-scoring-correctness"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + real behavior через nginx/стек)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (если применимо)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + real behavior через nginx/стек)
+- [x] 5 review (auto, adversarial)
+- [x] 5.5 security (N/A — внутренний scoring/data-model, нет auth/public-API/untrusted-input; SQL через ORM/bind-params)
+- [x] 6 ship (PR, squash-merged)
+- [x] 7 learnings (auto)
 - [ ] 6 ship (PR, squash-merged)
 - [ ] 7 learnings (auto)
 debug_runs: []
@@ -121,3 +123,16 @@ debug_runs: []
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план по проверенным фактам и learnings task-008: `scorer/tasks.py` док-стринг подтверждает per-topic scoring без post↔cluster FK (`_topic_configs`/`_build_score_inputs` агрегируют по watched-каналам темы) → дубли/неточный engagement; `posts.py` без `cluster_id` (есть только `channels.id` FK + `ix_posts_user_id`); `scores.py` `_persist_score` insert каждый тик (`ix_scores_user_id`); `alerts.py` `uq_alerts_user_cluster` (migration 0003) — идемпотентность, НЕ трогаем; кластеры персистятся в `pipeline/steps/cluster.py` + batch-processor; миграции chain `...0005_billing` → executor выверяет номер после task-020; retention seam — task-011 `compliance/retention.py` + beat `purge-expired-raw-content`. deps: 007 (pipeline), 008 (scorer). Security N/A. Самая сложная — детальный plan/edge-cases. locate+plan выполнены — executor стартует с «3 do».)
+
+### do+verify (loop-022, 2026-06-09)
+**Архитектурная находка:** `Post`-строки НЕ персистились в проде (только тесты сидели вручную) — пайплайн писал лишь `Cluster`. → batch-процессор теперь персистит Post с `cluster_id` (резолв channel_id по (source_kind, handle), без N+1; нерезолвнутый канал → warn+skip). Это обоснованное уточнение GOAL (дока предполагала bulk-update существующих постов). Изменено: миграция 0007 (posts.cluster_id FK SET NULL + `ix_posts_cluster`/`ix_posts_user_channel_posted`/`ix_clusters_user_updated` + scores `uq_scores_user_cluster`/`ix_scores_cluster`, дедуп scores перед unique; alerts-индекс не дублирован — есть в 0006); модели posts/clusters/scores синхронны; `_build_score_inputs` по `Post.cluster_id == cluster.id` (окна на постах нет — freshness гейтит `_recent_clusters`); `_persist_score` pg-upsert `on_conflict_do_update(uq_scores_user_cluster)`; убран ClusterRepository из batch (заменён session.add+flush). `uq_alerts_user_cluster`/`_create_alert_idempotent` не тронуты.
+**verify:** ci-fast (mypy strict 102, unit), test-cov 81.65%; реальная миграция 0007 на ephemeral PG (psql подтвердил FK SET NULL + все индексы/constraint; единственная голова 0007; down/up чисто; модель↔миграция согласованы); integration scorer 5/5 (per-cluster engagement A>B, upsert не растит scores); полный integration 57 passed.
+
+### review (opus, loop-022, 2026-06-09)
+**1 CRITICAL + 1 HIGH + 2 MEDIUM — ВСЕ закрыты.** Security — N/A (внутренний scoring).
+- CRITICAL (AC2 без исполняемого теста: batch-персист Post с cluster_id не проверялся — unit патчил channel-map в {}, integration скипался без ML) → добавлены 2 детерминированных unit (фейк-энкодер + непустая channel-карта): `test_persists_posts_with_cluster_id_and_resolved_channel` (2 поста → 2 кластера, каждый Post с cluster_id+channel_id=7+метрики) и `test_unresolved_channel_skips_post_without_failing` (пустая карта → 0 постов, не падает).
+- HIGH (mock flush не присваивал cluster.id) → хелпер `_install_id_assigning_flush` (автоинкремент id Cluster при flush, как Postgres) — нужен для CRITICAL-теста.
+- MEDIUM-1 (per-cluster query без posted_at-окна) → задокументировано как намеренное (cluster freshness гейтит recency) в module-docstring scorer.
+- MEDIUM-2 (устаревшие докстринги scorer/batch_processor про per-topic/ClusterRepository) → обновлены под per-cluster реальность.
+- LOW (utcnow один раз — ок; dict() vs {} — ruff не жалуется) — приняты.
+Перепроверка: 6 batch-тестов passed, ci-fast 246 passed, test-cov 81.65%. Per-cluster корректность, upsert, миграция, idempotency alert, scope — подтверждены чистыми.

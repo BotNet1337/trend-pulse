@@ -7,11 +7,15 @@
 2. drains those by-source Redis buffers (collector.buffer — idempotent read+clear),
 3. runs the pure pipeline `dedup → normalize → embed → cluster`,
 4. persists each resulting cluster as a `Cluster` row scoped by `user_id`
-   (ClusterRepository, ADR-002), and returns the number of clusters persisted.
+   (session.add + flush to obtain `cluster.id`), then persists that cluster's member
+   posts as `Post` rows carrying `cluster_id` + the `channel_id` resolved by
+   (source_kind, handle) — this is the post↔cluster link the per-cluster scorer
+   reads (task-022). Returns the number of clusters persisted.
 
-An empty buffer is a clean no-op: no Postgres write, returns 0 (AC5). The entry
-point takes only `user_id` (JSON-serializable id, never an ORM object — CONVENTIONS).
-Cross-module access is via storage/collector public service functions only.
+An empty buffer is a clean no-op: no Postgres write, returns 0 (AC5). A post whose
+channel can't be resolved is skipped with a warning (never aborts the batch). The
+entry point takes only `user_id` (JSON-serializable id, never an ORM object —
+CONVENTIONS). Cross-module access is via storage/collector public service functions only.
 """
 
 import logging
@@ -23,11 +27,12 @@ from collector.base import RawPost, SourceKind, SourceRef
 from collector.buffer import drain_source
 from pipeline.steps import cluster, dedup, embed, normalize
 from pipeline.steps.cluster import ClusterCandidate
+from pipeline.steps.normalize import NormalizedPost
 from storage.database import get_session
 from storage.models import Channel, Cluster, Watchlist
 from storage.models.channels import SourceKind as ChannelSourceKind
+from storage.models.posts import Post
 from storage.redis_client import get_redis_client
-from storage.repositories.cluster_repo import ClusterRepository
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +75,25 @@ def _candidate_to_cluster(candidate: ClusterCandidate, user_id: int) -> Cluster:
     )
 
 
+def _build_handle_to_channel_id(
+    session: Session,
+    posts: list[NormalizedPost],
+) -> dict[tuple[str, str], int]:
+    """Return mapping of (source_kind_value, handle) → channel_id for all post sources.
+
+    Queries Channel once (no N+1). Posts without a matching Channel are logged and
+    skipped — the caller guards against missing keys.
+    """
+    handles = {post.source.handle for post in posts}
+    if not handles:
+        return {}
+    stmt = select(Channel.id, Channel.source_kind, Channel.handle).where(
+        Channel.handle.in_(handles)
+    )
+    result = session.execute(stmt).all()
+    return {(str(row.source_kind.value), row.handle): row.id for row in result}
+
+
 def _run_pipeline(posts: list[RawPost]) -> list[ClusterCandidate]:
     """Pure chain: dedup → normalize → embed → cluster. No I/O."""
     deduped = dedup.run(posts)
@@ -101,10 +125,42 @@ def process_user_batch(user_id: int) -> int:
         logger.info("process_user_batch produced no clusters user_id=%s", user_id)
         return 0
 
-    repo = ClusterRepository()
+    # Collect all normalized posts from all candidates for handle→channel_id lookup.
+    all_normalized: list[NormalizedPost] = [
+        np_post for candidate in candidates for np_post in candidate.posts
+    ]
+
     with get_session() as session:
+        handle_to_channel_id = _build_handle_to_channel_id(session, all_normalized)
         for candidate in candidates:
-            repo.create(session, _candidate_to_cluster(candidate, user_id))
+            cluster_row = _candidate_to_cluster(candidate, user_id)
+            session.add(cluster_row)
+            session.flush()  # obtain cluster_row.id before persisting posts
+
+            for np_post in candidate.posts:
+                kind_value = str(np_post.source.kind.value)
+                channel_id = handle_to_channel_id.get((kind_value, np_post.source.handle))
+                if channel_id is None:
+                    logger.warning(
+                        "process_user_batch: no Channel handle=%s kind=%s "
+                        "user_id=%s — post skipped",
+                        np_post.source.handle,
+                        kind_value,
+                        user_id,
+                    )
+                    continue
+                session.add(
+                    Post(
+                        user_id=user_id,
+                        channel_id=channel_id,
+                        cluster_id=cluster_row.id,
+                        external_id=np_post.external_id,
+                        views=np_post.metrics.views,
+                        forwards=np_post.metrics.forwards,
+                        reactions=np_post.metrics.reactions,
+                        posted_at=np_post.posted_at,
+                    )
+                )
 
     logger.info(
         "process_user_batch persisted clusters user_id=%s count=%d",
