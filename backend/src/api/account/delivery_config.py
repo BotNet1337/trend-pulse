@@ -94,12 +94,17 @@ def patch_delivery_config(
                 detail=_WEBHOOK_SSRF_ERROR,
             ) from exc
 
-    # Partial update: only set fields that were explicitly provided in the request.
-    if data.telegram_bot_token is not None:
+    # Partial update: apply ONLY fields explicitly present in the request body
+    # (model_fields_set), so an explicit `null` clears a value while an omitted
+    # field is left untouched. The client sends a field only when it changes and
+    # uses `null` to clear (chat_id / webhook_url); bot_token is write-only and is
+    # sent only with a non-empty value, so it can never be cleared accidentally.
+    fields_set = data.model_fields_set
+    if "telegram_bot_token" in fields_set:
         db_user.telegram_bot_token = data.telegram_bot_token
-    if data.telegram_chat_id is not None:
+    if "telegram_chat_id" in fields_set:
         db_user.telegram_chat_id = data.telegram_chat_id
-    if data.webhook_url is not None:
+    if "webhook_url" in fields_set:
         db_user.webhook_url = data.webhook_url
 
     session.commit()

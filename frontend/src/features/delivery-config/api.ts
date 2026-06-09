@@ -9,25 +9,19 @@
 
 import type { AxiosInstance } from 'axios';
 import { apiClient } from '@/shared/api';
+import type { components } from '@/shared/api/gen.types';
 
 export const deliveryConfigPath = '/users/me/delivery-config' as const;
 
-/** Backend GET /users/me/delivery-config response. */
-export interface DeliveryConfigRead {
-  /** Masked bot token: "***<last4>" or null if not set. Full token is NEVER returned. */
-  telegram_bot_token_masked: string | null;
-  telegram_chat_id: string | null;
-  webhook_url: string | null;
-}
+/**
+ * Backend GET response. `telegram_bot_token_masked` is "***<last4>" or null —
+ * the full token is NEVER returned (write-mostly). Sourced from gen.types
+ * (single source of truth for the API contract).
+ */
+export type DeliveryConfigRead = components['schemas']['DeliveryConfigRead'];
 
-/** PATCH /users/me/delivery-config request body. All fields optional (partial update). */
-export interface DeliveryConfigUpdate {
-  /** Write-only: sets the bot token. Not echoed back. Send null to no-op. */
-  telegram_bot_token?: string | null;
-  telegram_chat_id?: string | null;
-  /** Requires Pro+ plan (feature-gate: 403 on Free). SSRF-validated server-side. */
-  webhook_url?: string | null;
-}
+/** PATCH request body (partial update; explicit null clears chat_id/webhook_url). */
+export type DeliveryConfigUpdate = components['schemas']['DeliveryConfigUpdate'];
 
 export const getDeliveryConfig = async (
   client?: AxiosInstance,

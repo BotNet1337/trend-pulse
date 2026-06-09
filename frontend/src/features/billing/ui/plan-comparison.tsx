@@ -86,7 +86,7 @@ export const PlanComparison: React.FC<PlanComparisonProps> = ({
             <ul className="flex flex-col gap-2 text-sm flex-1">
               <li className="flex items-center gap-2">
                 <span className="w-4 text-center text-muted-foreground" aria-hidden="true">
-                  {maxWatchlists !== null ? '◆' : '◆'}
+                  ◆
                 </span>
                 <span>
                   {formatWatchlists(maxWatchlists)}{' '}
