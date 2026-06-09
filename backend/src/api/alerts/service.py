@@ -1,8 +1,9 @@
 """Alerts read service — tenant-scoped, read-only (TASK-016 C4, CONVENTIONS).
 
-Reads alerts via AlertRepository (cross-module via public interface per CONVENTIONS),
-joins Cluster for `topic`, applies history window from PLAN_LIMITS (billing seam),
-and returns paginated AlertListResponse.
+Reads the `alerts` table joined with `clusters` for `topic`, applies the history
+window from PLAN_LIMITS (billing seam), and returns a paginated AlertListResponse.
+Every query is tenant-scoped on BOTH `Alert.user_id` and `Cluster.user_id`
+(defense-in-depth: a cluster_id can never surface another tenant's topic).
 
 Named constants (no magic literals):
 - DEFAULT_ALERTS_PAGE_SIZE: default page size when `limit` not supplied.
@@ -88,6 +89,7 @@ def list_alerts(
         select(Alert, Cluster.topic)
         .join(Cluster, Alert.cluster_id == Cluster.id)
         .where(Alert.user_id == user.id)
+        .where(Cluster.user_id == user.id)
         .where(Alert.first_seen >= cutoff)
         .order_by(Alert.first_seen.desc())
         .limit(clamped_limit)
@@ -132,6 +134,7 @@ def get_alert(
         .join(Cluster, Alert.cluster_id == Cluster.id)
         .where(Alert.id == alert_id)
         .where(Alert.user_id == user.id)
+        .where(Cluster.user_id == user.id)
     )
     row = session.execute(stmt).one_or_none()
     if row is None:
