@@ -24,6 +24,9 @@ include:
   - compose/nginx.yml
   - compose/templates.yml
   - compose/mailpit.yml
+  # NOTE: pg-backup.yml (TASK-034) is intentionally NOT included here.
+  # Backup targets invoke it standalone via COMPOSE_BACKUP in the Makefile to
+  # avoid the FRONTEND_COOKIE_SECRET interpolation failure in frontend.yml.
 
 networks:
   edge:

@@ -27,6 +27,9 @@
     # Renders deploy.env + sensitive.env into {{ app_dir }}/development/env (env_dir),
     # i.e. into the checked-out tree so the compose `env_file:` paths resolve.
     - role: env
+    # Installs the daily pg_backup cron job (TASK-034). S3_* credentials are already
+    # in sensitive.env (TASK-056 env role above) — no duplication here.
+    - role: backup
   tasks:
     - name: Bring up the stack via compose
       community.docker.docker_compose_v2:

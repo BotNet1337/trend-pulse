@@ -1,0 +1,36 @@
+---
+# Role: backup — install the daily pg_backup cron job on the prod host (TASK-034).
+#
+# Runs `make backup` from the app directory once a day at {{ backup_cron_hour }}:{{ backup_cron_minute }} UTC.
+# S3_* credentials are already in {{ app_dir }}/development/env/sensitive.env (TASK-056
+# env role); compose reads them via env_file — no duplication here.
+#
+# Output (stdout + stderr) is appended to {{ backup_cron_log }} for ops inspection.
+# MAILTO="" suppresses email delivery (log file is the audit trail).
+# The MAILTO env var is set via a dedicated cron env task (F6 — was only a comment before).
+
+- name: Ensure backup log file exists with correct permissions
+  ansible.builtin.file:
+    path: "{{ backup_cron_log }}"
+    state: touch
+    owner: root
+    group: root
+    mode: "0640"
+
+- name: Set MAILTO="" for trendpulse-pg-backup cron (suppress email, log-only)
+  ansible.builtin.cron:
+    name: MAILTO
+    user: root
+    env: true
+    value: ""
+    state: present
+
+- name: Install daily pg_backup cron job
+  ansible.builtin.cron:
+    name: "trendpulse-pg-backup"
+    user: root
+    hour: "{{ backup_cron_hour }}"
+    minute: "{{ backup_cron_minute }}"
+    job: >-
+      cd {{ app_dir }} && make backup >> {{ backup_cron_log }} 2>&1
+    state: present
