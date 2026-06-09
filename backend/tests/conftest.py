@@ -43,6 +43,11 @@ def db_engine() -> Iterator[Engine]:
         yield engine
     finally:
         Base.metadata.drop_all(engine)
+        with engine.begin() as conn:
+            # alembic_version is managed by migration_runner, NOT Base.metadata —
+            # drop it so a shared postgres volume isn't left on a stale head that
+            # makes the next `make up` skip migrations (TASK-021 AC2).
+            conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
         engine.dispose()
 
 

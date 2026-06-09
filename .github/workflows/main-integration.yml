@@ -1,0 +1,187 @@
+name: Integration & E2E (main)
+
+on:
+  push:
+    branches: [main]
+
+# Least privilege: integration/e2e only read the repo + write CI artifacts.
+permissions:
+  contents: read
+
+concurrency:
+  group: main-integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # --------------------------------------------------------------------------
+  # integration: pytest -m integration against a live postgres + redis
+  # Runs entirely in GitHub Actions service containers — no docker compose needed.
+  # --------------------------------------------------------------------------
+  integration:
+    name: Backend integration tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: trendpulse
+          POSTGRES_PASSWORD: trendpulse
+          POSTGRES_DB: trendpulse_test
+        options: >-
+          --health-cmd "pg_isready -U trendpulse -d trendpulse_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 6379:6379
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: trendpulse
+      POSTGRES_PASSWORD: trendpulse
+      POSTGRES_DB: trendpulse_test
+      REDIS_URL: redis://localhost:6379/0
+      JWT_SECRET: ci
+      OAUTH_STATE_SECRET: ci
+      GOOGLE_CLIENT_ID: ci
+      GOOGLE_CLIENT_SECRET: ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        run: uv sync --directory backend
+
+      - name: Run integration tests
+        run: make test-integration
+
+  # --------------------------------------------------------------------------
+  # e2e: bring up the full stack via `make up`, wait for nginx health, run Playwright
+  # --------------------------------------------------------------------------
+  e2e:
+    name: E2E (Playwright via nginx)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: frontend
+
+      - name: Install uv (needed for make build)
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Create CI env files (CI-only dummy creds — no real secrets; ephemeral stack)
+        run: |
+          mkdir -p development/env
+          cat > development/env/deploy.env <<'DEPLOY'
+          POSTGRES_DB=trendpulse
+          POSTGRES_USER=trendpulse
+          POSTGRES_HOST=postgres
+          POSTGRES_PORT=5432
+          REDIS_URL=redis://redis:6379/0
+          EDGE_NETWORK=edge
+          INTERNAL_NETWORK=internal
+          POSTGRES_NETWORK=postgres_net
+          REDIS_NETWORK=redis_net
+          TRENDPULSE_DEBUG=false
+          JWT_LIFETIME_SECONDS=3600
+          AUTH_COOKIE_SECURE=false
+          SWAGGER_ENABLE=false
+          DEPLOY
+          cat > development/env/sensitive.env <<'SENSITIVE'
+          POSTGRES_PASSWORD=trendpulse
+          JWT_SECRET=ci-e2e-secret
+          OAUTH_STATE_SECRET=ci-e2e-state
+          GOOGLE_CLIENT_ID=ci-google-client-id
+          GOOGLE_CLIENT_SECRET=ci-google-client-secret
+          NOWPAYMENTS_API_KEY=
+          NOWPAYMENTS_IPN_SECRET=
+          TELEGRAM_API_ID=0
+          TELEGRAM_API_HASH=
+          TELEGRAM_POOL_SESSIONS=
+          SENSITIVE
+
+      - name: Build app images
+        run: make build
+
+      - name: Tear down any stale stack and volumes
+        run: make down && docker compose --env-file development/version.env -f development/docker-compose.yml down -v
+        continue-on-error: true
+
+      - name: Start full stack
+        run: make up
+
+      - name: Wait for nginx health (http://localhost/api/health == 200)
+        run: |
+          for i in $(seq 1 60); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/api/health || true)
+            if [ "$STATUS" = "200" ]; then
+              echo "Stack is healthy (attempt $i)"
+              exit 0
+            fi
+            echo "Attempt $i: got $STATUS, waiting..."
+            sleep 3
+          done
+          echo "Stack did not become healthy after 60 attempts"
+          make logs-once
+          exit 1
+
+      - name: Run Playwright E2E tests
+        run: npm run test:e2e
+        working-directory: frontend
+
+      - name: Upload Playwright report (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7
+
+      - name: Upload Playwright test results (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: frontend/test-results/
+          retention-days: 7
+
+      - name: Tear down stack
+        if: always()
+        run: make down

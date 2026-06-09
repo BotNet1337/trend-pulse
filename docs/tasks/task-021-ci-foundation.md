@@ -1,11 +1,11 @@
 ---
 id: TASK-021
 title: CI foundation — корневые workflows + изоляция test-БД + dep-scan + coverage-gate
-status: planned          # planned → in-progress → review → done
+status: done             # planned → in-progress → review → done
 owner: ops
 created: 2026-06-09
 updated: 2026-06-09
-baseline_commit: ""
+baseline_commit: "db92ef30d62c55a6e06601b932f3cc8ec58ab067"
 branch: "gsd/phase-021-ci-foundation"
 tags: [epic-d, ci, ops, testing]
 ---
@@ -97,20 +97,36 @@ tags: [epic-d, ci, ops, testing]
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
-baseline_commit: ""
+current_step: done
+baseline_commit: "db92ef30d62c55a6e06601b932f3cc8ec58ab067"
 branch: "gsd/phase-021-ci-foundation"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + real behavior через nginx/стек)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (если применимо)
-- [ ] 6 ship (PR, squash-merged)
-- [ ] 7 learnings (auto)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + real behavior через nginx/стек)
+- [x] 5 review (auto, adversarial)
+- [x] 5.5 security (если применимо)
+- [x] 6 ship (PR, squash-merged)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план по проверенным фактам: корневых `.github/workflows` нет, есть только `frontend/.github/workflows/{build,pr-checks}.yml` и `landing/.github/workflows/{build,pr-checks}.yml` (GitHub их не запускает); `make` цели `ci/ci-fast/test/test-integration/build/up` подтверждены; `backend/pyproject.toml` addopts `--strict-markers -ra` + `markers` (integration) без coverage-gate; `conftest.py` делает drop/create + per-test truncate, но не трогает `alembic_version` → ломает `make up` на общем volume. git-root в песочнице не нашёлся — executor определяет через `git rev-parse --show-toplevel`. deps: 001 (dev env/compose/make). locate+plan выполнены — executor стартует с «3 do».)
+
+### do+verify (loop-021, 2026-06-09)
+git-root = `apps/trendPulse` → корневые `.github/workflows/`. Создано: `pr-checks.yml` (5 jobs: backend lint+type+unit+`test-cov`; openapi-contract drift; frontend lint+tsc+vitest; landing lint+build; dep-scan pip-audit+npm audit) на `pull_request`; `main-integration.yml` (integration: postgres/redis services + `make test-integration`; e2e: `make build`→чистый том→`make up`→health-wait→Playwright→artifacts) на `push main`. conftest `db_engine` teardown +`DROP TABLE IF EXISTS alembic_version`. `pyproject.toml` +pytest-cov +`[tool.coverage] fail_under=80` (НЕ в global addopts). Makefile +`test-cov`. pre-commit `entry: make ci-fast`. Удалены вложенные PostBolt-workflow (frontend/landing/.github).
+**verify:** AC2 доказан на ephemeral PG — после integration-сьюита `alembic_version` ДРОПНУТА (to_regclass=NULL), повторный `alembic upgrade head` чист, `alerts` существует (без фикса осталась бы 0006 → битая схема). AC3 обе стороны: `make test-cov` 81.81%≥80 PASS, `--cov-fail-under=95` → exit 1. AC1/AC4 локально: ci-fast+test-cov+drift-check+frontend(128 unit)+landing build+dep-scan — все зелёные. actionlint чист. main-integration санити OK.
+
+### review + security (loop-021, 2026-06-09)
+**Security (opus): 0 блокеров.** Триггеры безопасны (`pull_request`/`push main`, НЕ `pull_request_target`/`workflow_run`); нет script-injection в `run:` (единственная интерполяция `github.head_ref` была в `concurrency` → заменил на `github.ref`); реальных секретов нет (CI-only dummy creds, heredoc `<<'SENSITIVE'` без раскрытия); conftest DROP — статическая строка, тест-окружение. Применил INFO: top-level `permissions: contents: read` на оба workflow; поправил вводящий в заблуждение комментарий «secrets injected».
+**Review (opus): 0 CRITICAL, 2 HIGH — закрыты:**
+- HIGH-1 (`make logs -f` в e2e виснет на провале health ~6ч) → новая нефолловая цель `make logs-once` (`logs --no-color --tail=500`), e2e зовёт её.
+- HIGH-2 (`make up` якобы не применяет миграции) → НЕ баг: `compose up -d` ждёт `migration_runner` через `api depends_on: service_completed_successfully` (TASK-019 api.yml) → миграции применяются в составе `make up`. Код не меняли.
+- MEDIUM-3 (backend pip-audit весь continue-on-error → новые CVE молча) → hard-fail + `--ignore-vuln` 7 известных CVE по id (pillow×6 + pytest); проверено `pip-audit --ignore-vuln ...` exit 0. Новые CVE теперь блокируют.
+- MEDIUM-1/sec-LOW (.coverage не gitignored) → добавил `.coverage*`/`coverage.xml`/`htmlcov/` в `.gitignore`, удалил stray-файл.
+- LOW scope-drift (`landing/public/sitemap.xml` от `npm build`, недетерминированный timestamp) → откатил (`git checkout`).
+- LOW (double unit-run ci-fast+test-cov ~3с; setup-uv+setup-python дубль; working-directory:.) — приняты как есть (работает, низкий риск менять перед реальным CI-прогоном).
+Перепроверка после фиксов: actionlint чист, test-cov 81.81% PASS, дерево без drift.
+**Follow-up (не блокер):** обновить pillow≥12.2 + pytest≥9 и снять соответствующие `--ignore-vuln`; устранить landing npm-CVE (continue-on-error+TODO) — кандидаты в dep-update задачу.
