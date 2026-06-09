@@ -69,6 +69,10 @@ def configure_logging(level: int = logging.INFO) -> None:
     root.handlers = [handler]
     root.setLevel(level)
 
+    # httpx logs full request URLs at INFO; Telegram Bot API URLs embed the bot
+    # token in the path, so cap httpx at WARNING to keep tokens out of logs.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
 
 def _is_forbidden(key: str) -> bool:
     """True if a field name may carry raw post content (case-insensitive)."""

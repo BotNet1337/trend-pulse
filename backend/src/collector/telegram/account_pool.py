@@ -81,6 +81,17 @@ class AccountPool:
     def __len__(self) -> int:
         return len(self._accounts)
 
+    @property
+    def size(self) -> int:
+        """Total number of accounts in the pool (read-only, no behaviour change)."""
+        return len(self._accounts)
+
+    @property
+    def cooling_count(self) -> int:
+        """Number of accounts currently in cooldown (read-only, no behaviour change)."""
+        now = self._clock()
+        return sum(1 for a in self._accounts if a.cooldown_until > now)
+
     def acquire(self) -> TelegramClientProtocol:
         """Return the client of the next account that is not cooling down.
 

@@ -111,6 +111,16 @@ _DEFAULT_FRONTEND_BASE_URL = "http://localhost"
 # Daily cadence is sufficient because reminder windows are in whole days (7/3/1).
 _DEFAULT_RENEWAL_CHECK_INTERVAL_SECONDS: int = 86_400
 
+# TG account pool health + ops self-alert (TASK-035). Named, non-secret defaults.
+# `pool_min_healthy` is the operational target: fewer healthy accounts = degraded
+# (warn metric + self-alert). POOL_MIN=1 remains the hard floor in collector/constants
+# so dev/tests with a single session still work.
+# Code default is 3; prod sets POOL_MIN_HEALTHY=1 via deploy.env/Ansible while a
+# single session is in use — raise when more sessions are added.
+_DEFAULT_POOL_MIN_HEALTHY = 3
+# Ops self-alert throttle: at most one Telegram message per reason per window.
+_DEFAULT_OPS_ALERT_THROTTLE_SECONDS = 3600
+
 # Email — templates service + SMTP transport (TASK-025). Named, non-secret
 # defaults — never magic literals (CONVENTIONS). Dev defaults point to the
 # local compose services (templates:3100, mailpit:1025). SMTP credentials are
@@ -244,6 +254,18 @@ class Settings(BaseSettings):
     email_render_timeout_seconds: int = _DEFAULT_EMAIL_RENDER_TIMEOUT_SECONDS
     # SMTP connect/send timeout (seconds) — bounds a hung mail server.
     smtp_timeout_seconds: int = _DEFAULT_SMTP_TIMEOUT_SECONDS
+
+    # --- TG pool health + ops self-alert (TASK-035). ---
+    # Operational pool target: fewer healthy accounts than this = degraded (warn +
+    # self-alert). Non-secret; prod sets POOL_MIN_HEALTHY=1 via Ansible deploy.env
+    # while only one session is provisioned (raise to 3 once pool is expanded).
+    pool_min_healthy: int = _DEFAULT_POOL_MIN_HEALTHY
+    # Secrets — ops bot token + chat id; empty default → self-alert off (metric only).
+    # Supplied via sensitive.env / vault; NEVER logged or hardcoded.
+    ops_telegram_bot_token: str = ""
+    ops_telegram_chat_id: str = ""
+    # Non-secret: throttle window (seconds) per alert reason (default 1 hour).
+    ops_alert_throttle_seconds: int = _DEFAULT_OPS_ALERT_THROTTLE_SECONDS
 
     # --- Observability — Sentry (TASK-024). DSN is a secret (sensitive.env); empty
     # default → Sentry off. Non-secret settings have named-constant defaults above.---
