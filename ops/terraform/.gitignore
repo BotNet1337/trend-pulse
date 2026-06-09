@@ -13,3 +13,7 @@ crash.*.log
 
 # Backend config passed at init time (may carry creds).
 *.backend.hcl
+
+# Local backend override used during verify/AC2 (not for production use).
+backend_override.tf
+*_override.tf

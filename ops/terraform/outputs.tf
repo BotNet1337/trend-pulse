@@ -15,7 +15,18 @@ output "firewall_id" {
   value       = digitalocean_firewall.edge.id
 }
 
-output "object_storage_bucket" {
-  description = "Spaces bucket name when object storage is enabled, else empty."
-  value       = var.enable_object_storage ? var.object_storage_bucket : ""
+# --- Object storage (TASK-056) ---
+output "backup_bucket_name" {
+  description = "Hetzner Object Storage backup bucket name."
+  value       = module.backup_storage.bucket_name
+}
+
+output "s3_endpoint" {
+  description = "Hetzner Object Storage endpoint URL."
+  value       = var.s3_endpoint
+}
+
+output "s3_region" {
+  description = "Hetzner Object Storage region identifier."
+  value       = var.s3_region
 }

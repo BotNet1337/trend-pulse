@@ -1,76 +1,61 @@
 # TrendPulse — Roadmap
 
-Источник истины по продукту: [`../product/overview.md`](../product/overview.md). Архитектура: [`high-level-architecture.md`](./high-level-architecture.md). Фокус сейчас — **Backend core** (детальные таски). Landing (эпик B) и Frontend (эпик C) — эпики-заглушки, детализируются позже. Всё спроектировано так, что Twitter/X подключается как второй источник без переписывания ядра ([ADR-001](./adr-001-source-abstraction.md)).
+Источник истины по продукту: [`../product/overview.md`](../product/overview.md).
+Эпики текущей волны: [`../product/epics/`](../product/epics/README.md).
+Болевые точки архитектуры: [`pain-points.md`](./pain-points.md).
+Задачи: [`../tasks/tasks-index.md`](../tasks/tasks-index.md).
 
-## Epics
+## Состояние (2026-06-09)
 
-| Epic | Поток | Состояние планирования |
-|---|---|---|
-| **A** | Backend core | детальные таски (task-002 … task-012) |
-| **B** | Landing (design + impl) | эпик-заглушка (ниже), таски позже |
-| **C** | Frontend App (dashboard) | эпик-заглушка (ниже), таски позже |
+| Эпик | Поток | Состояние |
+|------|-------|-----------|
+| **A** | Backend core (task-001…012) | ✅ done |
+| **B** | Landing (task-018) | ✅ done |
+| **C** | Frontend App SPA (task-013…017) | ✅ done |
+| **D** | Hardening & growth (task-019…028) | ✅ done (028 смержен PR #33); хвост 029–033 перераспределён (ниже) |
+| **E** | **Path to revenue** (task-034…055) | ⏳ текущая волна — детали в [`../product/epics/`](../product/epics/README.md) |
 
-`task-001` (dev environment) — фундамент, не входит в эпики, блокирует всё.
+**Сдвиг фокуса:** эпики A–D строили систему. Волна E строит «последнюю милю» до пользователя и денег:
+все 33 закрытые задачи — про систему, ни одна — про человека, который платит. Цель волны:
+**первый платящий → $2k MRR**.
 
----
+## Epic E — Path to revenue
 
-## Epic A — Backend core
+Подэпики (полные планы — в `docs/product/epics/`):
 
-Порядок отражает зависимости. Каждая задача — отдельный `task-NNN-*.md` (формат как task-001), `status: planned`, готова к `trendpulse-executor`.
+| Подэпик | Суть | Задачи | Когда |
+|---------|------|--------|-------|
+| [E0](../product/epics/epic-e0-survival-ops.md) | Выживание: Hetzner-бакет (056), бэкапы, пул, latency-метрика, embed-кэш | 056, 034–037 (planned, доки готовы) | сейчас |
+| [E1](../product/epics/epic-e1-first-value.md) | Первая польза за 30 секунд: паки, instant value, free-delay | 038–040 (planned, доки готовы) | сейчас |
+| [E2](../product/epics/epic-e2-signal-quality.md) | Качество сигнала: историч. baseline, 👍/👎, адаптивный порог | 041–043 | сейчас |
+| [E3](../product/epics/epic-e3-showcase-channel.md) | Витрина-канал: авто-постинг, proof-of-speed, рефералка | 044–046 | сейчас |
+| [E4](../product/epics/epic-e4-frictionless-money.md) | Деньги без трения: год/квартал, one-click renewal, grace | 047–048 | после E1–E3 |
+| [E5](../product/epics/epic-e5-pricing-packaging.md) | Цены и упаковка: Pro $29–39, API-тариф $99–149, Free=воронка | 049 (+030) | после E3 |
+| [E6](../product/epics/epic-e6-business-metrics.md) | Бизнес-метрики: воронка, конверсия, MRR-дашборд | 050–051 (+036) | после E4 |
+| [E7](../product/epics/epic-e7-cost-and-scale.md) | Масштаб: глобальный pipeline, событийный скоринг, fallback-источник | 052–055 | после E6 |
+| [E8](../product/epics/epic-e8-new-sources-markets.md) | Новые источники/рынки: Twitter (031), B2B fiat, white-label | 031 + future | после $2k MRR |
 
-| Task | Заголовок | Зависит от | Покрывает (overview / ADR) |
-|---|---|---|---|
-| task-001 | Dev environment (uv·Docker·make·ruff/pytest) | — | §8 |
-| **task-002** | Data model + миграции + multi-tenancy (pgvector) | 001 | §4, §5, ADR-002, ADR-001(`source_kind`) |
-| **task-003** | Auth — **fastapi-users** (email/пароль + Google OAuth, JWT) | 002 | §3, ADR-003 |
-| **task-004** | Watchlist CRUD API (каналы, топики, alert-config) | 002, 003 | §3 |
-| **task-005** | Source abstraction + Telegram collector (пул, FLOOD_WAIT, cross-tenant dedup) | 002 | §2, §7, ADR-001, ADR-002 |
-| **task-006** | Celery infra — app, beat, per-user queues, scheduler, locks | 002, 005 | §4, §5, ADR-002 |
-| **task-007** | Pipeline — dedup→normalize→embed→cluster + batch_processor | 005, 006 | §4 (pipeline) |
-| **task-008** | Scorer — velocity/engagement/cross_channel + alert trigger | 007 | §4 (scorer) |
-| **task-009** | Alert delivery — Telegram Bot API + webhook (Team) | 008, 003 | §3, §4, §6 |
-| **task-010** | Billing — **крипто (NOWPayments)** Free/Pro/Team + enforcement лимитов | 003, 004 | §6, ADR-004 |
-| **task-011** | Compliance & ops — 48h retention, GDPR delete, rate-limit, observability | 002, 005, 009 | §7 |
-| **task-012** | Ops / IaC — Terraform (внешние сервисы) + Ansible (prod settings/defaults, доставка секретов) | 001 | ADR-005 |
+**Критический путь до первого доллара:**
+056 (Hetzner-бакет) → 034 (бэкапы) → 038 (packs) → 039 (instant value) → 040 (free-delay) → 042 (👍/👎) → 044 (витрина) → 049 (цены).
+E0–E3 параллелятся; включать платное продвижение раньше E1–E3 — бессмысленно.
 
-**Критический путь до первого сигнала:** 001 → 002 → 005 → 006 → 007 → 008 → 009.
-**Параллельно после 002:** 003 (auth) и 005 (collector) независимы; 004 после 003; 010 после 003/004.
+## Хвост Epic D
 
-### MVP «walking skeleton» (минимум до демо)
+- task-029 SSR — in-progress (взят до волны E); после него фокус строго на E0/E1 — деньги важнее DX.
+- task-030 API hardening — вместе с E5 (предпосылка продажи API-тарифа).
+- task-031 Twitter — триггер $2k MRR (E8).
+- task-032 security (at-rest, P5-навсегда) — перед публичным запуском / первым B2B.
+- task-033 GDPR export — compliance-бэклог.
 
-001 → 002 → 005 (Telegram read) → 006 (очереди/beat) → 007 (кластеры) → 008 (score) → 009 (Telegram-бот алерт). Auth/billing/dashboard можно дотачивать параллельно.
+## Distribution (future)
 
----
-
-## Epic B — Landing (заглушка)
-
-Папка `landing/` (React + Vite, SSG/static). Будущие таски (детализация позже):
-- B1: design spec лендинга (бренд, ключевые экраны, copy, pricing-секция) — кандидат на `bmad-ux`.
-- B2: scaffold `landing/` (Vite + React + Tailwind/UI-kit), деплой-конфиг.
-- B3: реализация секций (hero с примером viral-alert, how-it-works, pricing, CTA/signup).
-- B4: SEO/аналитика/метрики конверсии.
-
-Зависимости: B1 после high-level arch (готово); B2+ независимы от backend (моки), интеграция signup → task-003.
-
-## Epic C — Frontend App (заглушка)
-
-Папка `frontend/` (Vite + React SPA). Будущие таски (детализация позже):
-- C1: scaffold SPA (Vite+React+TS, роутинг, API-клиент к FastAPI, auth-флоу с JWT/refresh).
-- C2: auth + onboarding UI (login/signup, Google OAuth).
-- C3: watchlist management UI (каналы, топики, пороги) → task-004 API.
-- C4: alerts dashboard + история → task-009 данные.
-- C5: billing/upgrade UI (крипто-оплата, NOWPayments) → task-010.
-
-Зависимости: C1 после task-001/ADR-003; C2 после task-003; C3 после task-004; C4 после task-008/009; C5 после task-010.
-
----
-
-## Distribution (future — учитываем при проектировании)
-
-Боты из `botnet/apps/*` (начиная с `trendPulse`) в будущем публикуются как OCI-артефакты через **ORAS** в `botnet/release`, который собирает один VPS-деплой. Не реализуем сейчас — но task-001/012 и образы держим переносимыми (12-factor, semver). См. [build-and-release.md](./build-and-release.md), [ADR-006](./adr-006-packaging-and-release.md).
+Боты из `botnet/apps/*` публикуются как OCI-артефакты через ORAS в `botnet/release` (один VPS-деплой).
+Не сейчас; образы держим переносимыми. См. [build-and-release.md](./build-and-release.md), [ADR-006](./adr-006-packaging-and-release.md).
 
 ## Принципы планирования
 
-- Каждая backend-задача: TDD-якорь, реальная behavioral-проверка (G2), `trendpulse-security` где трогаются auth/secrets/OAuth/input/raw SQL.
-- Source-agnostic ядро: pipeline/scorer не знают про платформу ([ADR-001](./adr-001-source-abstraction.md)); провайдеры за абстракциями (`SourceCollector`, `PaymentGateway`).
-- Управление окружением — только через root `Makefile` (`make up`/`dev-infra-up`/`down`), сети сегментированы ([network-design.md](./network-design.md)), секреты из Ansible ([ADR-005](./adr-005-infra-provisioning-and-secrets.md)).
+- Каждая backend-задача: TDD-якорь, реальная behavioral-проверка (G2), `trendpulse-security`
+  где трогаются auth/secrets/OAuth/input/raw SQL.
+- Source-agnostic ядро (ADR-001); провайдеры за абстракциями (`SourceCollector`, `PaymentGateway`).
+- Окружение — только через root `Makefile`; сети сегментированы; секреты из Ansible (ADR-005).
+- **Новое для волны E:** у каждой продуктовой задачи есть метрика успеха (E6-воронка) — «сделано» ≠ «работает на деньги».
