@@ -1,11 +1,11 @@
 ---
 id: TASK-018
 title: Landing base — hero/how-it-works/features/pricing/CTA/compliance-футер, бренд TrendPulse
-status: planned          # planned → in-progress → review → done
+status: in-progress      # planned → in-progress → review → done
 owner: frontend
 created: 2026-06-09
 updated: 2026-06-09
-baseline_commit: ""
+baseline_commit: "fad558c76d3df62b034c424c5de795a2b68ee568"
 branch: "gsd/phase-018-landing-base"
 tags: [landing, marketing, compliance, seo, e2e]
 ---
@@ -103,9 +103,9 @@ Compliance (overview §7 / §2): **только публичные каналы*
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
 current_step: 3
-baseline_commit: ""
+baseline_commit: "fad558c76d3df62b034c424c5de795a2b68ee568"
 branch: "gsd/phase-018-landing-base"
-lock: ""
+lock: "loop-018"
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [ ] 3 do (TDD: failing test → minimal code)
@@ -119,4 +119,3 @@ debug_runs: []
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план по эталону task-003/004 и контексту: compliance-friendly лендинг из template landing/ (hero с примером viral-alert §1, how-it-works, features, тарифы Free/Pro/Team §6, CTA→frontend /sign-up, compliance-футер: privacy/ToS/retention 48h/public-only). Адаптация бренда/копи под TrendPulse; build зелёный, Lighthouse perf/a11y/seo пороги, smoke e2e. Независима от backend (deps: нет). Stripe/секретов/API-вызовов нет. locate+plan выполнены этим планированием — executor стартует с «3 do».)
-</content>
