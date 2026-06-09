@@ -1,4 +1,4 @@
-"""Per-user batch pipeline body (task-007, AC5/AC6).
+"""Per-user batch pipeline body (task-007, AC5/AC6; task-037 embedding cache).
 
 `process_user_batch(user_id)` is the plain function the locked Celery task
 `pipeline.tasks.run_user_batch` calls inside its acquired lock. It:
@@ -16,23 +16,39 @@ An empty buffer is a clean no-op: no Postgres write, returns 0 (AC5). A post who
 channel can't be resolved is skipped with a warning (never aborts the batch). The
 entry point takes only `user_id` (JSON-serializable id, never an ORM object —
 CONVENTIONS). Cross-module access is via storage/collector public service functions only.
+
+task-037: `embed_with_cache(redis, posts, encoder)` is the I/O-layer cache wrapper.
+It lives here (not inside `embed.run`) to preserve pipeline-step purity (CONVENTIONS).
+`_run_pipeline` is kept pure by accepting pre-computed `vectors` instead of calling
+`embed.run` itself; `process_user_batch` computes vectors via `embed_with_cache` and
+passes them in.
 """
 
+import hashlib
+import json
 import logging
+from typing import TYPE_CHECKING, cast
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from collector.base import RawPost, SourceKind, SourceRef
 from collector.buffer import drain_source
+from config import get_settings
+from observability import log_event
+from pipeline.constants import EMBEDDING_CACHE_KEY_PREFIX, EMBEDDING_CACHE_TTL_SECONDS
 from pipeline.steps import cluster, dedup, embed, normalize
 from pipeline.steps.cluster import ClusterCandidate
+from pipeline.steps.embed import Encoder
 from pipeline.steps.normalize import NormalizedPost
 from storage.database import get_session
-from storage.models import Channel, Cluster, Watchlist
+from storage.models import EMBEDDING_DIM, Channel, Cluster, Watchlist
 from storage.models.channels import SourceKind as ChannelSourceKind
 from storage.models.posts import Post
 from storage.redis_client import get_redis_client
+
+if TYPE_CHECKING:
+    from redis import Redis
 
 logger = logging.getLogger(__name__)
 
@@ -94,11 +110,136 @@ def _build_handle_to_channel_id(
     return {(str(row.source_kind.value), row.handle): row.id for row in result}
 
 
-def _run_pipeline(posts: list[RawPost]) -> list[ClusterCandidate]:
-    """Pure chain: dedup → normalize → embed → cluster. No I/O."""
+def embed_with_cache(
+    redis: "Redis | None",
+    posts: list[NormalizedPost],
+    encoder: Encoder | None = None,
+) -> list[list[float]]:
+    """Return embedding vectors for `posts`, reading/writing a Redis cache.
+
+    Cache key: ``embed:{model_name}:{sha256(post.text)}``.
+    Cache value: JSON-serialised list[float] of length EMBEDDING_DIM.
+    TTL: EMBEDDING_CACHE_TTL_SECONDS (48 h).
+
+    Fail-open contract: any Redis error or corrupt cached value is treated as a
+    miss — the model is called and a warning is logged. The pipeline never fails
+    because the cache is unavailable. When ``redis`` is None the function
+    degrades gracefully to a direct ``embed.run`` call (identical behaviour to
+    pre-cache code).
+    """
+    if not posts:
+        return []
+
+    model_name = get_settings().embedding_model_name
+
+    # --- fast path: no Redis ---
+    if redis is None:
+        return embed.run(posts, encoder=encoder)
+
+    texts = [p.text for p in posts]
+    keys = [
+        f"{EMBEDDING_CACHE_KEY_PREFIX}:{model_name}:{hashlib.sha256(t.encode()).hexdigest()}"
+        for t in texts
+    ]
+
+    # --- batch fetch from Redis ---
+    try:
+        raw_values: list[bytes | None] = cast(list[bytes | None], redis.mget(keys))
+    except Exception as exc:
+        logger.warning(
+            "embed_with_cache: redis.mget failed (%s), falling back to model",
+            type(exc).__name__,
+        )
+        raw_values = [None] * len(posts)
+
+    # --- parse cached entries; treat invalid entries as misses ---
+    cached: list[list[float] | None] = []
+    for idx, raw in enumerate(raw_values):
+        if raw is None:
+            cached.append(None)
+            continue
+        try:
+            vec: list[float] = json.loads(raw)
+            length = len(vec) if isinstance(vec, list) else "?"
+            if not isinstance(vec, list) or len(vec) != EMBEDDING_DIM:
+                raise ValueError(f"cached vector at index {idx} has wrong length {length}")
+            # Reject booleans and non-numeric elements — bool is a subclass of int
+            # in Python so the isinstance check must exclude it explicitly.
+            if not all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in vec):
+                raise ValueError(f"cached vector at index {idx} contains non-numeric elements")
+            cached.append(vec)
+        except Exception as exc:
+            logger.warning(
+                "embed_with_cache: corrupt cached value at key %s (%s), treating as miss",
+                keys[idx],
+                type(exc).__name__,
+            )
+            cached.append(None)
+
+    # --- identify uncached positions and compute missing vectors ---
+    miss_indices = [i for i, v in enumerate(cached) if v is None]
+    miss_posts = [posts[i] for i in miss_indices]
+
+    # De-duplicate miss texts so identical texts are encoded only once.
+    # unique_miss_texts preserves first-seen order; text_to_vector maps back.
+    text_to_vector: dict[str, list[float]] = {}
+    if miss_posts:
+        seen: dict[str, int] = {}
+        unique_miss_posts: list[NormalizedPost] = []
+        for p in miss_posts:
+            if p.text not in seen:
+                seen[p.text] = len(unique_miss_posts)
+                unique_miss_posts.append(p)
+        unique_computed = embed.run(unique_miss_posts, encoder=encoder)
+        for p, vec in zip(unique_miss_posts, unique_computed, strict=True):
+            text_to_vector[p.text] = vec
+
+    # Map miss positions back to their computed vectors (duplicates reuse same vector).
+    computed: list[list[float]] = [text_to_vector[posts[i].text] for i in miss_indices]
+
+    # --- merge: fill miss slots with computed vectors ---
+    result: list[list[float]] = []
+    computed_iter = iter(computed)
+    for hit in cached:
+        if hit is not None:
+            result.append(hit)
+        else:
+            result.append(next(computed_iter))
+
+    # --- write new entries to Redis via pipeline (fail-open) ---
+    if miss_indices:
+        try:
+            pipe = redis.pipeline(transaction=False)
+            for i, miss_idx in enumerate(miss_indices):
+                pipe.setex(keys[miss_idx], EMBEDDING_CACHE_TTL_SECONDS, json.dumps(computed[i]))
+            pipe.execute()
+        except Exception as exc:
+            logger.warning(
+                "embed_with_cache: redis pipeline write failed (%s), continuing",
+                type(exc).__name__,
+            )
+
+    hits = len(posts) - len(miss_indices)
+    log_event("embed_cache", hits=hits, misses=len(miss_indices), model=model_name)
+
+    return result
+
+
+def _run_pipeline(
+    posts: list[RawPost],
+    vectors: list[list[float]] | None = None,
+) -> list[ClusterCandidate]:
+    """Pure chain: dedup → normalize → (embed if vectors not provided) → cluster.
+
+    Accepts pre-computed ``vectors`` from the I/O layer (``embed_with_cache``) so
+    the cache lives outside this pure function. When ``vectors`` is None the step
+    falls back to ``embed.run`` directly — preserving backward-compatibility and
+    enabling independent unit testing of the pure chain.
+    """
     deduped = dedup.run(posts)
     normalized = normalize.run(deduped)
-    vectors = embed.run(normalized)
+    if vectors is None:
+        vectors = embed.run(normalized)
     return cluster.run(normalized, vectors)
 
 
@@ -107,6 +248,10 @@ def process_user_batch(user_id: int) -> int:
 
     Empty buffer → early return 0 with no Postgres write (AC5). Clusters are
     persisted scoped by `user_id` (AC6).
+
+    task-037: embedding vectors are computed via ``embed_with_cache`` at the I/O
+    layer (here) so the pure ``_run_pipeline`` chain receives pre-computed vectors
+    and ``embed.run`` is never called for texts already in the Redis cache.
     """
     redis = get_redis_client()
     with get_session() as session:
@@ -120,7 +265,15 @@ def process_user_batch(user_id: int) -> int:
         logger.info("process_user_batch no-op (empty buffer) user_id=%s", user_id)
         return 0
 
-    candidates = _run_pipeline(posts)
+    # Compute vectors at the I/O boundary using the embedding cache (task-037).
+    # dedup + normalize happen inside _run_pipeline (pure), but we need the
+    # normalized texts for the cache keys. We run them here for cache lookup only;
+    # _run_pipeline runs its own dedup+normalize step so nothing is skipped.
+    deduped_for_cache = dedup.run(posts)
+    normalized_for_cache = normalize.run(deduped_for_cache)
+    precomputed_vectors = embed_with_cache(redis, normalized_for_cache)
+
+    candidates = _run_pipeline(posts, vectors=precomputed_vectors)
     if not candidates:
         logger.info("process_user_batch produced no clusters user_id=%s", user_id)
         return 0

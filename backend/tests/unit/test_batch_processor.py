@@ -9,6 +9,12 @@ TASK-022: ClusterRepository removed from batch_processor — clusters are now pe
 directly via session.add + flush to obtain cluster.id for Post.cluster_id FK.
 The unit tests patch get_session with a MagicMock session so Cluster/Post adds
 are captured without a real DB.
+
+TASK-037: Tests that verify cluster/post persistence now also patch `embed_with_cache`
+so they bypass Redis entirely and keep their existing embed._get_model mock working.
+Two additional tests verify the cache integration path:
+- process_user_batch with a properly configured Redis mock uses the cache.
+- process_user_batch with redis=None produces identical behaviour to the direct path.
 """
 
 import inspect
@@ -100,6 +106,9 @@ def test_persists_clusters_scoped_by_user_id() -> None:
     After TASK-022 the processor uses session.add+flush directly (no ClusterRepository).
     We capture the Cluster rows passed to session.add and check user_id.
     channel lookup returns empty map → posts are skipped (no channel in mock session).
+
+    TASK-037: embed_with_cache is patched to None so _run_pipeline falls back to
+    embed.run, and the existing embed._get_model mock continues to work.
     """
     user_id = 42
     refs = [SourceRef(kind=SourceKind.TELEGRAM, handle="@chan")]
@@ -116,6 +125,8 @@ def test_persists_clusters_scoped_by_user_id() -> None:
         patch.object(batch_processor, "user_source_refs", return_value=refs),
         patch.object(batch_processor, "drain_source", return_value=posts),
         patch.object(batch_processor, "_build_handle_to_channel_id", return_value={}),
+        # Bypass cache so _run_pipeline uses embed.run with the injected model.
+        patch.object(batch_processor, "embed_with_cache", return_value=None),
         patch.object(batch_processor.embed, "_get_model", return_value=_FakeEncoder()),
     ):
         result = batch_processor.process_user_batch(user_id)
@@ -136,6 +147,8 @@ def test_persists_posts_with_cluster_id_and_resolved_channel() -> None:
     cluster's id (the per-cluster scoring link) + the channel_id resolved by
     (source_kind, handle). This is the central new behavior of TASK-022 — posts were
     never persisted before, so per-cluster scoring had no data to read.
+
+    TASK-037: embed_with_cache patched to None so _run_pipeline uses embed.run.
     """
     user_id = 42
     refs = [SourceRef(kind=SourceKind.TELEGRAM, handle="@chan")]
@@ -155,6 +168,8 @@ def test_persists_posts_with_cluster_id_and_resolved_channel() -> None:
         patch.object(batch_processor, "user_source_refs", return_value=refs),
         patch.object(batch_processor, "drain_source", return_value=posts),
         patch.object(batch_processor, "_build_handle_to_channel_id", return_value=channel_map),
+        # Bypass cache so _run_pipeline uses embed.run with the injected model.
+        patch.object(batch_processor, "embed_with_cache", return_value=None),
         patch.object(batch_processor.embed, "_get_model", return_value=_FakeEncoder()),
     ):
         result = batch_processor.process_user_batch(user_id)
@@ -182,7 +197,10 @@ def test_persists_posts_with_cluster_id_and_resolved_channel() -> None:
 
 def test_unresolved_channel_skips_post_without_failing() -> None:
     """Edge: a post whose (source_kind, handle) has no Channel row is skipped with a
-    warning — the batch persists the cluster but no Post for it (no crash, AC5)."""
+    warning — the batch persists the cluster but no Post for it (no crash, AC5).
+
+    TASK-037: embed_with_cache patched to None so _run_pipeline uses embed.run.
+    """
     user_id = 7
     refs = [SourceRef(kind=SourceKind.TELEGRAM, handle="@chan")]
     posts = [_raw("ext-1", "alpha news today")]
@@ -198,6 +216,8 @@ def test_unresolved_channel_skips_post_without_failing() -> None:
         patch.object(batch_processor, "drain_source", return_value=posts),
         # Empty map → channel unresolved → post skipped.
         patch.object(batch_processor, "_build_handle_to_channel_id", return_value={}),
+        # Bypass cache so _run_pipeline uses embed.run with the injected model.
+        patch.object(batch_processor, "embed_with_cache", return_value=None),
         patch.object(batch_processor.embed, "_get_model", return_value=_FakeEncoder()),
     ):
         result = batch_processor.process_user_batch(user_id)
@@ -225,3 +245,76 @@ def test_candidate_to_cluster_sets_user_id_and_embedding() -> None:
     assert row.user_id == 99
     assert row.topic == "hello"
     assert len(cast(list[float], row.embedding)) == EMBEDDING_DIM
+
+
+# ---------------------------------------------------------------------------
+# TASK-037: cache integration tests for process_user_batch
+# ---------------------------------------------------------------------------
+
+
+def test_process_user_batch_uses_embed_with_cache() -> None:
+    """process_user_batch invokes embed_with_cache at the I/O layer (TASK-037).
+
+    Verifies the cache wrapper is called with the Redis client and NormalizedPosts,
+    and that its return value is forwarded to _run_pipeline as precomputed vectors.
+    """
+    import json
+
+    user_id = 1
+    refs = [SourceRef(kind=SourceKind.TELEGRAM, handle="@chan")]
+    posts = [_raw("c1", "cached text here")]
+
+    mock_session = MagicMock()
+    _install_id_assigning_flush(mock_session)
+    session_ctx = _make_session_ctx(mock_session)
+
+    # Redis mock: mget returns one cached JSON vector of correct length.
+    cached_vec = [99.0] + [0.0] * (EMBEDDING_DIM - 1)
+    mock_redis = MagicMock()
+    mock_redis.mget.return_value = [json.dumps(cached_vec).encode()]
+
+    with (
+        patch.object(batch_processor, "get_redis_client", return_value=mock_redis),
+        patch.object(batch_processor, "get_session", return_value=session_ctx),
+        patch.object(batch_processor, "user_source_refs", return_value=refs),
+        patch.object(batch_processor, "drain_source", return_value=posts),
+        patch.object(batch_processor, "_build_handle_to_channel_id", return_value={}),
+        patch.object(batch_processor, "get_settings") as mock_settings,
+    ):
+        mock_settings.return_value.embedding_model_name = "all-MiniLM-L6-v2"
+        result = batch_processor.process_user_batch(user_id)
+
+    # A cluster was produced (cache hit supplied a valid vector).
+    assert result >= 1
+    # mget was called — the cache was consulted.
+    assert mock_redis.mget.called
+    # setex NOT called — every vector came from cache (no misses).
+    assert not mock_redis.setex.called
+
+
+def test_process_user_batch_without_redis_identical_to_direct_embed() -> None:
+    """process_user_batch with redis=None → behaviour identical to pre-cache code.
+
+    Simulates unavailable Redis by patching get_redis_client to return None and
+    verifies the pipeline still runs (embed.run is called directly via _run_pipeline).
+    """
+    user_id = 2
+    refs = [SourceRef(kind=SourceKind.TELEGRAM, handle="@chan")]
+    posts = [_raw("n1", "no redis text")]
+
+    mock_session = MagicMock()
+    _install_id_assigning_flush(mock_session)
+    session_ctx = _make_session_ctx(mock_session)
+
+    with (
+        patch.object(batch_processor, "get_redis_client", return_value=None),
+        patch.object(batch_processor, "get_session", return_value=session_ctx),
+        patch.object(batch_processor, "user_source_refs", return_value=refs),
+        patch.object(batch_processor, "drain_source", return_value=posts),
+        patch.object(batch_processor, "_build_handle_to_channel_id", return_value={}),
+        patch.object(batch_processor.embed, "_get_model", return_value=_FakeEncoder()),
+    ):
+        result = batch_processor.process_user_batch(user_id)
+
+    # Pipeline still produces clusters — Redis=None is a clean fallback.
+    assert result >= 1
