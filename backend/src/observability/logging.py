@@ -4,7 +4,9 @@ Two responsibilities:
 
 1. `configure_logging()` — attach a JSON formatter to the root logger so request,
    Celery-task, and pipeline logs emit machine-parseable JSON (one object/line)
-   for the ops log consumers. Idempotent.
+   for the ops log consumers. Idempotent. TASK-024: also attaches a
+   ``RequestIdFilter`` so EVERY log record carries the current ``request_id``
+   from the contextvar — not only ``log_event`` calls.
 
 2. `log_event()` — the log-hygiene helper. It accepts ONLY aggregate fields
    (ids/counts/durations: `int | float | bool | None | str`) and refuses any field
@@ -21,6 +23,8 @@ import logging
 
 from pythonjsonlogger.json import JsonFormatter
 
+from observability.context import get_request_id
+
 # Field names that may carry raw post content — forbidden in structured logs. Any
 # attempt to log one of these is dropped + flagged, never emitted (overview §7).
 _FORBIDDEN_LOG_KEYS = frozenset(
@@ -36,15 +40,30 @@ _LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s %(message)s"
 _logger = logging.getLogger("trendpulse")
 
 
+class RequestIdFilter(logging.Filter):
+    """Inject the current ``request_id`` contextvar into every LogRecord.
+
+    Attached to the root handler in ``configure_logging`` so ALL log calls —
+    not just ``log_event`` — carry the correlation id in structured JSON output
+    (TASK-024 AC1).  When no request context is active the field is set to "-".
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.request_id = get_request_id() or "-"
+        return True
+
+
 def configure_logging(level: int = logging.INFO) -> None:
     """Configure the root logger to emit JSON (idempotent).
 
     Replaces existing handlers with a single JSON-formatted stream handler so the
     output is uniform across api/worker/beat. Safe to call more than once.
+    Attaches ``RequestIdFilter`` so every log line carries ``request_id``.
     """
     formatter = JsonFormatter(_LOG_FORMAT)
     handler = logging.StreamHandler()
     handler.setFormatter(formatter)
+    handler.addFilter(RequestIdFilter())
 
     root = logging.getLogger()
     root.handlers = [handler]

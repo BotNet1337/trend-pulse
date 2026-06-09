@@ -35,6 +35,7 @@ from billing.router import router as billing_router
 from config import get_settings
 from observability.logging import configure_logging
 from observability.middleware import log_requests
+from observability.sentry import init_sentry
 from storage.models.users import User
 
 # Docs paths — named constants (CONVENTIONS: no magic literals).  Used both by
@@ -67,6 +68,8 @@ def _docs_urls(swagger_enable: bool) -> _DocsUrls:
 # Structured JSON logging across the api process (task-011): emit machine-parseable
 # logs for ops consumers; the hygiene helper guarantees no raw content is logged.
 configure_logging()
+# Sentry error-tracking (TASK-024): no-op when SENTRY_DSN is empty (dev default).
+init_sentry("api")
 
 app = FastAPI(title="TrendPulse API", **_docs_urls(get_settings().swagger_enable))
 

@@ -1,11 +1,11 @@
 ---
 id: TASK-024
 title: Observability — Sentry + correlation/trace-id (FastAPI + Celery, сквозной trace)
-status: planned             # planned → in-progress → review → done
+status: done                # planned → in-progress → review → done
 owner: backend
 created: 2026-06-09
 updated: 2026-06-09
-baseline_commit: ""
+baseline_commit: "3689476030a985e227e35a125c752b0dd3dd4de1"
 branch: "gsd/phase-024-observability-sentry-trace"
 tags: [epic-d, backend, observability, ops]
 ---
@@ -97,23 +97,42 @@ TrendPulse (см. [`../product/overview.md`](../product/overview.md), [`../archi
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
-baseline_commit: ""
+current_step: done
+baseline_commit: "3689476030a985e227e35a125c752b0dd3dd4de1"
 branch: "gsd/phase-024-observability-sentry-trace"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + real behavior через стек)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (если применимо)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + real behavior через стек)
+- [x] 5 review (auto, adversarial)
+- [x] 5.5 security (opus — обязательна; scrub PII/секретов + stacktrace-vars)
+- [x] 6 ship (PR, squash-merged)
+- [x] 7 learnings (auto)
 - [ ] 6 ship (PR, squash-merged)
 - [ ] 7 learnings (auto)
-debug_runs: []
+debug_runs:
+  - "loop-024 verify#1: AC5/AC7 — worker-логи не JSON и без request_id. ROOT: `configure_logging()` вызывался только в api/main.py; Celery при старте worker перехватывает root logger (`worker_hijack_root_logger`), import-time configure_logging не выживает. FIX: receiver на сигнал `setup_logging` (Celery отдаёт логирование нам) в celery_logging.register_celery_logging → configure_logging применяет JSON + RequestIdFilter в worker. Verify: worker-лог `celery.task` теперь JSON с `request_id` (Beat-trace). + заодно ansible `sensitive.env.j2` `{{ vault_sentry_dsn | default('') }}` (иначе `make ansible-unpack` падал на undefined, т.к. SENTRY_DSN опционален) + убран `# type: ignore[arg-type]` на токене (типизирован `dict[str, Token[str|None]]`)."
 
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план по эталону task-016/017 и контексту Epic D: error-tracking (Sentry FastAPI+Celery, off при пустом DSN) + сквозной correlation/trace-id (uuid4 в middleware → `X-Request-ID` + log-context → проброс в Celery через headers/contextvar; trace scorer→dispatch_alert→notifier). Бизнес-логику не трогаем — только инструментируем `observability/*`, `api/main.py`, `celery_app.py`. deps: 011 (structured logging/rate-limit/compliance — база observability). no magic literals (DSN/sample-rate/env/release из settings). Security 5.5: scrub секретов/PII перед Sentry. locate+plan выполнены этим планированием — executor стартует с «3 do».)
+
+### do+verify+review+security (loop-024, 2026-06-09)
+**do:** созданы `observability/{context,sentry}.py`; `RequestIdFilter` в logging (request_id в КАЖДУЮ запись); middleware gen/inherit uuid + `X-Request-ID`; Celery trace через `before_task_publish`→headers / `task_prerun`→contextvar / `task_postrun`→reset (Beat генерит свой); `init_sentry(api/worker)` (off при пустом DSN); settings sentry_dsn/sentry_traces_sample_rate/environment/release; env в ansible-источник. unit 277, ci-fast, test-cov, import-OK.
+**verify (G2 за стеком):** X-Request-ID за nginx (gen/inherit-valid/reject-invalid дословно), request_id в api-логах; **2 блокера в debug_runs исправлены** (worker JSON-логи через `setup_logging`-сигнал; ansible `| default('')`). Worker-лог `celery.task` теперь JSON с Beat-trace request_id.
+**review (opus): 0 CRITICAL, 2 HIGH — исправлены:**
+- HIGH (middleware `response` unbound в finally → UnboundLocalError маскирует исходное исключение + утечка токена) → реструктурирован: success-path (log+header+return) внутри try, `reset_request_id` в finally; при исключении call_next оригинал пробрасывается нетронутым.
+- HIGH (`release` объявлен, но не прокинут → всегда "dev" в проде) → `RELEASE={{ app_version }}` в `deploy.env.j2`.
+- MEDIUM: убран дублирующий `traces_sample_rate` из init (sampler и так выигрывает); `_HEALTH_PATH` константа; scrub-рекурсия в списки.
+**security (opus, обязательна): 0 CRITICAL, 1 HIGH + 3 MEDIUM — исправлены:**
+- HIGH (utечка секретов через stacktrace frame locals — sentry дефолт `include_local_variables=True` собирает repr локалов: Telegram session/api_hash, пароли, Settings-креды; before_send их не чистит) → **`include_local_variables=False`** в init.
+- MEDIUM M1 (scrub-паттерны неполны) → расширены: exact +api_hash/api_key/session/dsn/secret/token; суффиксы +`_api_key`(nowpayments_api_key)/`_api_hash`/`_password`(postgres_password)/`_session(s)`/`_dsn` (узко — без bare `_key`/`_hash`, чтобы не скрабить sort_key/media_hash).
+- MEDIUM M2 (non-dict request.data не скрабился) → не-dict body → `"[scrubbed]"` целиком.
+- MEDIUM M3 (raw-content дропался только в request.data) → `_DROP_CONTENT_KEYS` дропаются в extra/contexts/breadcrumbs тоже (общий `_scrub_dict`).
+- + breadcrumbs scrub, depth-limit (M4), убран `# type: ignore` на токене. Добавлено 6 security-тестов (api_hash/`_key`/session/dsn маскируются; content в extra дропается; non-dict data; list-рекурсия; breadcrumbs; include_local_variables=False).
+Перепроверка: ci-fast 283 passed, test-cov 82.22%, import-OK.
+**Follow-up (не блокер):** SENTRY_DSN-значение требует записи `vault_sentry_dsn` в `ops/ansible/vault/sensitive.vault.yml` перед prod (дефолт "" = off, безопасно).
 
 ### Подсказки исполнителю (initial)
 - **Sentry SDK:** `sentry-sdk[fastapi]` + Celery integration. `init_sentry`:

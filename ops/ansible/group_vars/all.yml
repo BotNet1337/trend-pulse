@@ -25,6 +25,10 @@ auth_cookie_secure: "false"
 # full API schema must NOT be exposed in prod — group_vars/prod.yml flips this to
 # "false" (the app's Settings default is also False as a code-level safety net).
 swagger_enable: "true"
+# TASK-024: Observability -- non-secret Sentry defaults for dev.
+# SENTRY_DSN is a secret; set vault_sentry_dsn in sensitive.vault.yml (empty = off).
+environment: "dev"
+sentry_traces_sample_rate: "0.0"
 # Prod deploy source (non-secret): the repo the deploy playbook checks out onto the
 # VPS, pinned to app_version for reproducible deploys. Override app_version per release.
 app_repo_url: "https://github.com/BotNet1337/trend-pulse.git"

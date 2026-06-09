@@ -78,6 +78,16 @@ _DEFAULT_ALERT_MAX_RETRIES = 5
 _DEFAULT_ALERT_RETRY_BACKOFF_SECONDS = 2
 _DEFAULT_ALERT_RETRY_BACKOFF_MAX_SECONDS = 600
 
+# Observability — Sentry error-tracking (TASK-024). Named, non-secret defaults;
+# `sentry_dsn` is intentionally empty → Sentry is OFF by default (dev safety).
+# The DSN is a secret and lives in sensitive.env / vault; it is NEVER logged.
+# `traces_sample_rate` controls the performance-monitoring sample fraction (0.0
+# = off, 1.0 = 100%). `environment` and `release` tag every Sentry event so
+# issues can be filtered by deploy stage and version.
+_DEFAULT_SENTRY_TRACES_SAMPLE_RATE = 0.0
+_DEFAULT_ENVIRONMENT = "dev"
+_DEFAULT_RELEASE = "dev"
+
 # Reliability — pending-sweep + Celery /ready (task-023). Named, non-secret
 # defaults; time is in SECONDS (CONVENTIONS). The grace window prevents the sweep
 # from racing in-flight dispatches (fresh pending < grace are never touched).
@@ -181,6 +191,17 @@ class Settings(BaseSettings):
     # default (prod) to avoid exposing the full API schema externally.  Dev enables via
     # env `SWAGGER_ENABLE=true`; prod must NOT set this flag.
     swagger_enable: bool = False
+
+    # --- Observability — Sentry (TASK-024). DSN is a secret (sensitive.env); empty
+    # default → Sentry off. Non-secret settings have named-constant defaults above.---
+    # Secret — supplied via sensitive.env / vault; NEVER logged or hardcoded.
+    sentry_dsn: str = ""
+    # Non-secret, settable: performance-tracing sample rate (0.0 = tracing off).
+    sentry_traces_sample_rate: float = _DEFAULT_SENTRY_TRACES_SAMPLE_RATE
+    # Non-secret: deployment stage tag (dev/staging/prod).
+    environment: str = _DEFAULT_ENVIRONMENT
+    # Non-secret: release tag (git sha / image tag injected at build time).
+    release: str = _DEFAULT_RELEASE
 
     @property
     def database_url(self) -> str:
