@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
+from api.alerts import router as alerts_router
 from api.auth import (
     UserCreate,
     UserRead,
@@ -128,6 +129,9 @@ def read_my_tenant(user: User = Depends(current_user)) -> TenantResponse:
 # current_user, returns email/plan/is_verified.  Must be mounted BEFORE
 # watchlist so the `/users/me` path is not shadowed by a more-specific prefix. ---
 app.include_router(users_me_router)
+
+# --- Alerts read (tenant-scoped, read-only, behind current_user; TASK-016 C4). ---
+app.include_router(alerts_router)
 
 # --- Watchlist CRUD (tenant-scoped, behind current_user). ---
 app.include_router(watchlist_router)
