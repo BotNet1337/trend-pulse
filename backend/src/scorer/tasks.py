@@ -6,15 +6,18 @@ scheduled scorer tick, registered in `pipeline.tasks` (kept there so the existin
 `include`/route/queue wiring is untouched), whose body is this module. For each
 active user it walks their FRESH clusters (recent by `Cluster.updated_at`, within
 `scorer_recent_window_seconds`), derives a platform-independent `ScoreInputs` from
-that user's recent `Post` rows, computes the viral score (`scorer.score`), persists
+that cluster's own `Post` rows, computes the viral score (`scorer.score`), upserts
 a `Score` row, and — when the cluster's topic matches a watched topic AND
 `viral_score > that watchlist's threshold` — creates exactly one `Alert`.
 
-Input sourcing (task-008 approximation): the `Cluster` model (task-002) stores
-embedding/topic/timestamps but NOT metrics, and there is no post↔cluster FK. So the
-score inputs are aggregated from the user's recent `Post` rows for the channels they
-watch under the cluster's topic (views/forwards/reactions totals, unique channel
-count, the posted_at time delta). A precise post↔cluster link is a future refinement.
+Input sourcing (task-022, per-cluster): each `Post` carries a `cluster_id` FK
+(set at batch-persist time, `pipeline.batch_processor`), so score inputs are
+aggregated from the posts of THAT cluster (`Post.cluster_id == cluster.id`), not
+from all posts on the topic's channels — one cluster, one real engagement signal
+(removes the duplicate-alerts-per-topic problem of the old per-topic approximation).
+The `cross_channel` denominator (`watched_channels_count`) still comes from the
+user's watchlist config for the topic. Cluster freshness (`_recent_clusters`) bounds
+recency, so the per-cluster post query needs no separate `posted_at` window.
 
 Idempotency (AC6): an alert is unique per `(user_id, cluster_id)` via the DB unique
 constraint `uq_alerts_user_cluster` (migration 0003) — a duplicate insert raises
@@ -29,6 +32,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -101,23 +105,17 @@ def _build_score_inputs(
     session: Session,
     *,
     user_id: int,
-    channel_ids: frozenset[int],
+    cluster_id: int,
     watched_channels_count: int,
-    window_start: datetime,
 ) -> ScoreInputs:
-    """Aggregate the user's recent posts (for the watched channels) into ScoreInputs.
+    """Aggregate a cluster's posts into ScoreInputs (per-cluster, not per-topic).
 
-    task-008 approximation (no post↔cluster FK): totals + unique channel count +
-    the posted_at span over the user's recent posts on the topic's channels.
-    `channel_avg` is the mean views across those posts (engagement denominator).
-    Degenerate aggregates (no posts) yield zeroed inputs the formula guards handle.
+    Reads posts scoped by `(user_id, cluster_id)` — the FK added in migration 0007.
+    This gives each cluster its own engagement signal, eliminating the per-topic
+    duplicate-score problem. Degenerate aggregates (no posts) yield zeroed inputs
+    the formula guards handle.
     """
-    stmt = (
-        select(Post)
-        .where(Post.user_id == user_id)
-        .where(Post.channel_id.in_(channel_ids))
-        .where(Post.posted_at >= window_start)
-    )
+    stmt = select(Post).where(Post.user_id == user_id).where(Post.cluster_id == cluster_id)
     posts = list(session.scalars(stmt).all())
     if not posts:
         return ScoreInputs(
@@ -155,18 +153,37 @@ def _build_score_inputs(
 def _persist_score(
     session: Session, *, user_id: int, cluster_id: int, inputs: ScoreInputs
 ) -> float:
-    """Compute the score components, persist a `Score` row, return the viral score."""
+    """Compute score components, upsert a `Score` row, return the viral score.
+
+    Uses PostgreSQL `ON CONFLICT DO UPDATE` on `uq_scores_user_cluster` so repeated
+    scorer ticks for the same `(user_id, cluster_id)` update `computed_at` and
+    score values in place — the `scores` table does not grow unboundedly (AC3).
+    """
     components = compute_components(inputs)
-    session.add(
-        Score(
+    now = utcnow()
+    stmt = (
+        pg_insert(Score)
+        .values(
             user_id=user_id,
             cluster_id=cluster_id,
             velocity=components.velocity,
             engagement=components.engagement,
             cross_channel=components.cross_channel,
             viral_score=components.viral_score,
+            computed_at=now,
+        )
+        .on_conflict_do_update(
+            constraint="uq_scores_user_cluster",
+            set_=dict(
+                velocity=components.velocity,
+                engagement=components.engagement,
+                cross_channel=components.cross_channel,
+                viral_score=components.viral_score,
+                computed_at=now,
+            ),
         )
     )
+    session.execute(stmt)
     session.flush()
     return components.viral_score
 
@@ -229,9 +246,8 @@ def _score_user(session: Session, *, user_id: int, window_start: datetime) -> li
         inputs = _build_score_inputs(
             session,
             user_id=user_id,
-            channel_ids=config.channel_ids,
+            cluster_id=cluster.id,
             watched_channels_count=len(config.channel_ids),
-            window_start=window_start,
         )
         viral_score = _persist_score(session, user_id=user_id, cluster_id=cluster.id, inputs=inputs)
         if viral_score <= config.threshold:

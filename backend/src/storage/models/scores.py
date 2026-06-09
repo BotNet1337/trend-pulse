@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index
+from sqlalchemy import DateTime, Float, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from storage.models.base import UserOwnedBase, utcnow
@@ -10,7 +10,11 @@ from storage.models.base import UserOwnedBase, utcnow
 
 class Score(UserOwnedBase):
     __tablename__ = "scores"
-    __table_args__ = (Index("ix_scores_user_id", "user_id"),)
+    __table_args__ = (
+        Index("ix_scores_user_id", "user_id"),
+        UniqueConstraint("user_id", "cluster_id", name="uq_scores_user_cluster"),
+        Index("ix_scores_cluster", "cluster_id"),
+    )
 
     cluster_id: Mapped[int] = mapped_column(ForeignKey("clusters.id"), nullable=False)
     velocity: Mapped[float] = mapped_column(Float, nullable=False)

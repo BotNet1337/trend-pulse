@@ -68,6 +68,7 @@ def _seed_post(
     forwards: int,
     reactions: int,
     minutes_ago: int,
+    cluster_id: int | None = None,
 ) -> None:
     session.add(
         Post(
@@ -78,6 +79,7 @@ def _seed_post(
             forwards=forwards,
             reactions=reactions,
             posted_at=_NOW - timedelta(minutes=minutes_ago),
+            cluster_id=cluster_id,
         )
     )
 
@@ -111,6 +113,7 @@ def test_above_threshold_topic_match_creates_exactly_one_alert_idempotently(
         forwards=50,
         reactions=200,
         minutes_ago=30,
+        cluster_id=cluster.id,
     )
     _seed_post(
         db_session,
@@ -121,6 +124,7 @@ def test_above_threshold_topic_match_creates_exactly_one_alert_idempotently(
         forwards=40,
         reactions=150,
         minutes_ago=5,
+        cluster_id=cluster.id,
     )
     db_session.commit()
 
@@ -157,6 +161,7 @@ def test_below_threshold_creates_no_alert(db_session: Session) -> None:
         forwards=0,
         reactions=0,
         minutes_ago=10,
+        cluster_id=cluster.id,
     )
     db_session.commit()
 
@@ -183,6 +188,7 @@ def test_topic_mismatch_creates_no_alert(db_session: Session) -> None:
         forwards=500,
         reactions=900,
         minutes_ago=15,
+        cluster_id=cluster.id,
     )
     db_session.commit()
 
@@ -190,3 +196,140 @@ def test_topic_mismatch_creates_no_alert(db_session: Session) -> None:
 
     assert created == 0  # AC5 — topic mismatch, no alert
     assert _alerts_for(db_session, user_id=user.id, cluster_id=cluster.id) == []
+
+
+def test_per_cluster_engagement_not_per_topic(db_session: Session) -> None:
+    """AC1 anchor: per-cluster scoring distinguishes high vs low engagement clusters.
+
+    One user watches "crypto" on two channels (low threshold).
+    Two clusters for the same topic: clusterA has HIGH engagement posts,
+    clusterB has LOW engagement posts on the same channels.
+    Per-cluster scoring → different viral_score.
+    Per-topic scoring (current) → both clusters share the same aggregated inputs
+    → viral_score will be EQUAL → this test FAILS (RED).
+    """
+    from scorer.tasks import score_recent_clusters
+    from storage.models import Score
+
+    user = _seed_user(db_session, "percl@example.com")
+    ch1 = _seed_channel(db_session, "@percl1")
+    ch2 = _seed_channel(db_session, "@percl2")
+    db_session.add(Watchlist(user_id=user.id, channel_id=ch1.id, topic="crypto", threshold=0.0))
+    db_session.add(Watchlist(user_id=user.id, channel_id=ch2.id, topic="crypto", threshold=0.0))
+
+    cluster_a = _seed_cluster(db_session, user_id=user.id, topic="crypto")
+    cluster_b = _seed_cluster(db_session, user_id=user.id, topic="crypto")
+
+    # clusterA — HIGH engagement
+    _seed_post(
+        db_session,
+        user_id=user.id,
+        channel_id=ch1.id,
+        external_id="pa1",
+        views=50000,
+        forwards=2000,
+        reactions=5000,
+        minutes_ago=30,
+        cluster_id=cluster_a.id,
+    )
+    _seed_post(
+        db_session,
+        user_id=user.id,
+        channel_id=ch2.id,
+        external_id="pa2",
+        views=40000,
+        forwards=1500,
+        reactions=4000,
+        minutes_ago=5,
+        cluster_id=cluster_a.id,
+    )
+
+    # clusterB — LOW engagement on the SAME channels
+    _seed_post(
+        db_session,
+        user_id=user.id,
+        channel_id=ch1.id,
+        external_id="pb1",
+        views=10,
+        forwards=0,
+        reactions=1,
+        minutes_ago=28,
+        cluster_id=cluster_b.id,
+    )
+    _seed_post(
+        db_session,
+        user_id=user.id,
+        channel_id=ch2.id,
+        external_id="pb2",
+        views=5,
+        forwards=0,
+        reactions=0,
+        minutes_ago=3,
+        cluster_id=cluster_b.id,
+    )
+    db_session.commit()
+
+    score_recent_clusters()
+
+    db_session.expire_all()
+    score_a = (
+        db_session.query(Score)
+        .filter(Score.user_id == user.id, Score.cluster_id == cluster_a.id)
+        .first()
+    )
+    score_b = (
+        db_session.query(Score)
+        .filter(Score.user_id == user.id, Score.cluster_id == cluster_b.id)
+        .first()
+    )
+
+    assert score_a is not None, "Score for clusterA must exist"
+    assert score_b is not None, "Score for clusterB must exist"
+    # Per-cluster: high-engagement cluster must score strictly higher.
+    assert score_a.viral_score > score_b.viral_score, (
+        f"Expected clusterA viral_score ({score_a.viral_score}) > "
+        f"clusterB viral_score ({score_b.viral_score}), got equal (per-topic bug)"
+    )
+
+
+def test_persist_score_upsert_no_growth(db_session: Session) -> None:
+    """AC3: repeated scorer ticks for same (user_id, cluster_id) → exactly 1 Score row.
+
+    Current code inserts a new Score row each tick → this test FAILS (RED).
+    After upsert implementation → GREEN.
+    """
+    from sqlalchemy import func
+
+    from scorer.tasks import score_recent_clusters
+    from storage.models import Score
+
+    user = _seed_user(db_session, "upsert@example.com")
+    ch = _seed_channel(db_session, "@upsert1")
+    db_session.add(Watchlist(user_id=user.id, channel_id=ch.id, topic="tech", threshold=0.0))
+    cluster = _seed_cluster(db_session, user_id=user.id, topic="tech")
+    _seed_post(
+        db_session,
+        user_id=user.id,
+        channel_id=ch.id,
+        external_id="u1",
+        views=100,
+        forwards=5,
+        reactions=10,
+        minutes_ago=15,
+        cluster_id=cluster.id,
+    )
+    db_session.commit()
+
+    # Run scorer twice.
+    score_recent_clusters()
+    score_recent_clusters()
+
+    db_session.expire_all()
+    count = (
+        db_session.query(func.count(Score.id))
+        .filter(Score.user_id == user.id, Score.cluster_id == cluster.id)
+        .scalar()
+    )
+    assert count == 1, (
+        f"Expected 1 Score row after two ticks (upsert), got {count} (insert-each-tick bug)"
+    )
