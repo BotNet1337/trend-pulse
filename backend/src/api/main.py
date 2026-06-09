@@ -27,6 +27,7 @@ from api.auth import (
 )
 from api.auth.me import router as users_me_router
 from api.deps import get_tenant_user_id
+from api.packs.router import router as packs_router
 from api.rate_limit import limiter, rate_limit_handler
 from api.routes import account_router, ops_router
 from api.watchlist import router as watchlist_router
@@ -184,6 +185,9 @@ app.include_router(api_keys_router)
 
 # --- Alerts read (tenant-scoped, read-only, behind current_user; TASK-016 C4). ---
 app.include_router(alerts_router)
+
+# --- Curated channel packs (TASK-038): GET/POST/DELETE /packs. ---
+app.include_router(packs_router)
 
 # --- Watchlist CRUD (tenant-scoped, behind current_user). ---
 app.include_router(watchlist_router)

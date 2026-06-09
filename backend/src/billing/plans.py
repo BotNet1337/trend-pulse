@@ -38,6 +38,9 @@ class Resource(StrEnum):
     HISTORY = "history"
     API_ACCESS = "api_access"
     WEBHOOK_DELIVERY = "webhook_delivery"
+    # Curated channel packs (TASK-038). Counted as distinct pack_slug values subscribed.
+    # Free=1, Pro/Team=5 — intentional product decision: packs are Free-funnel value (E1/E5).
+    PACKS = "packs"
 
 
 # Period length in days — named constant, time as an explicit duration (CONVENTIONS).
@@ -70,6 +73,13 @@ _FREE_API = False
 _PRO_API = False
 _TEAM_API = True
 
+# Curated channel packs (TASK-038). Named caps — Free=1, Pro=5, Team=5.
+# Intentional product rule: packs are the Free-funnel value (E1/E5); Free users
+# get 1 pack; paid plans expand to 5. Counted as distinct active pack subscriptions.
+_FREE_PACKS = 1
+_PRO_PACKS = 5
+_TEAM_PACKS = 5
+
 # The limit value type: an int cap, `None` (unlimited), or a bool feature gate.
 PlanLimit = int | None | bool
 
@@ -81,6 +91,7 @@ PLAN_LIMITS: dict[Plan, dict[Resource, PlanLimit]] = {
         Resource.HISTORY: _FREE_HISTORY_DAYS,
         Resource.API_ACCESS: _FREE_API,
         Resource.WEBHOOK_DELIVERY: _FREE_WEBHOOK,
+        Resource.PACKS: _FREE_PACKS,
     },
     Plan.PRO: {
         Resource.CHANNELS: _PRO_CHANNELS,
@@ -89,6 +100,7 @@ PLAN_LIMITS: dict[Plan, dict[Resource, PlanLimit]] = {
         Resource.HISTORY: _PRO_HISTORY_DAYS,
         Resource.API_ACCESS: _PRO_API,
         Resource.WEBHOOK_DELIVERY: _PRO_WEBHOOK,
+        Resource.PACKS: _PRO_PACKS,
     },
     Plan.TEAM: {
         Resource.CHANNELS: _TEAM_CHANNELS,
@@ -97,6 +109,7 @@ PLAN_LIMITS: dict[Plan, dict[Resource, PlanLimit]] = {
         Resource.HISTORY: _TEAM_HISTORY_DAYS,
         Resource.API_ACCESS: _TEAM_API,
         Resource.WEBHOOK_DELIVERY: _TEAM_WEBHOOK,
+        Resource.PACKS: _TEAM_PACKS,
     },
 }
 

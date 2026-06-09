@@ -9,6 +9,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from '@tanstack/react-router';
 import { useWatchlists, useDeleteWatchlist } from '@/features/watchlists';
+import { PacksBlock } from '@/features/packs';
 import { WatchlistCard } from '@/entities/watchlist';
 import { Button } from '@/shared/components/button';
 import { EmptyState } from '@/shared/components/empty-state';
@@ -115,6 +116,9 @@ export const WatchlistsListPage: React.FC = () => {
             ))}
           </ul>
         )}
+
+        {/* Curated channel packs block (TASK-038) */}
+        <PacksBlock />
       </main>
     </div>
   );

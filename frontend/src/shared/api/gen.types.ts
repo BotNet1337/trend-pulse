@@ -336,6 +336,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/packs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Packs
+         * @description Return the full curated pack catalog (auth required — AC1).
+         *
+         *     No DB query: the catalog is a static in-memory structure. Auth is required
+         *     so unauthenticated crawlers cannot enumerate the catalog.
+         */
+        get: operations["get_packs_packs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/packs/{slug}/subscribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Subscribe Pack
+         * @description Subscribe to a curated pack — creates watchlist rows with pack_slug marker.
+         *
+         *     - 404 if slug not in catalog.
+         *     - 402 if the user has reached their PACKS plan limit (handled globally).
+         *     - Idempotent: re-subscribing the same pack returns created=0, not an error.
+         *     - Skip-conflicts (channel already watched manually) are counted in `skipped`.
+         */
+        post: operations["subscribe_pack_packs__slug__subscribe_post"];
+        /**
+         * Unsubscribe Pack
+         * @description Unsubscribe from a pack — deletes all watchlist rows with this pack_slug.
+         *
+         *     - 404 if slug not in catalog (unknown pack — not just "not subscribed").
+         *     - 200 with deleted=0 if the slug is valid but the user is not subscribed.
+         *     - Manual watchlists (pack_slug IS NULL) are NEVER touched.
+         */
+        delete: operations["unsubscribe_pack_packs__slug__subscribe_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ready": {
         parameters: {
             query?: never;
@@ -767,6 +823,20 @@ export interface components {
             authorization_url: string;
         };
         /**
+         * PackRead
+         * @description Catalog entry returned by GET /packs.
+         */
+        PackRead: {
+            /** Channels Count */
+            channels_count: number;
+            /** Slug */
+            slug: string;
+            /** Title */
+            title: string;
+            /** Topic */
+            topic: string;
+        };
+        /**
          * Plan
          * @description Subscription tiers (overview §6). String values match `users.plan`.
          * @enum {string}
@@ -779,12 +849,30 @@ export interface components {
          */
         SourceKind: "telegram";
         /**
+         * SubscribeResult
+         * @description Result of POST /packs/{slug}/subscribe.
+         */
+        SubscribeResult: {
+            /** Created */
+            created: number;
+            /** Skipped */
+            skipped: number;
+        };
+        /**
          * TenantResponse
          * @description Tenant identity payload for the protected example route.
          */
         TenantResponse: {
             /** User Id */
             user_id: number;
+        };
+        /**
+         * UnsubscribeResult
+         * @description Result of DELETE /packs/{slug}/subscribe.
+         */
+        UnsubscribeResult: {
+            /** Deleted */
+            deleted: number;
         };
         /**
          * UserCreate
@@ -1502,6 +1590,88 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
+    };
+    get_packs_packs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackRead"][];
+                };
+            };
+        };
+    };
+    subscribe_pack_packs__slug__subscribe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscribeResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unsubscribe_pack_packs__slug__subscribe_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnsubscribeResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
