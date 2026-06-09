@@ -291,6 +291,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users/me/delivery-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Delivery Config
+         * @description Return the authenticated user's delivery configuration (token masked).
+         */
+        get: operations["get_delivery_config_users_me_delivery_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Delivery Config
+         * @description Partial-update the authenticated user's delivery configuration.
+         */
+        patch: operations["patch_delivery_config_users_me_delivery_config_patch"];
+        trace?: never;
+    };
     "/account": {
         parameters: {
             query?: never;
@@ -541,6 +565,32 @@ export interface components {
              * @default false
              */
             is_verified: boolean | null;
+        };
+        /**
+         * DeliveryConfigRead
+         * @description Delivery configuration read model (token masked).
+         *   telegram_bot_token_masked: "***<last4>" or null (never the full token).
+         */
+        DeliveryConfigRead: {
+            /** Telegram Bot Token Masked */
+            telegram_bot_token_masked: string | null;
+            /** Telegram Chat Id */
+            telegram_chat_id: string | null;
+            /** Webhook Url */
+            webhook_url: string | null;
+        };
+        /**
+         * DeliveryConfigUpdate
+         * @description Partial delivery configuration update (PATCH body).
+         *   All fields optional. webhook_url requires Pro+ plan.
+         */
+        DeliveryConfigUpdate: {
+            /** Telegram Bot Token (write-only) */
+            telegram_bot_token?: string | null;
+            /** Telegram Chat Id */
+            telegram_chat_id?: string | null;
+            /** Webhook Url (Pro+ feature-gated, SSRF-validated server-side) */
+            webhook_url?: string | null;
         };
         /**
          * UserMeResponse
@@ -1202,6 +1252,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_delivery_config_users_me_delivery_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryConfigRead"];
+                };
+            };
+        };
+    };
+    patch_delivery_config_users_me_delivery_config_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeliveryConfigUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryConfigRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
