@@ -39,8 +39,8 @@ describe('plan constants', () => {
       expect(PLAN_PRICE_USD[PLAN_PRO]).toBe(19);
     });
 
-    it('team plan has $49/month price', () => {
-      expect(PLAN_PRICE_USD[PLAN_TEAM]).toBe(49);
+    it('team plan has $79/month price (overview §6 / backend plans.py)', () => {
+      expect(PLAN_PRICE_USD[PLAN_TEAM]).toBe(79);
     });
 
     it('all tiers have a price defined', () => {

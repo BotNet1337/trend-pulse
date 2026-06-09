@@ -15,11 +15,15 @@ export const PLAN_TEAM = 'team' as const;
 
 export type PlanId = typeof PLAN_FREE | typeof PLAN_PRO | typeof PLAN_TEAM;
 
-/** Monthly prices in USD — used for invoice creation and plan comparison UI. */
+/**
+ * Monthly prices in USD — for plan comparison display only. The authoritative
+ * charge amount comes from the backend InvoiceResponse (POST /billing/invoice);
+ * these mirror overview §6 / backend billing/plans.py (Pro $19, Team $79).
+ */
 export const PLAN_PRICE_USD: Readonly<Record<PlanId, number>> = {
   [PLAN_FREE]: 0,
   [PLAN_PRO]: 19,
-  [PLAN_TEAM]: 49,
+  [PLAN_TEAM]: 79,
 };
 
 /** Max watchlists per plan. */
