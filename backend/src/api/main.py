@@ -37,11 +37,38 @@ from observability.logging import configure_logging
 from observability.middleware import log_requests
 from storage.models.users import User
 
+# Docs paths — named constants (CONVENTIONS: no magic literals).  Used both by
+# the _docs_urls helper and by tests that verify the gating behaviour.
+_DOCS_URL = "/docs"
+_REDOC_URL = "/redoc"
+_OPENAPI_URL = "/openapi.json"
+
+
+class _DocsUrls(TypedDict):
+    """FastAPI constructor kwargs that control interactive docs availability."""
+
+    docs_url: str | None
+    redoc_url: str | None
+    openapi_url: str | None
+
+
+def _docs_urls(swagger_enable: bool) -> _DocsUrls:
+    """Return docs URL kwargs for the FastAPI constructor.
+
+    Docs/Redoc/OpenAPI paths are enabled only when *swagger_enable* is True
+    (dev default via SWAGGER_ENABLE=true).  Passing None to FastAPI disables the
+    endpoint entirely → 404 (prod default — schema must not be exposed outside).
+    """
+    if swagger_enable:
+        return {"docs_url": _DOCS_URL, "redoc_url": _REDOC_URL, "openapi_url": _OPENAPI_URL}
+    return {"docs_url": None, "redoc_url": None, "openapi_url": None}
+
+
 # Structured JSON logging across the api process (task-011): emit machine-parseable
 # logs for ops consumers; the hygiene helper guarantees no raw content is logged.
 configure_logging()
 
-app = FastAPI(title="TrendPulse API")
+app = FastAPI(title="TrendPulse API", **_docs_urls(get_settings().swagger_enable))
 
 # --- Rate limiting (task-011): Redis-backed slowapi, key = user_id|IP, default
 # limit from settings. The limiter is attached to app.state (slowapi contract),

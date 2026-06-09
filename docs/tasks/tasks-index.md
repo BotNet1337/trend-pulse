@@ -25,7 +25,7 @@ Roadmap: [`../architecture/roadmap.md`](../architecture/roadmap.md). Epic A = Ba
 | [TASK-016](./task-016-alerts-ui.md) | Alerts UI — лента/история + детали (+ тонкий GET /alerts) | C | done | frontend | 014, 008, 009 | 2026-06-09 |
 | [TASK-017](./task-017-billing-account-ui.md) | Billing & Account UI — план/инвойс/delivery-config/удаление (GDPR) | C | done | frontend | 014, 010, 009, 011 | 2026-06-09 |
 | [TASK-018](./task-018-landing-base.md) | Landing base — hero/how-it-works/features/pricing/CTA/compliance | B | done | frontend | — | 2026-06-09 |
-| [TASK-019](./task-019-api-dx-swagger-client-gen.md) | API DX — SWAGGER_ENABLE gating + офлайн OpenAPI-дамп + автоген фронт-клиента + удаление error-codes | D | planned | backend | 013 | 2026-06-09 |
+| [TASK-019](./task-019-api-dx-swagger-client-gen.md) | API DX — SWAGGER_ENABLE gating + офлайн OpenAPI-дамп + автоген фронт-клиента + удаление error-codes | D | done | backend | 013 | 2026-06-09 |
 | [TASK-020](./task-020-alerts-cursor-pagination.md) | Alerts cursor-пагинация + composite index (user_id, first_seen) | D | planned | backend | 016 | 2026-06-09 |
 | [TASK-021](./task-021-ci-foundation.md) | CI foundation — корневые workflows + conftest alembic-изоляция + dep-scan + coverage-gate | D | planned | infra | 001 | 2026-06-09 |
 | [TASK-022](./task-022-scoring-correctness.md) | Scoring correctness — posts.cluster_id FK + per-cluster score + Score retention + горячие индексы | D | planned | backend | 007, 008 | 2026-06-09 |
