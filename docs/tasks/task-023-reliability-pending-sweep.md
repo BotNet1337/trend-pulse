@@ -1,11 +1,11 @@
 ---
 id: TASK-023
 title: Reliability — re-sweep pending-алертов + Celery-liveness в /ready + alerts-by-status метрика
-status: planned          # planned → in-progress → review → done
+status: done             # planned → in-progress → review → done
 owner: backend
 created: 2026-06-09
 updated: 2026-06-09
-baseline_commit: ""
+baseline_commit: "f1d5f043d50322ea61585693ccd6436d4fca6fe4"
 branch: "gsd/phase-023-reliability-pending-sweep"
 tags: [epic-d, backend, reliability, ops]
 ---
@@ -97,20 +97,35 @@ tags: [epic-d, backend, reliability, ops]
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
-baseline_commit: ""
+current_step: done
+baseline_commit: "f1d5f043d50322ea61585693ccd6436d4fca6fe4"
 branch: "gsd/phase-023-reliability-pending-sweep"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + real behavior через nginx/стек)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (если применимо)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + real behavior через nginx/стек)
+- [x] 5 review (auto, adversarial)
+- [x] 5.5 security (N/A — внутренний ops/Celery/sweep; нет auth/secrets/public-API/SSRF/untrusted-input; SQL через ORM)
+- [x] 6 ship (PR, squash-merged)
+- [x] 7 learnings (auto)
 - [ ] 6 ship (PR, squash-merged)
 - [ ] 7 learnings (auto)
-debug_runs: []
+debug_runs:
+  - "loop-023 verify#1: worker не стартовал в Docker — circular import. ROOT: scheduler→`from alerts.constants import ...` запускал ТЯЖЁЛЫЙ `alerts/__init__` (реэкспортил `alerts.tasks`→celery_app) при том, что celery_app сам импортит scheduler mid-init. FIX: убрал реэкспорт `alerts.tasks` из `alerts/__init__` (сделал лёгким, как pipeline/__init__; task NAMES — в leaf `alerts.constants`). Verify: `import celery_app` OK, beat-entry на месте, ci-fast 252, /ready за nginx 200{celery:ok} при живом worker; 503{celery:unreachable} наблюдался реально в verify#1 (worker отсутствовал)."
 
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план по проверенным фактам и learnings task-008 footgun: `alerts/tasks.py` `dispatch_alert` (`DISPATCH_ALERT_TASK`) энкьюится скорером, ретраит transient, на исчерпании → FAILED; при падении брокера/worker задача теряется, строка остаётся `pending` навсегда — нет ре-энкьюинга. `ops.py` `/ready` (task-011) проверяет db+redis bounded, но НЕ Celery worker. `scheduler.py` `beat_schedule` (enqueue-batches/score-tick/purge) — интервалы из `Settings` — добавляем `resweep-pending-alerts`. `notifier.py` гардит `DELIVERED` (idempotent re-delivery). observability/ — место метрики. deps: 008 (scorer-alert seam), 009 (delivery). locate+plan выполнены — executor стартует с «3 do».)
+
+### do+verify (loop-023, 2026-06-09)
+Создано: `alerts/constants.py` (`RESWEEP_PENDING_ALERTS_TASK` — cycle-free), `observability/alert_status.py` (`emit_alerts_by_status` через `log_event`), миграция 0008 (`ix_alerts_status_first_seen(delivery_status, first_seen)`), unit `test_resweep.py` + integration `test_reliability.py`. Изменено: `config.py` (+4 settings: pending_resweep_grace/interval/max_batch + celery_ping_timeout, named const), `alerts/tasks.py` (`_resweep_pending_alerts`+task: select pending старше grace, limit max_batch, re-enqueue dispatch_alert, идемпотентно; вызов emit_alerts_by_status), `scheduler.py` (beat-entry resweep-pending-alerts), `api/routes/ops.py` (`_check_celery` bounded `inspect(timeout).ping()` → /ready +поле celery, 503 при мёртвом worker), `models/alerts.py` (+индекс), `test_ready.py` (+celery), gen.types/openapi (описание /ready).
+**verify:** ci-fast 252 unit; test-cov 81.68%; миграция 0008 реальный up/down + индекс подтверждён psql; integration `test_reliability` 4/4 + полный 61 passed; G2 за nginx — worker жив → `/ready 200 {db:ok,redis:ok,celery:ok}`, worker отсутствует → `503 {celery:unreachable}` (bounded ~2.1-2.5с). 1 CRITICAL (circular import) пойман в verify#1 и исправлен (см. debug_runs).
+**Решение `_check_celery`:** `celery_app.control.inspect(timeout=celery_ping_timeout_seconds).ping()` — непустой ответ=жив, иначе/исключение→False (bounded, не вешается; control-bus-overload edge задокументирован).
+
+### review (opus, loop-023, 2026-06-09)
+**0 CRITICAL/HIGH, не блокирует. Security N/A.** Циклы импорта разорваны окончательно (alerts/__init__ лёгкий, scorer импортит dispatch_alert лениво, публичный API не сломан — никто не использовал package-level dispatch_alert/DISPATCH_ALERT_TASK). Идемпотентность ре-доставки сохранена (только pending, грейс, notifier-гард). /ready/миграция/scope/типы — PASS.
+- **MEDIUM-2 (ИСПРАВЛЕНО):** `apply_async` в sweep-цикле был без try/except — при недоступном брокере (ровно тот сценарий, ради которого sweep написан) исключение прервало бы цикл и пропустило бы `emit_alerts_by_status`. → обёрнут в try/except+warning (continue), считаются реально ре-энкьюенные, метрика отрабатывает всегда (зеркалит scorer `_enqueue_delivery`).
+- **MEDIUM-1 (задокументировано, не фиксим):** `inspect().ping()` может дать ложный 503 при перегрузке control-bus у живого worker (flapping при масштабировании). Single-worker деплой — маловероятно; follow-up — heartbeat-ключ в Redis вместо синхронного ping.
+- **LOW:** count-типизация (mypy strict зелёный — ок); grace==interval=300с → worst-case ~10мин до ре-доставки (настраиваемо, в SLO); full-scan alerts на каждый тик (с индексом ок, кандидат на счётчик при росте) — приняты как информационные.
+Перепроверка после фикса: resweep 4/4, ci-fast 252.

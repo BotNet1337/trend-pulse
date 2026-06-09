@@ -22,14 +22,16 @@ def client() -> TestClient:
 def test_ready_200_when_all_deps_ok(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ops, "_check_db", lambda: True)
     monkeypatch.setattr(ops, "_check_redis", lambda: True)
+    monkeypatch.setattr(ops, "_check_celery", lambda: True)
     response = client.get("/ready")
     assert response.status_code == _HTTP_OK
-    assert response.json() == {"db": "ok", "redis": "ok"}
+    assert response.json() == {"db": "ok", "redis": "ok", "celery": "ok"}
 
 
 def test_ready_503_when_db_unreachable(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ops, "_check_db", lambda: False)
     monkeypatch.setattr(ops, "_check_redis", lambda: True)
+    monkeypatch.setattr(ops, "_check_celery", lambda: True)
     response = client.get("/ready")
     assert response.status_code == _HTTP_UNAVAILABLE
     body = response.json()
@@ -42,6 +44,7 @@ def test_ready_503_when_redis_unreachable(
 ) -> None:
     monkeypatch.setattr(ops, "_check_db", lambda: True)
     monkeypatch.setattr(ops, "_check_redis", lambda: False)
+    monkeypatch.setattr(ops, "_check_celery", lambda: True)
     response = client.get("/ready")
     assert response.status_code == _HTTP_UNAVAILABLE
     assert response.json()["redis"] == "unreachable"
@@ -52,3 +55,31 @@ def test_health_stays_200_regardless(client: TestClient) -> None:
     response = client.get("/health")
     assert response.status_code == _HTTP_OK
     assert response.json() == {"status": "ok"}
+
+
+def test_ready_503_when_celery_unreachable(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """/ready returns 503 when Celery worker is unreachable (AC3)."""
+    monkeypatch.setattr(ops, "_check_db", lambda: True)
+    monkeypatch.setattr(ops, "_check_redis", lambda: True)
+    monkeypatch.setattr(ops, "_check_celery", lambda: False)
+    response = client.get("/ready")
+    assert response.status_code == _HTTP_UNAVAILABLE
+    body = response.json()
+    assert body["celery"] == "unreachable"
+
+
+def test_ready_200_when_all_deps_ok_including_celery(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """/ready returns 200 when DB, Redis, and Celery are all reachable (AC3)."""
+    monkeypatch.setattr(ops, "_check_db", lambda: True)
+    monkeypatch.setattr(ops, "_check_redis", lambda: True)
+    monkeypatch.setattr(ops, "_check_celery", lambda: True)
+    response = client.get("/ready")
+    assert response.status_code == _HTTP_OK
+    body = response.json()
+    assert body["celery"] == "ok"
+    assert body["db"] == "ok"
+    assert body["redis"] == "ok"

@@ -29,7 +29,7 @@ Roadmap: [`../architecture/roadmap.md`](../architecture/roadmap.md). Epic A = Ba
 | [TASK-020](./task-020-alerts-cursor-pagination.md) | Alerts cursor-пагинация + composite index (user_id, first_seen) | D | done | backend | 016 | 2026-06-09 |
 | [TASK-021](./task-021-ci-foundation.md) | CI foundation — корневые workflows + conftest alembic-изоляция + dep-scan + coverage-gate | D | done | infra | 001 | 2026-06-09 |
 | [TASK-022](./task-022-scoring-correctness.md) | Scoring correctness — posts.cluster_id FK + per-cluster score + Score retention + горячие индексы | D | done | backend | 007, 008 | 2026-06-09 |
-| [TASK-023](./task-023-reliability-pending-sweep.md) | Reliability — pending-sweep Beat + Celery /ready + alerts-by-status метрика | D | planned | backend | 008, 009 | 2026-06-09 |
+| [TASK-023](./task-023-reliability-pending-sweep.md) | Reliability — pending-sweep Beat + Celery /ready + alerts-by-status метрика | D | done | backend | 008, 009 | 2026-06-09 |
 | [TASK-024](./task-024-observability-sentry-trace.md) | Observability — Sentry (FastAPI+Celery) + correlation/trace-id | D | planned | backend | 011 | 2026-06-09 |
 | [TASK-025](./task-025-templates-email-service.md) | Templates service (порт из postbridge) + SMTP email-транспорт + mailpit + compose/provisioning | D | planned | infra | 001 | 2026-06-09 |
 | [TASK-026](./task-026-auth-verify-reset.md) | Auth completeness — verify + reset-password роутеры + email/templates + фронт-страницы | D | planned | backend | 003, 014, 025 | 2026-06-09 |
