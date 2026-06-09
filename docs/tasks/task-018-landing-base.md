@@ -1,7 +1,7 @@
 ---
 id: TASK-018
 title: Landing base — hero/how-it-works/features/pricing/CTA/compliance-футер, бренд TrendPulse
-status: review           # planned → in-progress → review → done
+status: done             # planned → in-progress → review → done
 owner: frontend
 created: 2026-06-09
 updated: 2026-06-09
@@ -102,19 +102,19 @@ Compliance (overview §7 / §2): **только публичные каналы*
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 4
+current_step: done
 baseline_commit: "fad558c76d3df62b034c424c5de795a2b68ee568"
 branch: "gsd/phase-018-landing-base"
-lock: "loop-018"
+lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [x] 3 do (TDD: failing test → minimal code → GREEN: 6/6 e2e smoke pass)
 - [x] 4 verify (G2 — build+lint+seo_validate+content_audit+audit_copy all green; 6/6 Playwright smoke)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (XSS/санитизация, secrets не в бандле, cookie/CSRF, SSRF в webhook-полях)
-- [ ] 6 ship (PR, squash-merged)
-- [ ] 7 learnings (auto)
-debug_runs: []
+- [x] 5 review (auto, adversarial — 2 HIGH blockers поймано→исправлено: Stripe-в-legal, contact-fetch; PASS после фикса)
+- [x] 5.5 security (PASS, 0 blocking — нет секретов в публичном config/бандле, XSS-safe SSR-escape, нет API-вызовов)
+- [x] 6 ship (PR, squash-merged)
+- [x] 7 learnings (auto)
+debug_runs: ["cycle-1: review HIGH×2 (Stripe-в-legal противоречит §6; contact live fetch /api/waitlist нарушает backend-независимость) → fix: Stripe→NOWPayments в dpa/cookie-policy/do-not-sell, убран contact-fetch→mailto, pb_*→tp_*, Enterprise→Team → re-verify build/lint/seo/e2e 6/6 зелёные"]
 
 ## do-phase results (2026-06-09)
 - commit: 1bcf5b4 (feat(task-018): adapt landing to TrendPulse brand — hero/sections/legal/SEO)
@@ -134,3 +134,8 @@ debug_runs: []
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план по эталону task-003/004 и контексту: compliance-friendly лендинг из template landing/ (hero с примером viral-alert §1, how-it-works, features, тарифы Free/Pro/Team §6, CTA→frontend /sign-up, compliance-футер: privacy/ToS/retention 48h/public-only). Адаптация бренда/копи под TrendPulse; build зелёный, Lighthouse perf/a11y/seo пороги, smoke e2e. Независима от backend (deps: нет). Stripe/секретов/API-вызовов нет. locate+plan выполнены этим планированием — executor стартует с «3 do».)
+
+### review · 5.5 security · loop-018
+- **review (opus) FAIL→FIX (debug cycle 1, 2 HIGH):** (1) **Stripe в legal** (dpa/cookie-policy/do-not-sell декларировали Stripe как платёжный суб-процессор + `__stripe_*` куки) — противоречит overview §6 «никакого Stripe» = ложное публичное раскрытие → **Stripe→NOWPayments**, удалены Stripe-куки. (2) **`/contact` live `fetch('/api/waitlist')`** — нарушает backend-независимость (битая форма + PII) → заменено на `mailto:`. MED: `pb_*`→`tp_*` куки, signupUrl задокументирован. LOW: Enterprise→Team, мёртвые SEO-ветки, untrack test-results. Коммит fcbb098. re-verify build/lint/seo/content-audit/**e2e 6/6** зелёные; grep: stripe-в-legal=0, /api-fetch=0, чужой бренд=0.
+- **security (opus) PASS — 0 blocking:** нет секретов в публичном config.json/бандле (юр.ФОП-имя/адрес — намеренное публичное раскрытие UA), SSR escapeHtml на интерполяциях, нет dangerouslySetInnerHTML/tabnabbing, нет API-вызовов к backend.
+- **Долг:** «No Stripe» маркетинг-строки оставлены (корректный дифференциатор); signupUrl `/sign-up` относительный (edge-routing на SPA, задокументировано); реальный Lighthouse в CI.
