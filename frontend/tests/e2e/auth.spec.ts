@@ -4,12 +4,6 @@
  * Covers AC1 / AC3 / AC4 / AC5 / AC6 (AC7 is the behavioral umbrella — this file IS the AC7 suite).
  * Must run against the full nginx-backed stack (`make up`).
  * baseURL is set in playwright.config.ts → HTTP_PORT (default :80).
- *
- * RED: will FAIL until:
- *   - features/auth (register / login / logout / Google button) are wired
- *   - entities/viewer useCurrentUser shows logged-in state
- *   - guarded routes redirect to /auth/sign-in?redirect=<path>
- *   - GET /users/me backend route is mounted
  */
 
 import { test, expect, type Page } from '@playwright/test';
@@ -32,7 +26,8 @@ async function login(page: Page, email: string, password: string) {
   await page.goto('/auth/sign-in');
   await page.getByLabel('Email').fill(email);
   await page.getByLabel(/^Password/i).fill(password);
-  await page.getByRole('button', { name: /sign in/i }).click();
+  // Use exact match to avoid selecting the Google button which also has "sign in" in its aria-label
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   // After login the SPA should redirect away from sign-in (to home / account)
   await page.waitForURL((url) => !url.pathname.startsWith('/auth/sign-in'), {
     timeout: 8000,
@@ -57,7 +52,7 @@ test('AC1 — register → login → shows logged-in state', async ({ page }) =>
   // Step 3: authenticated — page should NOT be on /auth/sign-in
   expect(page.url()).not.toContain('/auth/sign-in');
 
-  // Step 4: GET /users/me should return 200 with email
+  // Step 4: GET /users/me should return 200 with email (cookie auto-sent)
   const meResponse = await page.request.get('/api/users/me');
   expect(meResponse.status()).toBe(200);
   const body = await meResponse.json() as { email: string; plan: string; is_verified: boolean };
@@ -126,7 +121,8 @@ test('AC4 — open-redirect: external next is ignored, redirects to home', async
 
   await page.getByLabel('Email').fill(email);
   await page.getByLabel(/^Password/i).fill(password);
-  await page.getByRole('button', { name: /sign in/i }).click();
+  // Use exact match to avoid hitting Google button
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 
   await page.waitForURL((url) => !url.pathname.startsWith('/auth/sign-in'), {
     timeout: 8000,
@@ -154,7 +150,7 @@ test('AC5 — wrong password shows friendly error message', async ({ page }) => 
   await page.goto('/auth/sign-in');
   await page.getByLabel('Email').fill(email);
   await page.getByLabel(/^Password/i).fill(wrongPwd);
-  await page.getByRole('button', { name: /sign in/i }).click();
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 
   // Error message should appear — friendly, not raw JSON/stack
   const errorEl = page.getByRole('alert');
@@ -175,25 +171,37 @@ test('AC6 — Google OAuth button navigates to /api/auth/google/authorize', asyn
   await page.context().clearCookies();
   await page.goto('/auth/sign-in');
 
-  // Intercept the navigation — we don't want to actually go to Google
-  const [request] = await Promise.all([
-    // Wait for the navigation away from the current page
-    page.waitForRequest(
-      (req) => req.url().includes('/api/auth/google/authorize') || req.url().includes('accounts.google.com'),
-      { timeout: 5000 },
-    ).catch(() => null),
-    page.getByRole('link', { name: /google/i }).first().click().catch(() =>
-      page.getByRole('button', { name: /google/i }).first().click()
-    ),
+  // The Google button has aria-label="Sign in with Google"
+  const googleBtn = page.getByRole('button', { name: /sign in with google/i });
+  await expect(googleBtn).toBeVisible({ timeout: 3000 });
+
+  // Set up request interception to capture the authorize request before browser navigates
+  let capturedUrl: string | null = null;
+  page.on('request', (req) => {
+    const url = req.url();
+    if (url.includes('/auth/google/authorize') || url.includes('accounts.google.com')) {
+      capturedUrl = url;
+    }
+  });
+
+  // Click and allow the page to navigate (it will go to /api/auth/google/authorize → Google)
+  // We use a short timeout since the navigation away from the page closes the context
+  await Promise.race([
+    googleBtn.click(),
+    page.waitForURL((url) =>
+      url.pathname.includes('/auth/google/authorize') ||
+      url.hostname.includes('google.com') ||
+      url.hostname.includes('accounts.google')
+    , { timeout: 5000 }).catch(() => null),
   ]);
 
-  // Either the request was captured OR the page navigated to an auth/google URL
-  const currentUrl = page.url();
+  // Verify: either we captured the authorize request OR the page navigated to Google
+  const finalUrl = page.url();
   const navigatedToGoogle =
-    request !== null ||
-    currentUrl.includes('/api/auth/google/authorize') ||
-    currentUrl.includes('accounts.google.com') ||
-    currentUrl.includes('google.com/o/oauth2');
+    capturedUrl !== null ||
+    finalUrl.includes('/auth/google/authorize') ||
+    finalUrl.includes('accounts.google.com') ||
+    finalUrl.includes('google.com/o/oauth2');
 
   expect(navigatedToGoogle).toBe(true);
 });
