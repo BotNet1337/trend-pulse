@@ -1,7 +1,7 @@
 ---
 id: TASK-035
 title: TG account pool — целевой размер ≥3, health-метрика, self-alert опсам при бане/флуде
-status: planned
+status: done
 owner: backend
 created: 2026-06-09
 updated: 2026-06-09
@@ -97,19 +97,42 @@ DoD = AC.
 - **security (5.5):** ops-токен из env, scrub в Sentry покрывает `_token`, нет секретов в log_event.
 
 ## Checkpoints
-current_step: 3
+current_step: done
 baseline_commit: "05cbdb8c7ec62af708412389ba98a788534d5f45"
-branch: ""
+branch: "gsd/phase-e0-tg-pool-health"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + real behavior)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (token/secrets — применимо)
-- [ ] 6 ship (PR, squash-merged)
-- [ ] 7 learnings (auto)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + real behavior; реальный send pending owner — см. Details)
+- [x] 5 review (auto, adversarial — pass; MEDIUM per-channel emit исправлен)
+- [x] 5.5 security (token/secrets — pass; Sentry value-level scrub /bot<token>/ добавлен, AC6 закрыт)
+- [x] 6 ship (PR, squash-merged)
+- [x] 7 learnings (auto — записаны в docs/learnings.md до ship, в том же PR)
 debug_runs: []
 
 ## Details
 (initial — locate: `POOL_MIN=1` в `collector/constants.py`; `AllAccountsFloodWaitError` в `collector/errors.py`; паттерн метрик `observability/alert_status.py::emit_alerts_by_status` + `log_event`; `TelegramBotBackend` переиспользуем для ops-бота; ops-конфига в Settings нет — добавить. `/ready` НЕ трогаем: деградация пула не должна гейтить API-трафик. Операционная часть (купить/прогреть 3–5 аккаунтов, прокси) — вне кода, на owner.)
+
+2026-06-10 (do+verify): TDD — 14 юнитов AC1–AC5 (RED: ModuleNotFoundError → GREEN: 359/359, ruff+mypy
+чисто). Wiring: reader.py `_emit_health_best_effort` на трёх точках (all_flood с cooldown_remaining,
+auth_error, периодическая сводка в read-тике), registry передаёт settings+redis. prod.yml
+POOL_MIN_HEALTHY=1 (решение owner: одна сессия), код-default 3 (all.yml). Sentry `_token`-scrub уже
+покрывает ops_telegram_bot_token. Verify-находка (MEDIUM, AC6): httpx логирует URL c bot-токеном на
+INFO → фикс executor'ом: `logging.getLogger("httpx").setLevel(WARNING)` в configure_logging
+(закрывает и pre-existing утечку в TelegramBotBackend; observability/logging.py — минимальный выход
+за Touch-список, санкционирован AC6). G2 реальная отправка в тест-чат — PENDING OWNER:
+OPS_TELEGRAM_BOT_TOKEN нет в dev sensitive.env (vault сломан — см. TASK-056 Details); после фикса vault:
+`make ansible-unpack`, затем форс деградации (`POOL_MIN_HEALTHY=99`) → сообщение в чат 730590298.
+In-process G2 пройден: aggregates-only event, throttle 2 вызова→1 send (fakeredis SET NX), пустые
+настройки → 0 sends, битый токен → no-raise и токена нет в наших логах.
+
+2026-06-10 (review/security/fix): review pass (MEDIUM: периодический emit гонялся per-channel → вынесен
+в один вызов на read()-цикл); security pass с MEDIUM по AC6: sentry-sdk httpx-интеграция пишет breadcrumb
+c data.url=…/bot<token>/…, а скраббер резал только по ИМЕНИ поля → добавлена value-level редакция
+`/bot[^/]+/` → `/bot[scrubbed]/` в _scrub_value (+2 юнита). Также: Redis-except сужен до RedisError,
+notify_ops получил финальный safety-except (логирует только имя типа), тавтологичный cooldown-тест
+заменён на прогон продакшен-пути с проверкой payload, AC1-тест ассертит точный набор ключей события.
+Итог: 361 unit, ruff/mypy зелёные. Owner follow-ups: (1) починить vault → ansible-unpack → живой G2-send
+(форс POOL_MIN_HEALTHY=99 → сообщение в чат); (2) докупить/прогреть 3–5 TG-аккаунтов и поднять
+prod POOL_MIN_HEALTHY до 3.

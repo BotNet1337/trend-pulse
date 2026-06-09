@@ -45,6 +45,7 @@ def _build_telegram_collector() -> SourceCollector:
     from collector.telegram.client import build_telethon_client
     from collector.telegram.reader import TelegramCollector
     from config import get_settings, telegram_pool_sessions
+    from storage.redis_client import get_redis_client
 
     settings = get_settings()
     if settings.telegram_api_id is None or settings.telegram_api_hash is None:
@@ -53,7 +54,8 @@ def _build_telegram_collector() -> SourceCollector:
         api_id=settings.telegram_api_id, api_hash=settings.telegram_api_hash
     )
     pool = AccountPool.from_sessions(sessions=telegram_pool_sessions(settings), factory=factory)
-    return TelegramCollector(pool)
+    # Pass settings + redis for pool health self-observation (TASK-035).
+    return TelegramCollector(pool, settings=settings, redis=get_redis_client())
 
 
 # TELEGRAM registered (AC7); TWITTER intentionally absent (future marker only).

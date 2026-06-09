@@ -51,3 +51,7 @@ base_url: "https://app.trendpulse.local"
 s3_endpoint: "https://nbg1.your-objectstorage.com"
 s3_region: "nbg1"
 s3_bucket: "trendpulse-backups"
+# TASK-035: TG pool health -- operational minimum healthy accounts. Code default=3.
+# Dev/test runs fine with the single session; prod overrides to 1 in prod.yml
+# while pool is being expanded (no spam alerts on known single-session setup).
+pool_min_healthy: "3"

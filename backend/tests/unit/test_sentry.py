@@ -558,6 +558,73 @@ def test_scrub_breadcrumbs_data_scrubbed() -> None:
     assert crumb["data"]["url"] == "/api"
 
 
+def test_scrub_redacts_telegram_bot_token_in_breadcrumb_url() -> None:
+    """AC6: httpx breadcrumb url containing /bot<TOKEN>/ is value-scrubbed in-place.
+
+    sentry-sdk v2 HttpxIntegration records breadcrumbs with data.url set to the
+    full Telegram API URL including the bot token.  The existing field-name scrubber
+    does not catch this because the field name is ``url``, not a secret field name.
+    The value-level redaction regex must replace ``/bot<TOKEN>/`` with
+    ``/bot[scrubbed]/``.
+    """
+    from typing import cast
+
+    from observability.sentry import _scrub
+
+    token = "123456789:ABCDEFabcdef-secrettoken"
+    event: dict[str, Any] = {
+        "breadcrumbs": {
+            "values": [
+                {
+                    "category": "httpx",
+                    "type": "http",
+                    "data": {
+                        "url": f"https://api.telegram.org/bot{token}/sendMessage",
+                        "method": "POST",
+                        "status_code": 200,
+                    },
+                }
+            ]
+        }
+    }
+    result = _scrub(event, {})
+    assert result is not None
+    breadcrumbs = cast(dict[str, Any], result["breadcrumbs"])
+    values = cast(list[dict[str, Any]], breadcrumbs["values"])
+    crumb_data = cast(dict[str, Any], values[0]["data"])
+    scrubbed_url: str = str(crumb_data["url"])
+    assert token not in scrubbed_url, (
+        f"Bot token must not appear in scrubbed breadcrumb url: {scrubbed_url!r}"
+    )
+    assert "/bot[scrubbed]/" in scrubbed_url, (
+        f"Expected /bot[scrubbed]/ placeholder in url: {scrubbed_url!r}"
+    )
+    # Non-secret fields pass through unchanged.
+    assert crumb_data["method"] == "POST"
+    assert crumb_data["status_code"] == 200
+
+
+def test_scrub_redacts_token_in_string_values_outside_breadcrumbs() -> None:
+    """Value-level token redaction applies to any string value, not just breadcrumb urls."""
+    from typing import cast
+
+    from observability.sentry import _scrub
+
+    token = "999:XYZsecret"
+    event: dict[str, Any] = {
+        "extra": {
+            "debug_url": f"https://api.telegram.org/bot{token}/getUpdates",
+            "safe_field": "no-token-here",
+        }
+    }
+    result = _scrub(event, {})
+    assert result is not None
+    extra = cast(dict[str, Any], result["extra"])
+    assert token not in str(extra["debug_url"])
+    assert "/bot[scrubbed]/" in str(extra["debug_url"])
+    assert extra["safe_field"] == "no-token-here"
+
+
 def test_init_sentry_disables_local_variables() -> None:
     """SECURITY: stacktrace frame locals (which hold secrets) are not captured."""
     from observability.sentry import init_sentry

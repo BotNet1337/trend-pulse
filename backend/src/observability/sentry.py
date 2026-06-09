@@ -24,6 +24,7 @@ Performance: ``_traces_sampler`` returns 0.0 for ``/health`` so the liveness
 probe does not generate trace noise.
 """
 
+import re
 from typing import Any, Literal, cast
 
 import sentry_sdk
@@ -83,6 +84,18 @@ _DROP_CONTENT_KEYS: frozenset[str] = frozenset({"text", "content", "body", "raw"
 # before_send (which would silently drop the event).
 _MAX_SCRUB_DEPTH = 12
 
+# Regex to redact the Telegram bot token from URLs of the form
+# ``/bot<TOKEN>/``.  Matches httpx breadcrumb urls produced by
+# ``sentry-sdk``'s ``HttpxIntegration`` (sentry-sdk v2): the token sits
+# between ``/bot`` and the next ``/``.  Replacement uses a fixed literal so
+# the resulting string contains no secret material.
+_TG_BOT_TOKEN_RE: re.Pattern[str] = re.compile(r"/bot[^/]+/")
+
+
+def _redact_token_in_string(value: str) -> str:
+    """Replace any ``/bot<TOKEN>/`` substring with ``/bot[scrubbed]/``."""
+    return _TG_BOT_TOKEN_RE.sub("/bot[scrubbed]/", value)
+
 
 def _should_scrub_field(key: str) -> bool:
     """True if a field name is a known PII / secret carrier."""
@@ -93,13 +106,21 @@ def _should_scrub_field(key: str) -> bool:
 
 
 def _scrub_value(value: object, depth: int) -> object:
-    """Recurse into dicts/lists; leave scalars untouched. Depth-bounded."""
+    """Recurse into dicts/lists; apply value-level token redaction to strings.
+
+    Depth-bounded to prevent RecursionError on pathological events.
+    For strings: redact any embedded Telegram bot token (``/bot<TOKEN>/``)
+    regardless of the field name, so httpx breadcrumb URLs are safe even
+    when the field key is something generic like ``url`` or ``data.url``.
+    """
     if depth >= _MAX_SCRUB_DEPTH:
         return "[scrubbed:too-deep]"
     if isinstance(value, dict):
         return _scrub_dict(cast(dict[str, Any], value), depth + 1)
     if isinstance(value, list):
         return [_scrub_value(item, depth + 1) for item in value]
+    if isinstance(value, str):
+        return _redact_token_in_string(value)
     return value
 
 

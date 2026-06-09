@@ -11,3 +11,7 @@ swagger_enable: "false"
 # SECURITY (TASK-025): prod SMTP uses real credentials → STARTTLS MUST be on so
 # user/password are never sent in plaintext (dev/mailpit default is false).
 smtp_starttls: "true"
+# TASK-035: Pool health target — set to 1 while only one session is in prod vault
+# so the self-alert does not spam on every health tick. Raise to 3 once the pool
+# is expanded to 3+ sessions (one line change here).
+pool_min_healthy: "1"
