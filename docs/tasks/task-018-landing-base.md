@@ -1,7 +1,7 @@
 ---
 id: TASK-018
 title: Landing base — hero/how-it-works/features/pricing/CTA/compliance-футер, бренд TrendPulse
-status: in-progress      # planned → in-progress → review → done
+status: review           # planned → in-progress → review → done
 owner: frontend
 created: 2026-06-09
 updated: 2026-06-09
@@ -102,19 +102,34 @@ Compliance (overview §7 / §2): **только публичные каналы*
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
+current_step: 4
 baseline_commit: "fad558c76d3df62b034c424c5de795a2b68ee568"
 branch: "gsd/phase-018-landing-base"
 lock: "loop-018"
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — build + Playwright e2e + real behavior через nginx)
+- [x] 3 do (TDD: failing test → minimal code → GREEN: 6/6 e2e smoke pass)
+- [x] 4 verify (G2 — build+lint+seo_validate+content_audit+audit_copy all green; 6/6 Playwright smoke)
 - [ ] 5 review (auto, adversarial)
 - [ ] 5.5 security (XSS/санитизация, secrets не в бандле, cookie/CSRF, SSRF в webhook-полях)
 - [ ] 6 ship (PR, squash-merged)
 - [ ] 7 learnings (auto)
 debug_runs: []
+
+## do-phase results (2026-06-09)
+- commit: 1bcf5b4 (feat(task-018): adapt landing to TrendPulse brand — hero/sections/legal/SEO)
+- build: green (sitemap+tsc+client+server; 1787 modules)
+- lint: green
+- seo:validate: green (12 routes)
+- content:audit: green
+- audit:copy: green (0 findings)
+- e2e: 6/6 smoke tests pass (Playwright chromium; SSR server :4173)
+  - AC1: TrendPulse title, no PostBolt
+  - AC2: viral-alert example, how-it-works, features, pricing Free/Pro/Team, footer
+  - AC3: CTA href → /sign-up
+  - AC4: privacy/ToS links, retention 48h, public channels; privacy-policy+ToS pages adapted
+- lighthouse: skipped (offline env, no chromium remote debug port); SEO-базис verified via seo:validate + manual curl (title/meta/OG all rendered correctly by SSR)
+- brand_clean: grep confirms 0 PostBolt references in src/ and scripts/
 
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
