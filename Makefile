@@ -4,7 +4,16 @@
 # Docker targets wrap compose with --env-file version.env (image/build-arg pins)
 # + the top per-service compose file. Dev/CI targets wrap `uv run` in backend/.
 
-COMPOSE := docker compose --env-file development/version.env -f development/docker-compose.yml
+COMPOSE         := docker compose --env-file development/version.env -f development/docker-compose.yml
+# Backup targets invoke pg-backup.yml directly — standalone, no root include.
+# This avoids the FRONTEND_COOKIE_SECRET interpolation failure when the full
+# env is not loaded.  The env files exist after `make ansible-unpack`.
+COMPOSE_BACKUP  := docker compose \
+  --env-file development/version.env \
+  --env-file development/env/deploy.env \
+  --env-file development/env/sensitive.env \
+  -f development/compose/pg-backup.yml \
+  --profile backup
 UV      := uv run --directory backend
 INFRA   := postgres redis pg_vector_provisioner migration_runner
 # OpenAPI contract (TASK-019): committed dump + generated types paths.
@@ -21,7 +30,8 @@ TF_DIR      := ops/terraform
 .PHONY: help up dev-up dev-infra-up down build logs logs-once ps restart sh migrate \
         ansible-unpack tf-validate ansible-lint ansible-check \
         lint fmt typecheck test test-cov test-integration ci ci-fast \
-        gen-openapi gen-types openapi-drift-check
+        gen-openapi gen-types openapi-drift-check \
+        backup backup-restore-check
 
 # Default target: list everything.
 help:
@@ -40,6 +50,8 @@ help:
 	@echo "    sh               open a shell in the api container"
 	@echo "    migrate          run migration_runner (alembic upgrade head)"
 	@echo "    ansible-unpack   render development/env/{deploy,sensitive}.env from ops/ansible"
+	@echo "    backup           pg_dump → Hetzner Object Storage (one-shot, requires S3_* env)"
+	@echo "    backup-restore-check  download latest dump → disposable PG → smoke-check (PASS/FAIL)"
 	@echo "  IaC (ops/ — Terraform + Ansible, ADR-005 §5):"
 	@echo "    tf-validate      terraform init -backend=false + validate (ops/terraform)"
 	@echo "    ansible-lint     ansible-lint over ops/ansible"
@@ -95,6 +107,32 @@ migrate:
 
 ansible-unpack:
 	cd $(ANSIBLE_DIR) && ANSIBLE_CONFIG=ansible.cfg ansible-playbook playbooks/unpack-env.yml --vault-password-file .vault-pass
+
+# --- Backup (TASK-034) ---
+# pg_dump -Fc → Hetzner Object Storage. Two one-shot containers:
+#   pg_backup (pgvector image, postgres_net) → dump to shared volume
+#   backup_uploader (aws-cli image) → upload to s3://$S3_BUCKET/postgres/<ts>.dump
+# Requires S3_* env from sensitive.env (populated by `make ansible-unpack`).
+# Uses pg-backup.yml directly (standalone) — avoids FRONTEND_COOKIE_SECRET failure.
+#
+# F1: run ONLY the terminal service — depends_on chains the first stage automatically.
+#   Running both services explicitly caused pg_dump (and S3 fetch) to execute twice.
+backup:
+	$(COMPOSE_BACKUP) run --rm backup_uploader
+
+# Download latest dump from S3 → restore into a throwaway internal PG → smoke checks.
+# Two one-shot containers: restore_fetch (aws-cli) + restore_check (pgvector, internal PG).
+# NO docker socket. Reports PASS/FAIL; always cleans up via trap.
+# Requires S3_* env from sensitive.env (populated by `make ansible-unpack`).
+#
+# F1: run ONLY the terminal service — depends_on chains restore_fetch automatically.
+# F5: `down --volumes` removes project-local named volumes (pgdump_tmp, restore_tmp)
+#   after a successful check so the prod dump copy does not linger on disk.
+#   This targets ONLY the pg-backup.yml project volumes — main stack volumes are
+#   in a different compose project and are unaffected.
+backup-restore-check:
+	$(COMPOSE_BACKUP) run --rm restore_check
+	$(COMPOSE_BACKUP) down --volumes
 
 # --- IaC (ops/ — Terraform + Ansible) ---
 # validate without touching the remote backend (AC2; -backend=false). init

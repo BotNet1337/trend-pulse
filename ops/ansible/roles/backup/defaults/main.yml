@@ -1,0 +1,10 @@
+---
+# Role: backup — defaults for the daily pg_backup cron job (TASK-034).
+# Override in group_vars/prod.yml if needed.
+
+# Hour (0-23, UTC) at which the daily backup cron job runs.
+backup_cron_hour: "3"
+# Minute (0-59) of the hour.
+backup_cron_minute: "0"
+# Log file for cron job output (MAILTO= silences email; log captures stdout+stderr).
+backup_cron_log: "/var/log/trendpulse-backup.log"
