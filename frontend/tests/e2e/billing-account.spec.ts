@@ -28,7 +28,7 @@ const TEST_PASSWORD = 'S3curePassw0rd!';
 async function register(page: Page, email: string) {
   await page.goto('/auth/sign-up');
   await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(email.split('@')[0].slice(-8));
+  await page.getByLabel('Password').fill(TEST_PASSWORD);
   await page.getByRole('button', { name: /create account/i }).click();
   await page.waitForURL(/\/auth\/sign-in/, { timeout: 8000 });
 }
@@ -36,7 +36,7 @@ async function register(page: Page, email: string) {
 async function login(page: Page, email: string) {
   await page.goto('/auth/sign-in');
   await page.getByLabel('Email').fill(email);
-  await page.getByLabel(/^Password/i).fill(email.split('@')[0].slice(-8));
+  await page.getByLabel(/^Password/i).fill(TEST_PASSWORD);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.waitForURL((url) => !url.pathname.startsWith('/auth/sign-in'), {
     timeout: 8000,
@@ -81,7 +81,8 @@ test('plan_and_invoice — billing page shows plan and creates invoice', async (
   await expect(page).not.toHaveURL(/\/auth\/sign-in/);
 
   // The page should show the current plan (free for new user)
-  await expect(page.getByText(/free/i)).toBeVisible({ timeout: 10000 });
+  // Use .first() to avoid strict-mode failure when multiple elements match /free/i
+  await expect(page.getByText(/free/i).first()).toBeVisible({ timeout: 10000 });
 
   // The page should show a Pro tier with an upgrade button
   const upgradeButton = page.getByRole('button', { name: /upgrade to pro|upgrade|get pro/i }).first();
@@ -90,11 +91,9 @@ test('plan_and_invoice — billing page shows plan and creates invoice', async (
   // Click upgrade → invoice should be created and displayed
   await upgradeButton.click();
 
-  // After clicking, the UI should show invoice details (address/amount/status)
-  // or a pending state — any of these indicates the invoice flow started
-  await expect(
-    page.getByText(/19\.00|test-order-001|payment|pending|awaiting/i)
-  ).toBeVisible({ timeout: 8000 });
+  // After clicking, the UI should show invoice details (address/amount/status).
+  // Use invoice-amount testid (most reliable) to confirm the invoice was created.
+  await expect(page.getByTestId('invoice-amount')).toBeVisible({ timeout: 8000 });
 });
 
 // ---------------------------------------------------------------------------
@@ -108,23 +107,15 @@ test('delivery_config_happy — bot token and chat_id saved, token masked', asyn
   await page.goto('/account/settings');
   await expect(page).not.toHaveURL(/\/auth\/sign-in/);
 
-  // Find the delivery config section
-  const deliverySection = page.locator('[data-testid="delivery-config"], [aria-label*="delivery"], section').filter({
-    hasText: /telegram|bot token|chat id|delivery/i,
-  }).first();
-
   // If delivery config section not found, at least the settings page must render
   await expect(page.locator('[data-testid="account-settings-page"]')).toBeVisible({ timeout: 8000 });
 
-  // Check that the delivery-config section is present (AC3 requires it)
-  await expect(page.getByLabel(/bot token|telegram bot/i).or(
-    page.getByPlaceholder(/bot token/i)
-  ).or(
-    page.getByText(/bot token/i)
-  )).toBeVisible({ timeout: 5000 });
-
-  // Fill in bot token (write-only field)
-  const botTokenInput = page.getByLabel(/bot token/i).or(page.getByPlaceholder(/bot token/i)).first();
+  // Check that the delivery-config section is present (AC3 requires it).
+  // Use #delivery-bot-token input (known id from the form) or fall back to placeholder.
+  const botTokenInput = page.locator('#delivery-bot-token').or(
+    page.getByPlaceholder(/bot token/i).first()
+  );
+  await expect(botTokenInput).toBeVisible({ timeout: 5000 });
   await botTokenInput.fill('1234567890:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh1');
 
   // Fill in chat_id
@@ -154,9 +145,12 @@ test('invalid_webhook_rejected — SSRF bait URL shows error', async ({ page }) 
   const webhookInput = page.getByLabel(/webhook/i).or(page.getByPlaceholder(/webhook/i)).first();
 
   if (!(await webhookInput.isVisible())) {
-    // On Free plan, webhook may show an upsell instead — check for it
+    // On Free plan, webhook may show an upsell instead — check for it.
+    // The upsell text is "Upgrade to Pro to use webhooks" (data-testid="webhook-pro-upsell").
     await expect(
-      page.getByText(/webhook.*pro|pro.*webhook|upgrade.*webhook/i)
+      page.getByTestId('webhook-pro-upsell').or(
+        page.getByText(/upgrade to pro to use webhooks/i)
+      )
     ).toBeVisible({ timeout: 5000 });
     return; // AC4 satisfied by showing upsell for Free plan
   }
@@ -177,7 +171,8 @@ test('invalid_webhook_rejected — SSRF bait URL shows error', async ({ page }) 
 // ---------------------------------------------------------------------------
 
 test('delete_account_confirmed — shows confirm dialog, deletes, redirects', async ({ page }) => {
-  await registerAndLogin(page, 'billing-ac6');
+  // Capture email from registerAndLogin so we can use it for the confirmation phrase.
+  const registeredEmail = await registerAndLogin(page, 'billing-ac6');
   await page.goto('/account/settings');
   await expect(page).not.toHaveURL(/\/auth\/sign-in/);
 
@@ -186,14 +181,13 @@ test('delete_account_confirmed — shows confirm dialog, deletes, redirects', as
   await expect(deleteButton).toBeVisible({ timeout: 8000 });
   await deleteButton.click();
 
-  // A confirmation dialog should appear (GDPR requirement)
-  const dialog = page.getByRole('dialog').or(
-    page.locator('[data-testid="delete-account-dialog"]')
-  );
+  // A confirmation dialog should appear (GDPR requirement).
+  // Use the specific modal role with name to avoid strict-mode conflict with inner data-testid div.
+  const dialog = page.getByRole('dialog', { name: /delete account/i });
   await expect(dialog).toBeVisible({ timeout: 5000 });
 
   // Without confirming, the delete button inside the dialog should be disabled
-  const confirmDeleteButton = dialog.getByRole('button', { name: /delete account/i });
+  const confirmDeleteButton = page.getByTestId('delete-account-confirm');
   await expect(confirmDeleteButton).toBeDisabled();
 
   // Cancel the dialog (no request should have been made)
@@ -204,17 +198,10 @@ test('delete_account_confirmed — shows confirm dialog, deletes, redirects', as
   // Open again and this time confirm by typing email
   await deleteButton.click();
   const confirmInput = dialog.getByRole('textbox');
-  const email = await page.evaluate(() => {
-    // Get email from the page (displayed in profile section or dialog)
-    const emailEl = document.querySelector('[data-testid="account-settings-page"] [data-testid*="email"]');
-    return emailEl?.textContent?.trim() ?? '';
-  });
 
-  // Type the email to enable the confirm button
-  if (email) {
-    await confirmInput.fill(email);
-    await expect(confirmDeleteButton).toBeEnabled({ timeout: 3000 });
-  }
-  // Note: we don't actually click delete to preserve test DB state
-  // The important AC6 behavior (confirm gating) has been verified above.
+  // Type the registered email to enable the confirm button (GDPR confirm pattern).
+  await confirmInput.fill(registeredEmail);
+  await expect(confirmDeleteButton).toBeEnabled({ timeout: 3000 });
+  // Note: we don't actually click delete to preserve test DB state.
+  // The important AC6 behavior (confirm gating: button disabled → enabled after email) is verified.
 });
