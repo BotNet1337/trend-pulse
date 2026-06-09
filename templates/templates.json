@@ -1,0 +1,95 @@
+[
+  {
+    "eventName": "auth.verify_email",
+    "templatePath": "auth/verify-email",
+    "subject": "Verify your TrendPulse email",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "userName": { "type": "string" },
+        "verifyUrl": { "type": "string" },
+        "expiresAt": { "type": "string" }
+      },
+      "required": ["userName", "verifyUrl", "expiresAt"]
+    },
+    "previewDefaults": {
+      "userName": "Alex",
+      "verifyUrl": "https://app.trendpulse.local/auth/email/confirm?token=preview",
+      "expiresAt": "24 hours from now"
+    }
+  },
+  {
+    "eventName": "auth.reset_password",
+    "templatePath": "auth/reset-password",
+    "subject": "Reset your TrendPulse password",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "userName": { "type": "string" },
+        "resetUrl": { "type": "string" },
+        "expiresAt": { "type": "string" }
+      },
+      "required": ["userName", "resetUrl", "expiresAt"]
+    },
+    "previewDefaults": {
+      "userName": "Alex",
+      "resetUrl": "https://app.trendpulse.local/auth/reset-password?token=preview",
+      "expiresAt": "1 hour from now"
+    }
+  },
+  {
+    "eventName": "auth.welcome",
+    "templatePath": "auth/welcome",
+    "subject": "Welcome to TrendPulse, {{userName}}!",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "userName": { "type": "string" },
+        "dashboardUrl": { "type": "string" }
+      },
+      "required": ["userName", "dashboardUrl"]
+    },
+    "previewDefaults": {
+      "userName": "Alex",
+      "dashboardUrl": "https://app.trendpulse.local/dashboard"
+    }
+  },
+  {
+    "eventName": "auth.email_change_requested",
+    "templatePath": "auth/email-change-requested",
+    "subject": "Confirm your new TrendPulse email",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "oldEmail": { "type": "string" },
+        "newEmail": { "type": "string" },
+        "confirmUrl": { "type": "string" },
+        "expiresAt": { "type": "string" }
+      },
+      "required": ["oldEmail", "newEmail", "confirmUrl", "expiresAt"]
+    },
+    "previewDefaults": {
+      "oldEmail": "old@example.com",
+      "newEmail": "new@example.com",
+      "confirmUrl": "https://app.trendpulse.local/auth/email/confirm-change?token=preview",
+      "expiresAt": "24 hours from now"
+    }
+  },
+  {
+    "eventName": "auth.email_changed",
+    "templatePath": "auth/email-changed",
+    "subject": "Your TrendPulse email was changed",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "oldEmail": { "type": "string" },
+        "newEmail": { "type": "string" }
+      },
+      "required": ["oldEmail", "newEmail"]
+    },
+    "previewDefaults": {
+      "oldEmail": "old@example.com",
+      "newEmail": "new@example.com"
+    }
+  }
+]

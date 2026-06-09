@@ -22,6 +22,8 @@ include:
   - compose/beat.yml
   - compose/frontend.yml
   - compose/nginx.yml
+  - compose/templates.yml
+  - compose/mailpit.yml
 
 networks:
   edge:

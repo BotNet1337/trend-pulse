@@ -33,3 +33,16 @@ sentry_traces_sample_rate: "0.0"
 # VPS, pinned to app_version for reproducible deploys. Override app_version per release.
 app_repo_url: "https://github.com/BotNet1337/trend-pulse.git"
 app_version: "main"
+# TASK-025: Email -- templates service + SMTP transport. Dev defaults:
+#   templates  -> compose service "templates" on port 3100 (internal-only)
+#   SMTP       -> mailpit (catch-all, no auth, no TLS)
+# Production: override smtp_host/port/starttls via group_vars/prod.yml;
+#   smtp_user/password live in vault (sensitive.vault.yml).
+templates_service_url: "http://templates:3100"
+smtp_host: "mailpit"
+smtp_port: "1025"
+smtp_from: "TrendPulse <noreply@trendpulse.local>"
+smtp_starttls: "false"
+frontend_domain: "app.trendpulse.local"
+base_url: "https://app.trendpulse.local"
+verify_email_path: "/auth/email/confirm"

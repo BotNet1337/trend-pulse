@@ -140,6 +140,33 @@ jobs:
         run: npm run build
 
   # --------------------------------------------------------------------------
+  # templates: eslint + build (email render service, TASK-025)
+  # --------------------------------------------------------------------------
+  templates:
+    name: Templates (lint + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: templates
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: templates/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+  # --------------------------------------------------------------------------
   # dep-scan: pip-audit (backend Python) + npm audit (frontend + landing)
   # Threshold: high/critical.
   # NOTE: continue-on-error=true on specific steps where existing unfixable CVEs

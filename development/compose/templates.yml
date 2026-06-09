@@ -1,0 +1,35 @@
+# Templates service — Node/Fastify + react-email. Renders HTML emails via POST
+# /render/<template> with props. Internal-only (not in edge network), port 3100
+# not published — accessible only within internal network by api/worker by DNS
+# name "templates". SCHEMA_PATH points to templates.json copied into dist/ by
+# the multi-stage Dockerfile build. NODE_VERSION sourced from version.env.
+services:
+  templates:
+    build:
+      context: ../../templates
+      args:
+        NODE_VERSION: ${NODE_VERSION}
+    image: ${TEMPLATES_IMAGE:-trendpulse-templates:dev}
+    environment:
+      NODE_ENV: production
+      SCHEMA_PATH: /app/dist/templates.json
+      PORT: "3100"
+      FRONTEND_DOMAIN: ${FRONTEND_DOMAIN:-app.trendpulse.local}
+      BASE_URL: ${BASE_URL:-https://app.trendpulse.local}
+      VERIFY_EMAIL_PATH: ${VERIFY_EMAIL_PATH:-/auth/email/confirm}
+    networks:
+      - internal
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          wget -qO- http://127.0.0.1:3100/health || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+networks:
+  internal:
+    external: false
