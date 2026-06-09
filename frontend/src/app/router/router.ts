@@ -8,6 +8,8 @@ import type { AuthStore } from '../stores/auth.store';
 import { ProtectedLayout, RootLayout } from '@/pages/index/layout';
 import {
   AccountSettingsPage,
+  AlertDetailPage,
+  AlertsListPage,
   AnonymousLayout,
   ConfirmEmailChangePage,
   ConfirmEmailPage,
@@ -82,6 +84,19 @@ const accountSettingsRoute = createRoute({
   component: AccountSettingsPage,
 });
 
+// Alerts routes — all behind protectedContentRoute (AuthGuard)
+const alertsListRoute = createRoute({
+  getParentRoute: () => protectedContentRoute,
+  path: paths.alerts.list,
+  component: AlertsListPage,
+});
+
+const alertDetailRoute = createRoute({
+  getParentRoute: () => protectedContentRoute,
+  path: '/alerts/$alertId',
+  component: AlertDetailPage,
+});
+
 // Watchlist routes — all behind protectedContentRoute (AuthGuard)
 const watchlistsListRoute = createRoute({
   getParentRoute: () => protectedContentRoute,
@@ -142,6 +157,8 @@ const routeTree = rootRoute.addChildren([
     protectedContentRoute.addChildren([
       indexRoute,
       accountSettingsRoute,
+      alertsListRoute,
+      alertDetailRoute,
       watchlistsListRoute,
       watchlistCreateRoute,
       watchlistDetailRoute,

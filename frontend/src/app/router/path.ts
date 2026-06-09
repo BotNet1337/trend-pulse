@@ -16,5 +16,9 @@ export const paths = {
     create: '/watchlists/new',
     detail: (id: number | string) => `/watchlists/${id}`,
   },
+  alerts: {
+    list: '/alerts',
+    detail: (id: number | string) => `/alerts/${id}`,
+  },
   billing: '/billing',
 } as const;
