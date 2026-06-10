@@ -666,6 +666,60 @@
         "title": "TenantResponse",
         "type": "object"
       },
+      "TrendingItem": {
+        "additionalProperties": false,
+        "description": "Aggregate projection of one viral cluster — aggregate fields only.\n\nFields:\n  topic:          Sanitized display label derived from the cluster centroid\n                  (cluster.topic). URLs, @-handles, and email addresses are\n                  stripped at the API boundary; length is capped to\n                  TRENDING_LABEL_MAX_LEN (80) characters (compliance §7, AC5).\n  viral_score:    Composite virality score (score.viral_score).\n  channels_count: Number of channels contributing to this cluster.\n  first_seen:     UTC timestamp when the cluster was first detected.\n\nDeliberately absent (compliance §7):\n  - post text, message content, channel handles, URLs, raw metadata.",
+        "properties": {
+          "channels_count": {
+            "title": "Channels Count",
+            "type": "integer"
+          },
+          "first_seen": {
+            "format": "date-time",
+            "title": "First Seen",
+            "type": "string"
+          },
+          "topic": {
+            "title": "Topic",
+            "type": "string"
+          },
+          "viral_score": {
+            "title": "Viral Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "topic",
+          "viral_score",
+          "channels_count",
+          "first_seen"
+        ],
+        "title": "TrendingItem",
+        "type": "object"
+      },
+      "TrendingResponse": {
+        "additionalProperties": false,
+        "description": "Response envelope for GET /trending.\n\nwarming_up semantics:\n  True  — showcase tenant absent OR has no clusters at all (fresh deploy).\n          Frontend shows «собираем сигналы…» state.\n  False — showcase tenant exists AND has at least one cluster. The items list\n          may still be empty (e.g. no activity for the requested pack in the\n          last 24h) — this is honest data, not a warming-up state.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TrendingItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "warming_up": {
+            "title": "Warming Up",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "warming_up"
+        ],
+        "title": "TrendingResponse",
+        "type": "object"
+      },
       "UnsubscribeResult": {
         "additionalProperties": false,
         "description": "Result of DELETE /packs/{slug}/subscribe.",
@@ -2020,6 +2074,68 @@
         "summary": "Ready",
         "tags": [
           "ops"
+        ]
+      }
+    },
+    "/trending": {
+      "get": {
+        "description": "Return the top trending clusters for a pack (showcase tenant, 24h window).\n\nNo plan gate: Free users see /trending after registration (Decision §Discussion).\nThis is showcase data (our own), not the user's personal history.\n\npack:  Required. Pack slug from the catalog. 404 if unknown.\nlimit: Optional. Must be ≤ settings.trending_top_k_max (422 otherwise).\n       Defaults to settings.trending_top_k_default.\n\nResponse includes warming_up=true when the showcase tenant is not yet warmed up\n(fresh deploy); the frontend should display «собираем сигналы…» in that case.",
+        "operationId": "get_trending_trending_get",
+        "parameters": [
+          {
+            "description": "Pack slug (e.g. 'crypto-ru'). Must be a known catalog slug.",
+            "in": "query",
+            "name": "pack",
+            "required": true,
+            "schema": {
+              "description": "Pack slug (e.g. 'crypto-ru'). Must be a known catalog slug.",
+              "title": "Pack",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Max number of trending items to return. Defaults to settings.trending_top_k_default; max is settings.trending_top_k_max. Must be ≥ 1 (422 on non-positive values).",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Max number of trending items to return. Defaults to settings.trending_top_k_default; max is settings.trending_top_k_max. Must be ≥ 1 (422 on non-positive values).",
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrendingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Trending",
+        "tags": [
+          "trending"
         ]
       }
     },

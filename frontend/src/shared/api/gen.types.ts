@@ -412,6 +412,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/trending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Trending
+         * @description Return the top trending clusters for a pack (showcase tenant, 24h window).
+         *
+         *     No plan gate: Free users see /trending after registration (Decision §Discussion).
+         *     This is showcase data (our own), not the user's personal history.
+         *
+         *     pack:  Required. Pack slug from the catalog. 404 if unknown.
+         *     limit: Optional. Must be ≤ settings.trending_top_k_max (422 otherwise).
+         *            Defaults to settings.trending_top_k_default.
+         *
+         *     Response includes warming_up=true when the showcase tenant is not yet warmed up
+         *     (fresh deploy); the frontend should display «собираем сигналы…» in that case.
+         */
+        get: operations["get_trending_trending_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users/me": {
         parameters: {
             query?: never;
@@ -865,6 +895,52 @@ export interface components {
         TenantResponse: {
             /** User Id */
             user_id: number;
+        };
+        /**
+         * TrendingItem
+         * @description Aggregate projection of one viral cluster — aggregate fields only.
+         *
+         *     Fields:
+         *       topic:          Sanitized display label derived from the cluster centroid
+         *                       (cluster.topic). URLs, @-handles, and email addresses are
+         *                       stripped at the API boundary; length is capped to
+         *                       TRENDING_LABEL_MAX_LEN (80) characters (compliance §7, AC5).
+         *       viral_score:    Composite virality score (score.viral_score).
+         *       channels_count: Number of channels contributing to this cluster.
+         *       first_seen:     UTC timestamp when the cluster was first detected.
+         *
+         *     Deliberately absent (compliance §7):
+         *       - post text, message content, channel handles, URLs, raw metadata.
+         */
+        TrendingItem: {
+            /** Channels Count */
+            channels_count: number;
+            /**
+             * First Seen
+             * Format: date-time
+             */
+            first_seen: string;
+            /** Topic */
+            topic: string;
+            /** Viral Score */
+            viral_score: number;
+        };
+        /**
+         * TrendingResponse
+         * @description Response envelope for GET /trending.
+         *
+         *     warming_up semantics:
+         *       True  — showcase tenant absent OR has no clusters at all (fresh deploy).
+         *               Frontend shows «собираем сигналы…» state.
+         *       False — showcase tenant exists AND has at least one cluster. The items list
+         *               may still be empty (e.g. no activity for the requested pack in the
+         *               last 24h) — this is honest data, not a warming-up state.
+         */
+        TrendingResponse: {
+            /** Items */
+            items: components["schemas"]["TrendingItem"][];
+            /** Warming Up */
+            warming_up: boolean;
         };
         /**
          * UnsubscribeResult
@@ -1692,6 +1768,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_trending_trending_get: {
+        parameters: {
+            query: {
+                /** @description Pack slug (e.g. 'crypto-ru'). Must be a known catalog slug. */
+                pack: string;
+                /** @description Max number of trending items to return. Defaults to settings.trending_top_k_default; max is settings.trending_top_k_max. Must be ≥ 1 (422 on non-positive values). */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrendingResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

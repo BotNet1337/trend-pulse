@@ -31,7 +31,8 @@ TF_DIR      := ops/terraform
         ansible-unpack tf-validate ansible-lint ansible-check \
         lint fmt typecheck test test-cov test-integration ci ci-fast \
         gen-openapi gen-types openapi-drift-check \
-        backup backup-restore-check
+        backup backup-restore-check \
+        showcase-init
 
 # Default target: list everything.
 help:
@@ -203,3 +204,10 @@ openapi-drift-check: gen-openapi gen-types
 		git status --porcelain -- $(OPENAPI_DUMP) $(GEN_TYPES); \
 		exit 1; \
 	fi
+
+# --- Showcase tenant bootstrap (TASK-039) ---
+# Creates the system showcase user + subscribes to all catalog packs.
+# Idempotent: safe to re-run. Requires the stack to be up (postgres accessible).
+# Run once after `make up` on a fresh deploy or when catalog changes.
+showcase-init:
+	$(COMPOSE) exec api uv run python -m api.trending

@@ -1,7 +1,7 @@
 ---
 id: TASK-039
 title: Onboarding instant value — showcase-тенант + GET /trending + экран «вирусное за 24ч» после регистрации
-status: planned
+status: done
 owner: backend
 created: 2026-06-09
 updated: 2026-06-09
@@ -116,18 +116,18 @@ tags: [epic-e1, backend, frontend, onboarding]
 - **security (5.5):** auth required; pack-slug по белому списку; showcase-пароль рандомный/нелогинибельный; rate-limit существующий.
 
 ## Checkpoints
-current_step: 3
+current_step: done
 baseline_commit: "05cbdb8c7ec62af708412389ba98a788534d5f45"
-branch: ""
+branch: "gsd/phase-e1-onboarding-instant-value"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + real behavior)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (auth/новый эндпоинт — применимо)
-- [ ] 6 ship (PR, squash-merged)
-- [ ] 7 learnings (auto)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + real behavior; см. Details)
+- [x] 5 review (auto, adversarial — fix-cycle applied 2026-06-10)
+- [x] 5.5 security (auth/новый эндпоинт — 2 HIGH найдены и закрыты в fix-цикле: topic-sanitize, PasswordHelper)
+- [x] 6 ship (PR, squash-merged)
+- [x] 7 learnings (auto — записаны в docs/learnings.md до ship, в том же PR)
 debug_runs: []
 
 ## Details
@@ -136,3 +136,25 @@ debug_runs: []
 (TASK-044). Зависимость: TASK-038 (паки) — выполнять после. Фронт: register НЕ авто-логинит (паттерн
 task-014) — онбординг вешаем после первого логина по критерию «0 watchlists». Compliance: /trending
 без сырого контента (§7 «не продавать сырой контент» + 48h retention).)
+
+fix-cycle 2026-06-10 (review findings):
+1. CRITICAL Makefile showcase-init: `python -m api.trending.bootstrap` → `python -m api.trending`
+   (bootstrap.py имеет no `__main__` block; CLI живёт в `__main__.py`). Добавлен unit-guard.
+2. HIGH raw-content leak: в service.py добавлена `_sanitize_topic_label()` — strips URLs/t.me/@handles/emails,
+   cap TRENDING_LABEL_MAX_LEN=80. TrendingItem.topic docstring обновлён. Unit + integration tests добавлены.
+3. HIGH UnknownHashError 500: `_make_unguessable_hash()` в bootstrap.py переписан с sha256 hex → 
+   `PasswordHelper().hash(secrets.token_urlsafe(32))` (argon2, тот же хешер что UserManager).
+   Интеграционный тест: POST /auth/jwt/login showcase@internal → 400/401, not 500.
+4. INFO ge=1 на limit Query param в router.py → 422 на limit=0/-1. OpenAPI dump + frontend gen.types.ts регенерированы.
+All tests pass: 415 unit + 16 integration (test_trending_api.py).
+
+2026-06-10 (итог verify/ship): G2 живьём — showcase-init идемпотентен (2 прогона → 1 юзер, 14 watchlist-строк
+без дублей); /trending: топ по viral_score desc, окно 24ч соблюдено, неизвестный пак 404, limit>max 422,
+без auth 401; изоляция: свежий юзер не видит showcase-строк, его собственный кластер с score=99 НЕ попадает
+в /trending. Security-оценка «угроза захвата showcase@internal через регистрацию» — НЕ эксплуатируема
+(EmailStr отвергает домен без точки на register/forgot-password). Принятые ограничения: channels_count=1
+(плейсхолдер с TODO — у Score/Cluster нет колонки; заполнить когда scorer начнёт писать cross_channel);
+пак→topic маппинг подразумевает уникальность topic между паками (зафиксировано комментарием в data.py);
+полный браузерный тайминг «регистрация→сигнал ≤60s» — ручная проверка owner'а на полном стеке
+(make up + make showcase-init); guard теперь дёргает useWatchlists на каждом protected-рендере
+(смягчено staleTime/кэшем TanStack — принято).

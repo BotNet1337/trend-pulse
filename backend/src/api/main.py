@@ -30,6 +30,7 @@ from api.deps import get_tenant_user_id
 from api.packs.router import router as packs_router
 from api.rate_limit import limiter, rate_limit_handler
 from api.routes import account_router, ops_router
+from api.trending.router import router as trending_router
 from api.watchlist import router as watchlist_router
 from billing.deps import BillingNotConfiguredError
 from billing.limits import PlanLimitExceeded
@@ -188,6 +189,9 @@ app.include_router(alerts_router)
 
 # --- Curated channel packs (TASK-038): GET/POST/DELETE /packs. ---
 app.include_router(packs_router)
+
+# --- Trending showcase (TASK-039): GET /trending?pack=&limit= (auth required). ---
+app.include_router(trending_router)
 
 # --- Watchlist CRUD (tenant-scoped, behind current_user). ---
 app.include_router(watchlist_router)
