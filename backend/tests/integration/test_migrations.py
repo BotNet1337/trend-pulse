@@ -44,22 +44,17 @@ def test_upgrade_head_creates_schema_with_vector_extension() -> None:
     engine = create_engine(get_settings().database_url)
     try:
         # Start clean so the migration (not create_all) builds the schema.
-        _drop_statements = (
-            "DROP TABLE IF EXISTS billing_payments CASCADE",
-            "DROP TABLE IF EXISTS subscriptions CASCADE",
-            "DROP TABLE IF EXISTS oauth_accounts CASCADE",
-            "DROP TABLE IF EXISTS alerts CASCADE",
-            "DROP TABLE IF EXISTS scores CASCADE",
-            "DROP TABLE IF EXISTS clusters CASCADE",
-            "DROP TABLE IF EXISTS posts CASCADE",
-            "DROP TABLE IF EXISTS watchlists CASCADE",
-            "DROP TABLE IF EXISTS channels CASCADE",
-            "DROP TABLE IF EXISTS users CASCADE",
-            "DROP TABLE IF EXISTS alembic_version",
-        )
+        # Drop EVERY table in public dynamically — a hardcoded list silently
+        # rots when a migration adds a table (api_keys, 0010) and leaves the
+        # schema half-built, cascading failures into every later test.
         with engine.begin() as conn:
-            for stmt in _drop_statements:
-                conn.execute(text(stmt))
+            tables = (
+                conn.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'"))
+                .scalars()
+                .all()
+            )
+            for table in tables:
+                conn.execute(text(f'DROP TABLE IF EXISTS "{table}" CASCADE'))
 
         command.upgrade(_alembic_config(), "head")
 
