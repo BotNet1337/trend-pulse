@@ -49,7 +49,7 @@ Roadmap: [`../architecture/roadmap.md`](../architecture/roadmap.md). Epic A = Ba
 | [TASK-040](./task-040-free-plan-alert-delay.md) | Free-план: задержка алертов 15–30 мин (deliver_after + resweep-уважение) | E1 | done | backend | 008, 010, 023 | 2026-06-10 |
 | [TASK-041](./task-041-historical-engagement-baseline.md) | Historical engagement baseline — channel_avg по скользящему 7d-окну канала | E2 | done | backend | 008, 022 | 2026-06-10 |
 | [TASK-042](./task-042-alert-feedback-precision.md) | Фидбек 👍/👎 (URL-кнопки в TG-алерте) + alert_feedback + precision per user | E2 | done | backend | 009, 036 | 2026-06-10 |
-| [TASK-043](./task-043-adaptive-threshold-anti-fatigue.md) | Адаптивный порог по доле 👎 + анти-fatigue (N алертов/час, группировка) | E2 | planned | backend | 042 | 2026-06-10 |
+| [TASK-043](./task-043-adaptive-threshold-anti-fatigue.md) | Адаптивный порог по доле 👎 + анти-fatigue (N алертов/час, группировка) | E2 | done | backend | 042 | 2026-06-10 |
 | [TASK-044](./task-044-showcase-autoposting.md) | Showcase авто-постинг — топ-сигналы в публичный TG-канал (delay + CTA + анти-спам) | E3 | planned | backend | 035, 039 | 2026-06-10 |
 | [TASK-045](./task-045-proof-of-speed-cases.md) | Proof-of-speed — snapshot-кейсы showcase_cases + GET /cases (сырьё лендинга) | E3 | planned | backend | 044 | 2026-06-10 |
 | [TASK-046](./task-046-referral-program-usdt.md) | Реферальная программа USDT — ref_code + начисление при первой оплате + «Пригласи» | E3 | planned | backend | 003, 010 | 2026-06-10 |

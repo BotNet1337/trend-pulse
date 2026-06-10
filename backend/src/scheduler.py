@@ -13,6 +13,7 @@ from compliance.constants import PURGE_EXPIRED_RAW_CONTENT_TASK
 from config import get_settings
 from observability.constants import EMIT_SIGNAL_LATENCY_TASK
 from pipeline.constants import ENQUEUE_BATCHES_TASK, SCORE_TICK_TASK
+from scorer.constants import ADAPT_THRESHOLDS_TASK
 
 _settings = get_settings()
 
@@ -55,5 +56,13 @@ beat_schedule: dict[str, dict[str, object]] = {
     "emit-signal-latency": {
         "task": EMIT_SIGNAL_LATENCY_TASK,
         "schedule": float(_settings.latency_emit_interval_seconds),
+    },
+    # Adaptive threshold adaptation (TASK-043): for users with ≥K 👎 ratings in
+    # the 7d window, shifts per-user watchlist thresholds up/down by a fixed step.
+    # Rate-guard + group-guard in scorer/tasks.py gate alert CREATION separately.
+    # Default interval 21600s = 6h — slow feedback loop by design.
+    "adapt-thresholds": {
+        "task": ADAPT_THRESHOLDS_TASK,
+        "schedule": float(_settings.threshold_adapt_interval_seconds),
     },
 }

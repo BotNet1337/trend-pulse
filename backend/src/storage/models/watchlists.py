@@ -36,3 +36,10 @@ class Watchlist(UserOwnedBase):
     pack_slug: Mapped[str | None] = mapped_column(
         String(_PACK_SLUG_MAX), nullable=True, default=None
     )
+    # Adaptive threshold floor (TASK-043): the user-intent anchor for the adapt loop.
+    # NULL = not yet snapshotted (first adapt tick will snapshot current threshold).
+    # Non-NULL = the threshold value the user last set manually; adaptation never goes
+    # below this value and never above floor + threshold_adapt_range (ceiling).
+    # Updated by the PATCH threshold path in api/watchlist/service.py so manual
+    # user changes re-anchor the floor to the new intent value.
+    threshold_floor: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)

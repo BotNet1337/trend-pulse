@@ -122,6 +122,10 @@ def update(
         row.channel_id = channel.id
     if "alert_config" in fields and data.alert_config is not None:
         row.threshold = float(data.alert_config.score_threshold)
+        # AC6 (TASK-043): manual threshold update re-snapshots the floor so the
+        # adapt loop uses the user's new intent value as the base.  The previous
+        # floor (whether NULL or an old snapshot) is discarded — last-write-wins.
+        row.threshold_floor = row.threshold
         row.min_channels = data.alert_config.min_channels
         row.lang = data.alert_config.notification_lang
 
