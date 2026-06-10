@@ -75,3 +75,58 @@ variable "resend_spf_subdomain" {
   type        = string
   default     = "send"
 }
+
+# --- Sentry SaaS (observability — TASK-024) ---
+
+variable "sentry_enabled" {
+  description = "Create the Sentry project + DSN (flip to true once you have an org auth token)"
+  type        = bool
+  default     = false
+}
+
+variable "sentry_auth_token" {
+  description = <<-EOT
+    Sentry organization auth token (the only manual Sentry secret).
+    Create at: Sentry → Settings → Auth Tokens → Create New Token
+    Scopes: project:read, project:write, project:admin, team:read, team:write, org:read
+  EOT
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "sentry_organization" {
+  description = "Sentry organization slug (Settings → General → Organization Slug)"
+  type        = string
+  default     = ""
+}
+
+variable "sentry_team_name" {
+  description = "Display name of the Sentry team that owns the project"
+  type        = string
+  default     = "TrendPulse"
+}
+
+variable "sentry_team_slug" {
+  description = "Slug of the Sentry team that owns the project"
+  type        = string
+  default     = "trendpulse"
+}
+
+variable "sentry_project_name" {
+  description = "Display name of the Sentry project"
+  type        = string
+  default     = "trendpulse-prod"
+}
+
+variable "sentry_project_slug" {
+  description = "Slug of the Sentry project"
+  type        = string
+  default     = "trendpulse-prod"
+}
+
+variable "sentry_platform" {
+  description = "Sentry platform identifier for the app (e.g. python, node)"
+  type        = string
+  default     = "python"
+}
