@@ -159,18 +159,20 @@ test('invalid_webhook_rejected — SSRF bait URL shows error', async ({ page }) 
   await page.goto('/account/settings');
   await expect(page).not.toHaveURL(/\/auth\/sign-in/);
 
-  // The webhook URL field (may only be visible on Pro plan — expect it to exist on Free too for UX)
-  const webhookInput = page.getByLabel(/webhook/i).or(page.getByPlaceholder(/webhook/i)).first();
+  // Webhook input exists only on Pro+ (Free shows the upsell placeholder).
+  // The locator must NOT be getByLabel(/webhook/i): the upsell div carries
+  // aria-label="Webhook delivery requires Pro plan" and matches it too, so the
+  // branch below would try to fill() a <div>. Target the input by id, and wait
+  // for the form to render (either the input or the upsell) before branching —
+  // a bare isVisible() races SSR hydration and is non-deterministic.
+  const webhookInput = page.locator('#delivery-webhook-url');
+  const upsell = page.getByTestId('webhook-pro-upsell');
+  await expect(webhookInput.or(upsell)).toBeVisible({ timeout: 8000 });
 
   if (!(await webhookInput.isVisible())) {
-    // On Free plan, webhook may show an upsell instead — check for it.
-    // The upsell text is "Upgrade to Pro to use webhooks" (data-testid="webhook-pro-upsell").
-    await expect(
-      page.getByTestId('webhook-pro-upsell').or(
-        page.getByText(/upgrade to pro to use webhooks/i)
-      )
-    ).toBeVisible({ timeout: 5000 });
-    return; // AC4 satisfied by showing upsell for Free plan
+    // Free plan: upsell shown instead of the input — AC4 satisfied.
+    await expect(upsell).toBeVisible();
+    return;
   }
 
   // Try to save a private IP webhook URL
