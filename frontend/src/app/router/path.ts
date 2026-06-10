@@ -3,6 +3,7 @@ export const paths = {
   onboarding: '/onboarding',
   account: {
     settings: '/account/settings',
+    invite: '/account/invite',
   },
   auth: {
     signIn: '/auth/sign-in',

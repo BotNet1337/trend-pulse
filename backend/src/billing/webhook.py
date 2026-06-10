@@ -89,6 +89,21 @@ def process_ipn(
         # processed_at marks the TERMINAL activation — set only here so a later
         # activating IPN replay is a no-op while intermediate statuses are not.
         payment.processed_at = utcnow()
+        # Referral reward: create if this is the referred user's first payment.
+        # INVARIANT: wrapped in try/except — referral errors NEVER fail the IPN handler.
+        try:
+            from referral.service import create_referral_reward_if_first_payment
+
+            create_referral_reward_if_first_payment(
+                session,
+                user_id=payment.user_id,
+                payment_id=payment.id,
+            )
+        except Exception:
+            logger.exception(
+                "billing.ipn referral reward hook failed for user_id=%s (non-fatal)",
+                payment.user_id,
+            )
     else:
         # partially_paid / expired / waiting / confirming → ack, no activation,
         # no processed_at (a subsequent finished IPN must still activate).

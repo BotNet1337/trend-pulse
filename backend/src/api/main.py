@@ -31,6 +31,7 @@ from api.deps import get_tenant_user_id
 from api.feedback.router import router as feedback_router
 from api.packs.router import router as packs_router
 from api.rate_limit import limiter, rate_limit_handler
+from api.referral import router as referral_router
 from api.routes import account_router, ops_router
 from api.trending.router import router as trending_router
 from api.watchlist import router as watchlist_router
@@ -217,3 +218,6 @@ app.include_router(feedback_router)
 # --- Proof-of-speed cases (TASK-045): GET /cases — public, no auth, read-only.
 # Returns operator-confirmed cases sorted by lead-time DESC. ---
 app.include_router(cases_router)
+
+# --- Referral program (TASK-046): GET /referral/me — auth-gated, lazy code gen. ---
+app.include_router(referral_router)

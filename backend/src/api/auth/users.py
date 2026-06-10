@@ -18,6 +18,7 @@ Security invariants (TASK-026 / CONVENTIONS):
 """
 
 import asyncio
+import json
 import logging
 from collections.abc import AsyncGenerator
 from urllib.parse import quote
@@ -25,6 +26,7 @@ from urllib.parse import quote
 from fastapi import Depends, Request
 from fastapi_users import BaseUserManager, IntegerIDMixin
 from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_settings
@@ -85,11 +87,24 @@ class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
         self.verification_token_secret = secret
 
     async def on_after_register(self, user: User, request: Request | None = None) -> None:
-        """Audit hook — log the new user id (never email/password), then trigger
-        email verification automatically so the user receives the verify email
-        immediately after registration without a separate action.
+        """Audit hook — log the new user id (never email/password), bind referral
+        (if ref_code was sent in the registration payload), then trigger email
+        verification automatically.
+
+        INVARIANT: referral binding errors are caught + logged — they NEVER fail
+        the registration response (blast radius isolation, TASK-046).
         """
         logger.info("user registered: id=%s", user.id)
+        # Referral binding (TASK-046): extract ref_code from the request body,
+        # resolve the referrer, and write referred_by on the new user.
+        # All errors degrade silently (try/except + log).
+        try:
+            await self._bind_referral(user, request)
+        except Exception:
+            logger.exception(
+                "referral.on_after_register binding failed for user id=%s (non-fatal)",
+                user.id,
+            )
         # Trigger email verification automatically (TASK-026 AC1).
         # on_after_request_verify will be called by the library with the token.
         try:
@@ -98,6 +113,66 @@ class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
             # request_verify may raise if the user is already verified or if the
             # library has a guard. Treat as best-effort — do not block register.
             logger.warning("auto request_verify failed for user id=%s (already verified?)", user.id)
+
+    async def _bind_referral(self, user: User, request: Request | None) -> None:
+        """Attempt to bind referred_by from the registration payload's referrer_code.
+
+        Reads the JSON body from the registration request (raw parse) since
+        fastapi-users does not pass UserCreate to on_after_register.  We extract
+        'referrer_code' from the raw body to stay compatible with fastapi-users
+        without monkey-patching the create() flow.
+
+        IMPORTANT: this uses a *separate* synchronous session (via get_session())
+        — it does NOT share the async fastapi-users session.  The write is
+        best-effort: any failure is caught and logged without blocking registration.
+        """
+        if request is None:
+            return
+
+        # Parse referrer_code from the request body JSON.
+        # NOTE: the payload field is 'referrer_code' (renamed from 'ref_code' in
+        # TASK-046 G2 fix) to avoid colliding with the User.ref_code ORM column.
+        try:
+            body_bytes = await request.body()
+            if not body_bytes:
+                return
+            body = json.loads(body_bytes)
+            ref_code = body.get("referrer_code")
+        except Exception:
+            return  # Malformed body — silently skip
+
+        if not ref_code or not isinstance(ref_code, str):
+            return
+
+        # Use a separate synchronous session for the referral lookup + update.
+        # The async user_db session is for fastapi-users' own flow; opening a
+        # fresh sync session here is intentional and best-effort by design.
+        from referral.service import resolve_referrer_id
+        from storage.database import get_session
+
+        with get_session() as sync_session:
+            referrer_id = resolve_referrer_id(
+                sync_session, ref_code=ref_code, exclude_user_id=user.id
+            )
+            if referrer_id is None:
+                return
+
+            # Write referred_by on the new user row — write-once (never overwrite).
+            db_user = (
+                sync_session.scalars(select(User).where(User.id == user.id)).unique().one_or_none()
+            )
+            if db_user is None:
+                return
+            if db_user.referred_by is None:
+                db_user.referred_by = referrer_id
+                sync_session.commit()
+                from observability.logging import log_event
+
+                log_event(
+                    "referral.referred_by_set",
+                    user_id=user.id,
+                    referrer_id=referrer_id,
+                )
 
     async def on_after_request_verify(
         self,

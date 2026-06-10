@@ -1,12 +1,20 @@
 /**
- * Sign-up page — TASK-014 (C2) implementation.
+ * Sign-up page — TASK-014 (C2) + TASK-046 (referral ref propagation).
  *
- * Endpoint: POST /auth/register JSON { email, password }
+ * Endpoint: POST /auth/register JSON { email, password, referrer_code? }
  * On success: redirect to /auth/sign-in so user can log in (register does NOT
  * auto-login — fastapi-users returns UserRead, not a cookie).
  * On duplicate email: backend returns 400; shown as friendly error (no enumeration).
+ *
+ * Referral flow (TASK-046):
+ *  1. On mount: read ?ref= from URL → persist to localStorage('referrer_code').
+ *  2. On submit: include stored referrer_code in the register payload if present.
+ *  3. On success: clear localStorage('referrer_code').
+ *
+ * NOTE: payload field renamed from 'ref_code' to 'referrer_code' (TASK-046 G2 fix)
+ * to avoid colliding with the backend User.ref_code ORM column.
  */
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useMutation } from '@tanstack/react-query'
 
@@ -17,14 +25,33 @@ import { Label } from '@/shared/components/label'
 import { BRAND_NAME } from '@/shared/config'
 import { register } from '@/features/auth'
 
+/**
+ * localStorage key for storing an incoming referral code across page loads.
+ * Key name matches the payload field 'referrer_code' (TASK-046 G2 fix).
+ */
+const REF_CODE_STORAGE_KEY = 'referrer_code'
+
 export const SignUpPage: React.FC = () => {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
 
+  // On mount: capture ?ref= from URL into localStorage for persistence across
+  // OAuth redirects or page reloads. The URL param takes precedence if present.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const refFromUrl = params.get('ref')
+    if (refFromUrl) {
+      localStorage.setItem(REF_CODE_STORAGE_KEY, refFromUrl)
+    }
+  }, [])
+
   const registerMutation = useMutation({
-    mutationFn: () => register({ email, password }),
+    mutationFn: () => {
+      const storedRef = localStorage.getItem(REF_CODE_STORAGE_KEY) ?? undefined
+      return register({ email, password, referrer_code: storedRef })
+    },
   })
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -32,6 +59,8 @@ export const SignUpPage: React.FC = () => {
     setError(null)
     try {
       await registerMutation.mutateAsync()
+      // Clear the stored referral code after successful registration (single-use).
+      localStorage.removeItem(REF_CODE_STORAGE_KEY)
       await navigate({ to: paths.auth.signIn, replace: true })
     } catch {
       // Static message — never reveal whether the email already exists (AC5 / no-enumeration).
