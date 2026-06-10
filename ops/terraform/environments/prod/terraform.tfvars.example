@@ -1,6 +1,6 @@
 # Hetzner Cloud (project TrendPulse → Security → API Tokens → Generate, Read & Write)
 hetzner_api_token = "YOUR_HETZNER_API_TOKEN"
-server_type       = "cx32"   # 4 vCPU, 8GB RAM, 80GB SSD — closeout requires ≥4GB/≥40GB
+server_type       = "cx23"   # 2 vCPU, 4GB RAM, 40GB SSD — closeout minimum ≥4GB/≥40GB; bump to cx33 if tight
 location          = "nbg1"   # Nuremberg; keep close to the Object Storage region
 
 # SSH

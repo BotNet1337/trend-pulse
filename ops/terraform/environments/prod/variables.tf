@@ -9,9 +9,9 @@ variable "hetzner_api_token" {
 }
 
 variable "server_type" {
-  description = "Hetzner server type (cx32 = 4 vCPU / 8GB / 80GB; cx22 = 2 vCPU / 4GB / 40GB)"
+  description = "Hetzner server type (cx23 = 2 vCPU / 4GB / 40GB; cx33 = 4 vCPU / 8GB / 80GB). Check availability: api.hetzner.cloud/v1/server_types — Hetzner retires generations (cx22/cx32 → cx23/cx33)."
   type        = string
-  default     = "cx32"
+  default     = "cx23"
 }
 
 variable "location" {
