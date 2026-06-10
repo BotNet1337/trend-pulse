@@ -4,7 +4,14 @@
 # Docker targets wrap compose with --env-file version.env (image/build-arg pins)
 # + the top per-service compose file. Dev/CI targets wrap `uv run` in backend/.
 
-COMPOSE         := docker compose --env-file development/version.env -f development/docker-compose.yml
+# deploy.env + sensitive.env are needed for INTERPOLATION (e.g. the required
+# ${FRONTEND_COOKIE_SECRET:?} in frontend.yml) — compose does not read service
+# `env_file:` entries at parse time. They exist after `make ansible-unpack`.
+COMPOSE         := docker compose \
+  --env-file development/version.env \
+  --env-file development/env/deploy.env \
+  --env-file development/env/sensitive.env \
+  -f development/docker-compose.yml
 # Backup targets invoke pg-backup.yml directly — standalone, no root include.
 # This avoids the FRONTEND_COOKIE_SECRET interpolation failure when the full
 # env is not loaded.  The env files exist after `make ansible-unpack`.

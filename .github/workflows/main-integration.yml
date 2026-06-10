@@ -135,13 +135,14 @@ jobs:
           TELEGRAM_API_ID=0
           TELEGRAM_API_HASH=
           TELEGRAM_POOL_SESSIONS=
+          FRONTEND_COOKIE_SECRET=ci-e2e-cookie-secret-0123456789
           SENSITIVE
 
       - name: Build app images
         run: make build
 
       - name: Tear down any stale stack and volumes
-        run: make down && docker compose --env-file development/version.env -f development/docker-compose.yml down -v
+        run: make down && docker compose --env-file development/version.env --env-file development/env/deploy.env --env-file development/env/sensitive.env -f development/docker-compose.yml down -v
         continue-on-error: true
 
       - name: Start full stack
