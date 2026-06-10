@@ -14,4 +14,5 @@ services:
 
 networks:
   redis_net:
-    external: false
+    driver: bridge
+    internal: true

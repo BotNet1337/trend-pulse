@@ -24,4 +24,5 @@ volumes:
 
 networks:
   postgres_net:
-    external: false
+    driver: bridge
+    internal: true

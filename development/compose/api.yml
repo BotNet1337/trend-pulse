@@ -46,8 +46,11 @@ services:
 
 networks:
   internal:
-    external: false
+    driver: bridge
+    internal: true
   postgres_net:
-    external: false
+    driver: bridge
+    internal: true
   redis_net:
-    external: false
+    driver: bridge
+    internal: true

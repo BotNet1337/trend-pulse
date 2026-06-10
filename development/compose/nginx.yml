@@ -24,6 +24,7 @@ services:
 
 networks:
   edge:
-    external: false
+    driver: bridge
   internal:
-    external: false
+    driver: bridge
+    internal: true
