@@ -1,7 +1,7 @@
 ---
 id: TASK-041
 title: Historical engagement baseline — channel_avg по скользящему окну канала, не по батчу
-status: planned             # planned → in-progress → review → done
+status: review              # planned → in-progress → review → done
 owner: backend
 created: 2026-06-10
 updated: 2026-06-10
@@ -106,16 +106,16 @@ content; проверить на locate, что `posts`-строки живут 
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 1
-baseline_commit: ""
+current_step: 6
+baseline_commit: "0600f58062fa0078825f3acb10ae19f923000a42"
 branch: "gsd/phase-e2-historical-engagement-baseline"
-lock: ""
-- [ ] 1 locate (scope + patterns + blast radius)
-- [ ] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + real behavior)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (conditional — здесь n/a, подтвердить на review)
+lock: "loop-2026-06-10-wave-e"
+- [x] 1 locate (scope + patterns + blast radius)
+- [x] 2 plan (G1 — minimal, approved)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + real behavior)
+- [x] 5 review (auto, adversarial)
+- [x] 5.5 security (n/a — подтверждено review: внутренняя математика, ORM bind params, без нового input)
 - [ ] 6 ship (PR)
 - [ ] 7 learnings (auto)
 debug_runs: []
@@ -124,3 +124,47 @@ debug_runs: []
 (planned 2026-06-10 — Epic E2, первая из цепочки 041→042→043. Главный риск — ретенция
 posts-строк короче окна baseline: проверить на locate ПЕРВЫМ. Сдвиг распределения score
 после смены знаменателя — ожидаем; учесть при пороге 70 в G2.)
+
+### locate (2026-06-10, loop run)
+- **Риск ретенции СНЯТ:** `compliance/retention.py:27-39` только NULL-ит `posts.text` (raw
+  content) старше 48h, строки НЕ удаляются — метрики живут дольше окна 7d. Floor не нужен.
+- channel_avg сегодня: `scorer/tasks.py:146` — `views / len(posts)` по батчу кластера.
+- Веса/факторы: `scorer/score.py:27-34` (FORWARD_FACTOR=3, REACTION_FACTOR=2).
+- Метрики posts non-nullable (default=0); `posted_at` есть; индекс
+  `ix_posts_user_channel_posted (user_id, channel_id, posted_at)` УЖЕ существует →
+  миграция 0013 скорее всего не нужна (решение по explain). Последняя миграция: 0012.
+- Сессии в scorer — sync `get_session()` context-manager; `log_event(event, **fields)`.
+- Тесты к правке: `tests/integration/test_scorer_alerts.py`, новый
+  `tests/unit/scorer/test_engagement_baseline.py`, возможно `tests/unit/test_score.py`.
+
+### do (2026-06-10, loop run)
+- TDD: RED (4 AC-теста падали ожидаемо) → GREEN. Тест-файл размещён в
+  `tests/integration/test_engagement_baseline.py` (нужен живой DB-посев posted_at).
+- **Решение:** посты текущего кластера исключаются из исторического baseline
+  (exclude_cluster_id) — иначе спайковый пост разбавляет собственный фон (нашли на RED).
+- **Решение:** AC3-fallback оставлен на legacy `sum(views)/len(posts)` батча — поведение
+  «как сейчас» буквально.
+- Индекс `ix_posts_user_channel_posted` покрывает baseline-запрос → миграция 0013 НЕ нужна.
+- Итог: 433 unit + 127 integration pass; ruff format/check + mypy strict clean.
+- Файлы: config.py (+2 settings), scorer/score.py (engagement_numerator), scorer/tasks.py.
+
+### verify G2 (2026-06-10, loop run)
+- ci-fast зелёный (433 unit, ruff/mypy clean). Поведенчески на живом Postgres: ровный канал
+  engagement=1.0 → 0 алертов; спайковый 10x → engagement=10.0, 1 алерт (score 20.39 > thr 5);
+  холодный канал → fallback + лог `baseline_fallback`. EXPLAIN на 6k строк: Bitmap Index Scan
+  по `ix_posts_user_channel_posted` — миграция не нужна.
+- **Гочча хоста:** полный `make up` блокирован исчерпанием docker bridge-подсетей
+  (development_egress не создаётся) — проверка через one-off контейнер на postgres_net.
+  Лечится `docker network prune` (отложено — нужно убедиться, что чужие стеки не пострадают).
+- Попутно: dev-БД была на 0010, `make migrate` докатил 0011/0012 (stale dev state).
+
+### review (2026-06-10, loop run)
+- Вердикт: pass, блокирующих нет. Применены правки: импорт FORWARD/REACTION_FACTOR поднят на
+  module-level + комментарий «weighted_expr зеркалит engagement_numerator»; тестовые
+  _WINDOW_SECONDS/_MIN_POSTS читаются из Settings; пустая `tests/unit/scorer/` удалена.
+- **Зафиксировано (не код):** асимметрия multi-channel кластера — числитель суммируется по
+  всем постам кластера, baseline по primary-каналу; при мульти-канальном кластере engagement
+  может завышаться. Скейл E0 — приемлемо; в learnings, follow-up при необходимости.
+- Локальный запуск интеграционных тестов с хоста: dev-postgres в internal-сети → пробросен
+  через socat-контейнер `tp-pg-fwd` (bridge+postgres_net, host:15432); полный набор:
+  124 passed, 10 skipped.

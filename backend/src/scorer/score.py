@@ -72,6 +72,16 @@ def _velocity(*, delta_channel_count: int, delta_hours: float) -> float:
     return math.log1p(delta_channel_count) / hours
 
 
+def engagement_numerator(*, views: int, forwards: int, reactions: int) -> float:
+    """Weighted engagement numerator: views + forwards·F + reactions·R.
+
+    Extracted as a reusable pure function so the historical baseline query
+    (scorer/tasks.py) and the engagement formula use the exact same weighted
+    sum — numerator and denominator must be the same nature (Discussion TASK-041).
+    """
+    return float(views + forwards * FORWARD_FACTOR + reactions * REACTION_FACTOR)
+
+
 def _engagement(*, views: int, forwards: int, reactions: int, channel_avg: float) -> float:
     """Weighted engagement normalized by the channel's historical average.
 
@@ -80,7 +90,7 @@ def _engagement(*, views: int, forwards: int, reactions: int, channel_avg: float
     """
     if channel_avg <= 0:
         return 0.0
-    weighted = views + forwards * FORWARD_FACTOR + reactions * REACTION_FACTOR
+    weighted = engagement_numerator(views=views, forwards=forwards, reactions=reactions)
     return weighted / channel_avg
 
 
