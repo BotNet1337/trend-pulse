@@ -4,9 +4,9 @@ variable "name" {
 }
 
 variable "server_type" {
-  description = "Hetzner server type (e.g., cx22, cx32)"
+  description = "Hetzner server type (e.g., cx23, cx33)"
   type        = string
-  default     = "cx22"  # cx22=2vCPU/4GB, cx32=4vCPU/8GB — check: hcloud server-type list
+  default     = "cx23"  # cx23=2vCPU/4GB, cx33=4vCPU/8GB — check: hcloud server-type list
 }
 
 variable "location" {
