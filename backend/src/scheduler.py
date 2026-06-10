@@ -14,6 +14,7 @@ from config import get_settings
 from observability.constants import EMIT_SIGNAL_LATENCY_TASK
 from pipeline.constants import ENQUEUE_BATCHES_TASK, SCORE_TICK_TASK
 from scorer.constants import ADAPT_THRESHOLDS_TASK
+from showcase.constants import SHOWCASE_AUTOPOST_TASK
 
 _settings = get_settings()
 
@@ -64,5 +65,13 @@ beat_schedule: dict[str, dict[str, object]] = {
     "adapt-thresholds": {
         "task": ADAPT_THRESHOLDS_TASK,
         "schedule": float(_settings.threshold_adapt_interval_seconds),
+    },
+    # Showcase autopost (TASK-044): post best showcase-tenant cluster to the
+    # public TG channel with delay + CTA + anti-spam. Default every 900s (15 min).
+    # Empty showcase_bot_token / showcase_channel_chat_id → task is a no-op
+    # (graceful degradation — deploy without the showcase channel is valid).
+    "showcase-autopost": {
+        "task": SHOWCASE_AUTOPOST_TASK,
+        "schedule": float(_settings.showcase_post_interval_seconds),
     },
 }

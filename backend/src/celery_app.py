@@ -36,6 +36,7 @@ celery_app = Celery(
         "billing.tasks",
         "observability.tasks",
         "scorer.adaptation",
+        "showcase.tasks",
     ],
 )
 celery_app.conf.task_serializer = "json"

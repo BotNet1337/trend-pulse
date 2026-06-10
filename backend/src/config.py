@@ -191,6 +191,21 @@ _DEFAULT_ALERT_GROUP_WINDOW_SECONDS: int = 1800  # 30 minutes
 _DEFAULT_LATENCY_EMIT_INTERVAL_SECONDS: int = 300
 _DEFAULT_LATENCY_WINDOW_SECONDS: int = 3600
 
+# Showcase autoposting (TASK-044). Named, non-secret defaults; time in SECONDS.
+# `showcase_bot_token` / `showcase_channel_chat_id` are secrets (sensitive.env /
+# vault); empty default → autoposting OFF (graceful degradation — deploy without
+# a showcase channel is valid). NEVER logged or hardcoded.
+# `showcase_post_interval_seconds`: how often the beat task fires (default 15 min).
+# `showcase_post_delay_seconds`: minimum cluster age before posting (default 40 min =
+#   2400s). INVARIANT: must be > free_alert_delay_seconds (value-ladder: channel is
+#   slower than Free plan; validator enforces this at Settings construction).
+# `showcase_post_min_score`: viral_score threshold for candidates (default 85.0).
+# `showcase_posts_per_day_max`: anti-spam daily cap (default 8 posts/day UTC).
+_DEFAULT_SHOWCASE_POST_INTERVAL_SECONDS: int = 900  # 15 minutes
+_DEFAULT_SHOWCASE_POST_DELAY_SECONDS: int = 2400  # 40 minutes
+_DEFAULT_SHOWCASE_POST_MIN_SCORE: float = 85.0
+_DEFAULT_SHOWCASE_POSTS_PER_DAY_MAX: int = 8
+
 # TG account pool health + ops self-alert (TASK-035). Named, non-secret defaults.
 # `pool_min_healthy` is the operational target: fewer healthy accounts = degraded
 # (warn metric + self-alert). POOL_MIN=1 remains the hard floor in collector/constants
@@ -408,6 +423,23 @@ class Settings(BaseSettings):
     # Non-secret: throttle window (seconds) per alert reason (default 1 hour).
     ops_alert_throttle_seconds: int = _DEFAULT_OPS_ALERT_THROTTLE_SECONDS
 
+    # --- Showcase autoposting (TASK-044). ---
+    # Secrets — showcase bot token + channel chat id; empty default → autoposting
+    # OFF (graceful degradation). Supplied via sensitive.env / vault; NEVER logged.
+    # In MVP: may reuse the same bot as ops (same token, different chat), but the
+    # config keys are intentionally separate (zones of responsibility).
+    showcase_bot_token: str = ""  # secret
+    showcase_channel_chat_id: str = ""
+    # Non-secret: beat interval (seconds) for the showcase-autopost task.
+    showcase_post_interval_seconds: int = _DEFAULT_SHOWCASE_POST_INTERVAL_SECONDS
+    # Non-secret: minimum cluster age (seconds) before autoposting. INVARIANT:
+    # must be > free_alert_delay_seconds (enforced by validator below).
+    showcase_post_delay_seconds: int = _DEFAULT_SHOWCASE_POST_DELAY_SECONDS
+    # Non-secret: viral_score threshold for candidates.
+    showcase_post_min_score: float = _DEFAULT_SHOWCASE_POST_MIN_SCORE
+    # Non-secret: anti-spam daily cap (UTC day).
+    showcase_posts_per_day_max: int = _DEFAULT_SHOWCASE_POSTS_PER_DAY_MAX
+
     # --- Observability — Sentry (TASK-024). DSN is a secret (sensitive.env); empty
     # default → Sentry off. Non-secret settings have named-constant defaults above.---
     # Secret — supplied via sensitive.env / vault; NEVER logged or hardcoded.
@@ -418,6 +450,39 @@ class Settings(BaseSettings):
     environment: str = _DEFAULT_ENVIRONMENT
     # Non-secret: release tag (git sha / image tag injected at build time).
     release: str = _DEFAULT_RELEASE
+
+    @field_validator("showcase_post_delay_seconds")
+    @classmethod
+    def validate_showcase_delay_invariant(cls, v: int, info: ValidationInfo) -> int:
+        """Enforce: showcase_post_delay_seconds > free_alert_delay_seconds.
+
+        The public showcase channel must be SLOWER than the Free-plan alert delay —
+        otherwise the channel gives away signals faster than the paid tier, breaking
+        the value ladder (Discussion TASK-044 / Invariants).
+
+        Uses ValidationInfo.data (pydantic-settings v2): `free_alert_delay_seconds`
+        must be declared BEFORE `showcase_post_delay_seconds` in the class body for
+        `info.data` to contain its value at validation time.
+        """
+        free_delay = info.data.get("free_alert_delay_seconds")
+        if not isinstance(free_delay, int):
+            # free_alert_delay_seconds must appear before this field in the class body.
+            # If it is missing from info.data it means field ordering is wrong or the
+            # value failed its own validation — hard error so the misconfiguration is
+            # visible immediately rather than silently skipping the invariant check.
+            raise ValueError(
+                "Cannot validate showcase_post_delay_seconds: "
+                "free_alert_delay_seconds is absent from validation context. "
+                "Ensure free_alert_delay_seconds is declared before "
+                "showcase_post_delay_seconds in the Settings class body."
+            )
+        if v <= free_delay:
+            raise ValueError(
+                f"showcase_post_delay_seconds ({v}s) must be strictly greater than "
+                f"free_alert_delay_seconds ({free_delay}s). "
+                "The showcase channel must be slower than the Free plan (value ladder)."
+            )
+        return v
 
     @field_validator("threshold_adapt_step", "threshold_adapt_range")
     @classmethod

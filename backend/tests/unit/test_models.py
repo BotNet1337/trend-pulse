@@ -51,6 +51,7 @@ def test_all_models_share_base_metadata() -> None:
         "billing_payments",
         "api_keys",  # TASK-028: Team-plan API keys
         "alert_feedback",  # TASK-042: 👍/👎 verdict per alert
+        "showcase_posts",  # TASK-044: showcase autopost dedup table
     }
 
 
