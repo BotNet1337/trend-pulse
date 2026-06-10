@@ -122,6 +122,12 @@ _DEFAULT_TRENDING_TOP_K_DEFAULT = 10
 _DEFAULT_TRENDING_TOP_K_MAX = 20
 _DEFAULT_TRENDING_WINDOW_SECONDS: int = 86_400  # 24 hours
 
+# Free-plan alert delay (TASK-040). Named, non-secret default; time in SECONDS.
+# Alerts created for Free-plan users are held back for this many seconds before
+# delivery (deliver_after = now + delay). Pro/Team → no delay (deliver_after NULL).
+# Default 1800 = 30 min. Override via env FREE_ALERT_DELAY_SECONDS (e.g. 60 for dev).
+_DEFAULT_FREE_ALERT_DELAY_SECONDS: int = 1800
+
 # Signal latency metric (TASK-036). Named, non-secret defaults; time in SECONDS.
 # `latency_emit_interval_seconds`: how often the Beat task fires (default 5 min).
 # `latency_window_seconds`: sliding window of delivered alerts to measure (default 1h).
@@ -262,6 +268,10 @@ class Settings(BaseSettings):
     trending_top_k_max: int = _DEFAULT_TRENDING_TOP_K_MAX
     # Look-back window for showcase cluster scores (seconds). Default 24h.
     trending_window_seconds: int = _DEFAULT_TRENDING_WINDOW_SECONDS
+
+    # --- Free-plan alert delay (TASK-040). Non-secret, settable; default above.
+    # Seconds to delay alert delivery for Free-plan users. Override in dev with 60. ---
+    free_alert_delay_seconds: int = _DEFAULT_FREE_ALERT_DELAY_SECONDS
 
     # --- Signal latency metric (TASK-036). Non-secret, settable; defaults above.
     # Beat interval (seconds) for the emit_signal_latency_task.

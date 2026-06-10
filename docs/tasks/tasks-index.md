@@ -46,5 +46,5 @@ Roadmap: [`../architecture/roadmap.md`](../architecture/roadmap.md). Epic A = Ba
 | [TASK-037](./task-037-embedding-cache.md) | Кэш эмбеддингов по SHA-256 хэшу текста (Redis, TTL 48h) | E0 | done | backend | 007 | 2026-06-10 |
 | [TASK-038](./task-038-curated-channel-packs.md) | Curated channel packs — каталог, GET /packs, подписка в 1 клик вне лимита CHANNELS | E1 | done | backend | 004, 010 | 2026-06-10 |
 | [TASK-039](./task-039-onboarding-instant-value.md) | Onboarding instant value — showcase-тенант + GET /trending + экран после регистрации | E1 | done | backend | 038 | 2026-06-10 |
-| [TASK-040](./task-040-free-plan-alert-delay.md) | Free-план: задержка алертов 15–30 мин (deliver_after + resweep-уважение) | E1 | planned | backend | 008, 010, 023 | 2026-06-09 |
+| [TASK-040](./task-040-free-plan-alert-delay.md) | Free-план: задержка алертов 15–30 мин (deliver_after + resweep-уважение) | E1 | done | backend | 008, 010, 023 | 2026-06-10 |
 | [TASK-056](./task-056-hetzner-object-storage-infra.md) | Hetzner Object Storage infra — terraform-порт с DO (minio-провайдер, бакет, lifecycle) + S3-env в Ansible | E0 | done | infra | 012 | 2026-06-09 |

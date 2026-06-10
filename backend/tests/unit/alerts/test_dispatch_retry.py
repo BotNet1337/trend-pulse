@@ -33,6 +33,7 @@ class _FakeTask:
 
 class _DummyAlert:
     id = 10
+    deliver_after = None  # TASK-040: NULL → no delay guard, proceeds to delivery
 
 
 class _FakeSessionCtx:

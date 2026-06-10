@@ -30,12 +30,15 @@ import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from billing.limits import effective_plan
+from billing.plans import Plan
 from config import get_settings
 from scorer.score import ScoreInputs, compute_components
 from storage.database import get_session
@@ -44,7 +47,11 @@ from storage.models.base import utcnow
 from storage.models.clusters import Cluster
 from storage.models.posts import Post
 from storage.models.scores import Score
+from storage.models.users import User
 from storage.models.watchlists import Watchlist
+
+if TYPE_CHECKING:
+    from config import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -195,6 +202,7 @@ def _create_alert_idempotent(
     cluster: Cluster,
     score: float,
     channels_count: int,
+    deliver_after: datetime | None = None,
 ) -> int | None:
     """Insert an `Alert` for `(user_id, cluster_id)`; skip if it already exists.
 
@@ -205,6 +213,9 @@ def _create_alert_idempotent(
     (not the surrounding transaction's earlier work) and is treated as a no-op
     (AC6 — idempotent, race-safe). Returns the NEW alert id iff one was created,
     else `None` (so the caller can enqueue delivery only for newly-created alerts).
+
+    `deliver_after` (TASK-040): for Free-plan users this is set to
+    `now + free_alert_delay_seconds`; for Pro/Team it is `None` (immediate delivery).
     """
     existing = session.scalar(
         select(Alert.id).where(Alert.user_id == user_id).where(Alert.cluster_id == cluster.id)
@@ -217,6 +228,7 @@ def _create_alert_idempotent(
         score=score,
         channels_count=channels_count,
         first_seen=cluster.first_seen,
+        deliver_after=deliver_after,
     )
     try:
         with session.begin_nested():
@@ -227,16 +239,43 @@ def _create_alert_idempotent(
     return alert.id
 
 
-def _score_user(session: Session, *, user_id: int, window_start: datetime) -> list[int]:
+def _resolve_deliver_after(
+    session: Session, *, user_id: int, settings: "Settings"
+) -> datetime | None:
+    """Compute deliver_after for a user given their effective plan (TASK-040).
+
+    Returns ``now + free_alert_delay_seconds`` for Free users (including those with
+    an expired paid subscription), ``None`` for Pro/Team (immediate delivery).
+    """
+    user = session.get(User, user_id)
+    if user is None:
+        # Defensive: unknown user → no delay (safe default).
+        return None
+    plan = effective_plan(session, user)
+    if plan is Plan.FREE:
+        return utcnow() + timedelta(seconds=settings.free_alert_delay_seconds)
+    return None
+
+
+def _score_user(
+    session: Session, *, user_id: int, window_start: datetime
+) -> list[tuple[int, int | None]]:
     """Score one user's fresh clusters; create alerts on topic-match + threshold.
 
-    Returns the ids of alerts created this tick (empty when none cross/match).
+    Returns a list of ``(alert_id, countdown_seconds)`` pairs for newly-created alerts
+    (empty when none cross/match).  ``countdown_seconds`` is the Free-plan delay
+    in seconds (TASK-040), or ``None`` for Pro/Team (immediate delivery).
     """
+    settings = get_settings()
     topic_configs = _topic_configs(session, user_id=user_id)
     if not topic_configs:
         return []
 
-    created_alert_ids: list[int] = []
+    # Resolve the Free-plan delay once per user tick (same for all clusters).
+    deliver_after = _resolve_deliver_after(session, user_id=user_id, settings=settings)
+    countdown: int | None = settings.free_alert_delay_seconds if deliver_after is not None else None
+
+    created: list[tuple[int, int | None]] = []
     for cluster in _recent_clusters(session, user_id=user_id, window_start=window_start):
         config = topic_configs.get(cluster.topic)
         if config is None:
@@ -259,23 +298,31 @@ def _score_user(session: Session, *, user_id: int, window_start: datetime) -> li
             cluster=cluster,
             score=viral_score,
             channels_count=inputs.unique_channels_count,
+            deliver_after=deliver_after,
         )
         if alert_id is not None:
-            created_alert_ids.append(alert_id)
-    return created_alert_ids
+            created.append((alert_id, countdown))
+    return created
 
 
-def _enqueue_delivery(alert_id: int) -> None:
+def _enqueue_delivery(alert_id: int, *, countdown: int | None = None) -> None:
     """Enqueue alert delivery (task-009). Lazy import avoids a scorer↔alerts cycle.
 
     This is the sanctioned cross-task touch: the scorer hands a NEW alert id to the
     `alerts` domain via its public `dispatch_alert` task (CONVENTIONS: cross-module
     via service interfaces; JSON-serializable id, not an ORM object).
+
+    `countdown` (TASK-040): if provided (Free-plan delay), Celery defers execution
+    by that many seconds — an optimisation on top of the `deliver_after` field which
+    is the authoritative source of truth (resweep + restarts read the field, not eta).
     """
     from alerts.tasks import dispatch_alert
 
     try:
-        dispatch_alert.apply_async(args=(alert_id,))
+        if countdown is not None:
+            dispatch_alert.apply_async(args=(alert_id,), countdown=countdown)
+        else:
+            dispatch_alert.apply_async(args=(alert_id,))
     except Exception:
         # Broker unreachable / enqueue failure must NOT abort scoring (the alert row
         # is already committed). Logged, not swallowed. NOTE: the scorer is
@@ -293,22 +340,23 @@ def score_recent_clusters() -> int:
     Each newly-created alert is enqueued for delivery (task-009) AFTER its session
     commits, so the row is visible when `dispatch_alert` loads it; only newly-created
     alerts are enqueued (the scorer's idempotency is preserved).
+
+    Free-plan alerts (TASK-040) are enqueued with a countdown equal to
+    `free_alert_delay_seconds`; Pro/Team alerts are enqueued immediately (no countdown).
     """
     settings = get_settings()
     window_start = utcnow() - timedelta(seconds=settings.scorer_recent_window_seconds)
-    created_alert_ids: list[int] = []
+    created: list[tuple[int, int | None]] = []
     with get_session() as session:
         user_ids = list_active_user_ids(session)
     for user_id in user_ids:
         with get_session() as session:
-            created_alert_ids.extend(
-                _score_user(session, user_id=user_id, window_start=window_start)
-            )
-    for alert_id in created_alert_ids:
-        _enqueue_delivery(alert_id)
+            created.extend(_score_user(session, user_id=user_id, window_start=window_start))
+    for alert_id, countdown in created:
+        _enqueue_delivery(alert_id, countdown=countdown)
     logger.info(
         "score_recent_clusters alerts_created=%d users=%d",
-        len(created_alert_ids),
+        len(created),
         len(user_ids),
     )
-    return len(created_alert_ids)
+    return len(created)

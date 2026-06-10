@@ -21,10 +21,11 @@ Both tasks are routed to the default `celery` queue (no compose change needed).
 """
 
 import logging
+import math
 from datetime import timedelta
 
 from celery import Task
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from alerts.constants import RESWEEP_PENDING_ALERTS_TASK
 from alerts.errors import PermanentDeliveryError, TransientDeliveryError
@@ -55,6 +56,12 @@ def _dispatch(task: "Task[..., object]", alert_id: int) -> str:
     `task` is the bound Celery task (`self`): it supplies `request.retries` and
     `retry(...)`. Retries transient failures with exponential backoff; permanent
     failures and exhausted retries become a terminal `failed` (AC5/AC7).
+
+    TASK-040 — deliver_after guard (triple-protection layer 2):
+    If ``alert.deliver_after`` is set and lies in the future the task is not yet
+    due for delivery.  Re-schedule with countdown = remaining seconds and return
+    immediately WITHOUT touching ``delivery_attempts`` or ``delivery_status`` so
+    the guard is transparent (idempotency preserved, attempts budget not burned).
     """
     settings = get_settings()
     try:
@@ -63,6 +70,17 @@ def _dispatch(task: "Task[..., object]", alert_id: int) -> str:
             if alert is None:
                 logger.warning("dispatch_alert: alert %d not found", alert_id)
                 return DELIVERY_STATUS_FAILED
+            # Deliver-after guard (TASK-040 layer 2): re-schedule if not yet due.
+            now = utcnow()
+            if alert.deliver_after is not None and alert.deliver_after > now:
+                remaining = math.ceil((alert.deliver_after - now).total_seconds())
+                dispatch_alert.apply_async(args=(alert_id,), countdown=remaining)
+                logger.debug(
+                    "dispatch_alert: alert %d not yet due (deliver_after in %ds), rescheduled",
+                    alert_id,
+                    remaining,
+                )
+                return DELIVERY_STATUS_PENDING
             return deliver(session, alert)
     except TransientDeliveryError as exc:
         # Retry with exponential backoff; on the last attempt, mark failed (AC5).
@@ -111,11 +129,23 @@ def _resweep_pending_alerts() -> int:
     cutoff = utcnow() - timedelta(seconds=settings.pending_resweep_grace_seconds)
 
     with get_session() as session:
+        now = utcnow()
         stale_ids: list[int] = list(
             session.execute(
                 select(Alert.id)
                 .where(Alert.delivery_status == DELIVERY_STATUS_PENDING)
                 .where(Alert.first_seen < cutoff)
+                # TASK-040 layer 3 — honour deliver_after: only sweep alerts whose
+                # delay has elapsed (deliver_after IS NULL → immediate; deliver_after
+                # <= now → delay expired).  Future deliver_after rows are left alone;
+                # the Celery countdown will fire them; if the broker restarts they are
+                # picked up by the NEXT resweep tick after deliver_after passes.
+                .where(
+                    or_(
+                        Alert.deliver_after.is_(None),
+                        Alert.deliver_after <= now,
+                    )
+                )
                 .order_by(Alert.first_seen)
                 .limit(settings.pending_resweep_max_batch)
             )
