@@ -7,6 +7,7 @@ derive patterns from general knowledge.
 ## Map
 
 - **Product:** [`product/overview.md`](./product/overview.md) — what it is, architecture, monetization, roadmap, compliance.
+- **Unit economics:** [`product/unit-economics.md`](./product/unit-economics.md) — затраты, маржа, LTV/CAC, break-even, чувствительность.
 - **Epics (текущая волна E «Path to revenue»):** [`product/epics/`](./product/epics/README.md) — E0–E8, финальная точка, маппинг на TASK-034..055.
 - **Roadmap:** [`architecture/roadmap.md`](./architecture/roadmap.md) — состояние эпиков A–E, критический путь до первого доллара.
 - **Pain points:** [`architecture/pain-points.md`](./architecture/pain-points.md) — P1–P8 (когда заболит / сейчас / навсегда), accepted-risk P5.

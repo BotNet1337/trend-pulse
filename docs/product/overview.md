@@ -230,11 +230,16 @@ cross_channel = unique_channels_count / watched_channels_count
 
 ### Юнит-экономика
 
+Полная модель (затраты, маржа по тарифам, LTV/CAC, break-even, чувствительность):
+[`unit-economics.md`](./unit-economics.md). Кратко:
+
 | Метрика | Значение |
 |---|---|
-| Инфраструктура/мес (MVP) | ~$30–60 (VPS + Redis + Postgres) |
-| Break-even | 3–4 Pro пользователя |
-| Target MRR (6 мес) | $500–2000 |
+| Инфраструктура/мес (MVP) | ~$25–35 (один VPS + Object Storage + пул TG) |
+| Валовая маржа Pro/Trader | ~97% |
+| Break-even | 2 Pro пользователя |
+| LTV/CAC (рефералка $10) | ≥14 |
+| Target MRR (6 мес) | $2000 (~40 Pro + 8 Trader) |
 
 ---
 

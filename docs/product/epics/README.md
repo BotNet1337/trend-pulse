@@ -25,8 +25,8 @@
 | [E2](./epic-e2-signal-quality.md) | Качество сигнала = удержание | СЕЙЧАС | TASK-041…043 | planned (доки готовы) |
 | [E3](./epic-e3-showcase-channel.md) | Витрина-канал в Telegram | СЕЙЧАС | TASK-044…046 | planned (доки готовы) |
 | [E4](./epic-e4-frictionless-money.md) | Деньги без трения | после E1–E3 | TASK-047…048 | defined |
-| [E5](./epic-e5-pricing-packaging.md) | Упаковка и цены | после E3 | TASK-049 (+030) | defined |
-| [E6](./epic-e6-business-metrics.md) | Бизнес-метрики | после E4 | TASK-050…051 (+036) | defined |
+| [E5](./epic-e5-pricing-packaging.md) | Упаковка и цены | после E3 | TASK-049 (+030) | planned (доки готовы) |
+| [E6](./epic-e6-business-metrics.md) | Бизнес-метрики | после E4 | TASK-050…051 (+036) | planned (доки готовы) |
 | [E7](./epic-e7-cost-and-scale.md) | Стоимость и масштаб | после E6 | TASK-052…055 | defined |
 | [E8](./epic-e8-new-sources-markets.md) | Новые источники и рынки | после $2k MRR | TASK-031 + future | defined |
 
