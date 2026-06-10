@@ -12,6 +12,7 @@ from storage.models.base import Base
 from storage.models.channels import Channel, SourceKind
 from storage.models.clusters import EMBEDDING_DIM, Cluster
 from storage.models.posts import Post
+from storage.models.referral_rewards import ReferralReward
 from storage.models.scores import Score
 from storage.models.showcase_cases import ShowcaseCase
 from storage.models.showcase_posts import ShowcasePost
@@ -30,6 +31,7 @@ __all__ = [
     "Cluster",
     "OAuthAccount",
     "Post",
+    "ReferralReward",
     "Score",
     "ShowcaseCase",
     "ShowcasePost",

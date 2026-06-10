@@ -15,6 +15,7 @@ import {
   ConfirmEmailChangePage,
   ConfirmEmailPage,
   ForgotPasswordPage,
+  InvitePage,
   NotFoundPage,
   OnboardingPage,
   ResetPasswordPage,
@@ -84,6 +85,12 @@ const accountSettingsRoute = createRoute({
   getParentRoute: () => protectedContentRoute,
   path: paths.account.settings,
   component: AccountSettingsPage,
+});
+
+const accountInviteRoute = createRoute({
+  getParentRoute: () => protectedContentRoute,
+  path: paths.account.invite,
+  component: InvitePage,
 });
 
 const billingRoute = createRoute({
@@ -175,6 +182,7 @@ const routeTree = rootRoute.addChildren([
     protectedContentRoute.addChildren([
       indexRoute,
       accountSettingsRoute,
+      accountInviteRoute,
       billingRoute,
       alertsListRoute,
       alertDetailRoute,

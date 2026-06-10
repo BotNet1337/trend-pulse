@@ -51,6 +51,15 @@ export const BillingPage: React.FC = () => {
           type="button"
           variant="ghost"
           size="sm"
+          onClick={() => void navigate({ to: '/account/invite' })}
+          aria-label="Invite a friend"
+        >
+          Invite
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
           onClick={() => void navigate({ to: '/account/settings' })}
           aria-label="Account settings"
         >

@@ -35,6 +35,8 @@ _PLAN_MAX = 16
 _TELEGRAM_BOT_TOKEN_MAX = 128
 _TELEGRAM_CHAT_ID_MAX = 64
 _WEBHOOK_URL_MAX = 2048
+# Referral ref_code: short URL-safe token, generous upper bound (TASK-046).
+_REF_CODE_MAX = 32
 
 
 class OAuthAccount(SQLAlchemyBaseOAuthAccountTable[int], Base):
@@ -81,4 +83,20 @@ class User(SQLAlchemyBaseUserTable[int], Base):
     # enforcement is task-010; this column is the membership check.
     plan: Mapped[str] = mapped_column(
         String(_PLAN_MAX), nullable=False, server_default=PLAN_FREE, default=PLAN_FREE
+    )
+    # Referral program (TASK-046). Both fields are nullable and additive.
+    # ref_code: unique share code; NULL until first GET /referral/me (lazy generation).
+    # referred_by: FK to users.id of the referrer; set once at registration, never updated.
+    # ON DELETE SET NULL: if referrer is deleted, referred_by is cleared (GDPR-safe).
+    ref_code: Mapped[str | None] = mapped_column(
+        String(_REF_CODE_MAX),
+        nullable=True,
+        unique=True,
+        default=None,
+    )
+    referred_by: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        default=None,
     )

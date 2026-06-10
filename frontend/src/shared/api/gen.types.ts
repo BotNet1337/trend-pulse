@@ -472,6 +472,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/referral/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Referral Me
+         * @description Return the authenticated user's referral code, share link, and earned rewards.
+         *
+         *     The ref_code is generated lazily on first call and cached on the user row.
+         *     Only rewards where referrer_id == current_user.id are returned.
+         */
+        get: operations["get_referral_me_referral_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/trending": {
         parameters: {
             query?: never;
@@ -981,6 +1004,47 @@ export interface components {
          */
         Plan: "free" | "pro" | "team";
         /**
+         * ReferralMeRead
+         * @description Response schema for GET /referral/me.
+         *
+         *     ref_code: the authenticated user's unique share code (generated lazily).
+         *     referral_link: full registration URL pre-filled with the ref code.
+         *     rewards: list of reward rows earned by this user (pending and paid).
+         */
+        ReferralMeRead: {
+            /** Ref Code */
+            ref_code: string;
+            /** Referral Link */
+            referral_link: string;
+            /** Rewards */
+            rewards: components["schemas"]["ReferralRewardRead"][];
+        };
+        /**
+         * ReferralRewardRead
+         * @description One reward row as returned by GET /referral/me.
+         */
+        ReferralRewardRead: {
+            /** Amount Usdt */
+            amount_usdt: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Paid At */
+            paid_at: string | null;
+            /** Payment Id */
+            payment_id: number | null;
+            /** Referred User Id */
+            referred_user_id: number | null;
+            /** Referrer Id */
+            referrer_id: number;
+            /** Status */
+            status: string;
+        };
+        /**
          * SourceKind
          * @description Platform a channel belongs to. Telegram now; Twitter/X later (ADR-001).
          * @enum {string}
@@ -1060,7 +1124,22 @@ export interface components {
         };
         /**
          * UserCreate
-         * @description Registration payload (email + password, validated by the library).
+         * @description Registration payload (email + password + optional referrer_code).
+         *
+         *     referrer_code: optional referral code supplied by the inviting user.  Passed
+         *     at registration to bind referred_by on the new user.  Invalid/unknown codes
+         *     are silently ignored (registration always succeeds — INVARIANT: referral
+         *     errors must not block register).  Max length validated here.
+         *
+         *     CRITICAL: the field is named 'referrer_code' (NOT 'ref_code') to avoid
+         *     colliding with the User ORM column users.ref_code.  fastapi-users
+         *     create_update_dict() passes the dict straight into User(**kwargs); if the
+         *     field were named 'ref_code' it would overwrite the new user's own ref_code
+         *     with the referrer's code string → UniqueViolation / pollution (TASK-046 G2).
+         *
+         *     create_update_dict() is overridden here to exclude 'referrer_code' from the
+         *     INSERT dict entirely — the referral binding is handled separately by
+         *     UserManager._bind_referral() via the raw request body.
          */
         UserCreate: {
             /**
@@ -1085,6 +1164,8 @@ export interface components {
             is_verified: boolean | null;
             /** Password */
             password: string;
+            /** Referrer Code */
+            referrer_code?: string | null;
         };
         /**
          * UserMeResponse
@@ -1939,6 +2020,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_referral_me_referral_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferralMeRead"];
                 };
             };
         };

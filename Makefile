@@ -39,7 +39,7 @@ TF_DIR      := ops/terraform
         lint fmt typecheck test test-cov test-integration ci ci-fast \
         gen-openapi gen-types openapi-drift-check \
         backup backup-restore-check \
-        showcase-init case-mainstream
+        showcase-init case-mainstream referral-paid
 
 # Default target: list everything.
 help:
@@ -79,6 +79,8 @@ help:
 	@echo "    openapi-drift-check  gen-openapi + gen-types + git diff --exit-code (fail on drift)"
 	@echo "  Showcase cases (TASK-045):"
 	@echo "    case-mainstream  ID=<id> AT=<iso8601>  set mainstream_at on a showcase_cases row"
+	@echo "  Referral program (TASK-046):"
+	@echo "    referral-paid    ID=<reward_id>  mark a referral_rewards row as paid"
 
 # --- Stack ---
 up:
@@ -230,3 +232,11 @@ showcase-init:
 # Requires: stack up (postgres accessible via api container).
 case-mainstream:
 	$(COMPOSE) exec api uv run python scripts/case_mainstream.py --id '$(ID)' --at '$(AT)'
+
+# --- Referral program — operator paid mark (TASK-046) ---
+# Mark a referral_rewards row as paid (status=paid, paid_at=now).
+# Usage: make referral-paid ID=<reward_id>
+# Validates: row exists and is currently 'pending'.
+# Requires: stack up (postgres accessible via api container).
+referral-paid:
+	$(COMPOSE) exec api uv run python scripts/referral_paid.py --id '$(ID)'

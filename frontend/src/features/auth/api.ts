@@ -16,6 +16,12 @@ import { apiClient } from '@/shared/api';
 export interface RegisterPayload {
   email: string;
   password: string;
+  /**
+   * Optional referral code from a share link (?ref=CODE).
+   * Named 'referrer_code' (not 'ref_code') to avoid colliding with the
+   * backend User.ref_code ORM column (TASK-046 G2 fix).
+   */
+  referrer_code?: string;
 }
 
 /** POST /auth/register — creates a new user. */

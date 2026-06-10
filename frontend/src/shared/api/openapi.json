@@ -684,6 +684,107 @@
         "title": "Plan",
         "type": "string"
       },
+      "ReferralMeRead": {
+        "additionalProperties": false,
+        "description": "Response schema for GET /referral/me.\n\nref_code: the authenticated user's unique share code (generated lazily).\nreferral_link: full registration URL pre-filled with the ref code.\nrewards: list of reward rows earned by this user (pending and paid).",
+        "properties": {
+          "ref_code": {
+            "title": "Ref Code",
+            "type": "string"
+          },
+          "referral_link": {
+            "title": "Referral Link",
+            "type": "string"
+          },
+          "rewards": {
+            "items": {
+              "$ref": "#/components/schemas/ReferralRewardRead"
+            },
+            "title": "Rewards",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ref_code",
+          "referral_link",
+          "rewards"
+        ],
+        "title": "ReferralMeRead",
+        "type": "object"
+      },
+      "ReferralRewardRead": {
+        "additionalProperties": false,
+        "description": "One reward row as returned by GET /referral/me.",
+        "properties": {
+          "amount_usdt": {
+            "title": "Amount Usdt",
+            "type": "number"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid At"
+          },
+          "payment_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Id"
+          },
+          "referred_user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Referred User Id"
+          },
+          "referrer_id": {
+            "title": "Referrer Id",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "referrer_id",
+          "referred_user_id",
+          "payment_id",
+          "amount_usdt",
+          "status",
+          "created_at",
+          "paid_at"
+        ],
+        "title": "ReferralRewardRead",
+        "type": "object"
+      },
       "SourceKind": {
         "description": "Platform a channel belongs to. Telegram now; Twitter/X later (ADR-001).",
         "enum": [
@@ -796,7 +897,7 @@
         "type": "object"
       },
       "UserCreate": {
-        "description": "Registration payload (email + password, validated by the library).",
+        "description": "Registration payload (email + password + optional referrer_code).\n\nreferrer_code: optional referral code supplied by the inviting user.  Passed\nat registration to bind referred_by on the new user.  Invalid/unknown codes\nare silently ignored (registration always succeeds — INVARIANT: referral\nerrors must not block register).  Max length validated here.\n\nCRITICAL: the field is named 'referrer_code' (NOT 'ref_code') to avoid\ncolliding with the User ORM column users.ref_code.  fastapi-users\ncreate_update_dict() passes the dict straight into User(**kwargs); if the\nfield were named 'ref_code' it would overwrite the new user's own ref_code\nwith the referrer's code string → UniqueViolation / pollution (TASK-046 G2).\n\ncreate_update_dict() is overridden here to exclude 'referrer_code' from the\nINSERT dict entirely — the referral binding is handled separately by\nUserManager._bind_referral() via the raw request body.",
         "properties": {
           "email": {
             "format": "email",
@@ -842,6 +943,18 @@
           "password": {
             "title": "Password",
             "type": "string"
+          },
+          "referrer_code": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Referrer Code"
           }
         },
         "required": [
@@ -2230,6 +2343,33 @@
         "summary": "Ready",
         "tags": [
           "ops"
+        ]
+      }
+    },
+    "/referral/me": {
+      "get": {
+        "description": "Return the authenticated user's referral code, share link, and earned rewards.\n\nThe ref_code is generated lazily on first call and cached on the user row.\nOnly rewards where referrer_id == current_user.id are returned.",
+        "operationId": "get_referral_me_referral_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferralMeRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Referral Me",
+        "tags": [
+          "referral"
         ]
       }
     },

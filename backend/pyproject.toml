@@ -83,6 +83,7 @@ extend-ignore = ["B008"]
 testpaths = ["tests"]
 markers = [
     "integration: tests that require live infra (postgres/redis) on a running stack",
+    "unit: pure unit tests with no external dependencies",
 ]
 addopts = "--strict-markers -ra"
 asyncio_mode = "auto"
@@ -93,7 +94,7 @@ python_version = "3.12"
 # config checked the single `trendpulse` package; this preserves that scope —
 # src only, tests excluded). `mypy_path = src` + `explicit_package_bases` make
 # src/ the import root so the flat top-level names resolve without a parent pkg.
-packages = ["api", "alerts", "billing", "collector", "compliance", "observability", "pipeline", "scorer", "storage", "config", "celery_app", "scheduler"]
+packages = ["api", "alerts", "billing", "collector", "compliance", "observability", "pipeline", "referral", "scorer", "storage", "config", "celery_app", "scheduler"]
 mypy_path = "src"
 explicit_package_bases = true
 strict = true
@@ -141,6 +142,13 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "sentence_transformers.*"
 ignore_missing_imports = true
+
+# fastapi-users BaseUserCreate.create_update_dict() is not annotated upstream;
+# disable no-untyped-call scoped to the schema subclass that overrides it so we
+# can use cast() in the typed wrapper without an inline type: ignore (CONVENTIONS).
+[[tool.mypy.overrides]]
+module = "api.auth.schemas"
+disallow_untyped_calls = false
 
 [tool.coverage.run]
 source = ["src"]
