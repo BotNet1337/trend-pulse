@@ -26,6 +26,7 @@ from api.auth import (
     fastapi_users,
 )
 from api.auth.me import router as users_me_router
+from api.cases.router import router as cases_router
 from api.deps import get_tenant_user_id
 from api.feedback.router import router as feedback_router
 from api.packs.router import router as packs_router
@@ -212,3 +213,7 @@ app.include_router(ops_router)
 # --- Alert feedback 👍/👎 (TASK-042): GET /feedback/{token} — unauthenticated,
 # HMAC-signed token, rate-limited. Public; accessible via nginx /api/feedback/. ---
 app.include_router(feedback_router)
+
+# --- Proof-of-speed cases (TASK-045): GET /cases — public, no auth, read-only.
+# Returns operator-confirmed cases sorted by lead-time DESC. ---
+app.include_router(cases_router)

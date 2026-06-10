@@ -316,6 +316,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Cases
+         * @description Return top proof-of-speed cases sorted by lead-time DESC.
+         *
+         *     Public endpoint: no authentication required.
+         *
+         *     Only cases where the operator has set ``mainstream_at`` are returned
+         *     — cases without a mainstream timestamp are not yet proof-points.
+         *
+         *     Query params:
+         *         top_n: Max items to return.  Defaults to settings.cases_top_n_max.
+         *                422 if top_n exceeds settings.cases_top_n_max.
+         *
+         *     Response sorted by ``lead_time_seconds`` (= mainstream_at - first_seen) DESC.
+         */
+        get: operations["get_cases_cases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/feedback/{token}": {
         parameters: {
             query?: never;
@@ -778,6 +809,54 @@ export interface components {
         Body_verify_verify_auth_verify_post: {
             /** Token */
             token: string;
+        };
+        /**
+         * CaseItem
+         * @description Aggregate projection of one proof-of-speed case — aggregate fields only.
+         *
+         *     Fields:
+         *         title:              Sanitized display label (sanitize_topic_label applied).
+         *         viral_score:        Composite virality score at fixation time.
+         *         first_seen:         UTC timestamp when the cluster was first detected.
+         *         mainstream_at:      UTC timestamp when the topic appeared in mainstream media
+         *                             (operator-filled). Always NOT NULL in responses (cases
+         *                             without mainstream_at are hidden from this endpoint).
+         *         lead_time_seconds:  Computed: (mainstream_at - first_seen) in whole seconds.
+         *                             Positive means we detected the trend before mainstream media.
+         *         channels_count:     Number of source channels (MVP = 1).
+         *
+         *     Deliberately absent (security §5.5 / compliance §7):
+         *         - id (internal PK — not exposed)
+         *         - raw topic text, post content, channel handles, URLs
+         *         - created_at (internal audit field)
+         */
+        CaseItem: {
+            /** Channels Count */
+            channels_count: number;
+            /**
+             * First Seen
+             * Format: date-time
+             */
+            first_seen: string;
+            /** Lead Time Seconds */
+            lead_time_seconds: number;
+            /**
+             * Mainstream At
+             * Format: date-time
+             */
+            mainstream_at: string;
+            /** Title */
+            title: string;
+            /** Viral Score */
+            viral_score: number;
+        };
+        /**
+         * CasesResponse
+         * @description Response envelope for GET /cases.
+         */
+        CasesResponse: {
+            /** Items */
+            items: components["schemas"]["CaseItem"][];
         };
         /**
          * ChannelRef
@@ -1675,6 +1754,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IpnAck"];
+                };
+            };
+        };
+    };
+    get_cases_cases_get: {
+        parameters: {
+            query?: {
+                /** @description Max number of cases to return. Defaults to settings.cases_top_n_max; max is settings.cases_top_n_max. Must be ≥ 1 (422 on non-positive). 422 if top_n exceeds the configured maximum. */
+                top_n?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CasesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

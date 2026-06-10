@@ -206,6 +206,14 @@ _DEFAULT_SHOWCASE_POST_DELAY_SECONDS: int = 2400  # 40 minutes
 _DEFAULT_SHOWCASE_POST_MIN_SCORE: float = 85.0
 _DEFAULT_SHOWCASE_POSTS_PER_DAY_MAX: int = 8
 
+# Proof-of-speed cases (TASK-045). Named, non-secret defaults.
+# `showcase_case_min_score`: viral_score threshold for case fixation (default 90.0).
+#   Intentionally higher than showcase_post_min_score (85.0) — only exceptional
+#   signals become marketing proof-points.
+# `cases_top_n_max`: hard cap for GET /cases (422 if exceeded); default 20.
+_DEFAULT_SHOWCASE_CASE_MIN_SCORE: float = 90.0
+_DEFAULT_CASES_TOP_N_MAX: int = 20
+
 # TG account pool health + ops self-alert (TASK-035). Named, non-secret defaults.
 # `pool_min_healthy` is the operational target: fewer healthy accounts = degraded
 # (warn metric + self-alert). POOL_MIN=1 remains the hard floor in collector/constants
@@ -439,6 +447,13 @@ class Settings(BaseSettings):
     showcase_post_min_score: float = _DEFAULT_SHOWCASE_POST_MIN_SCORE
     # Non-secret: anti-spam daily cap (UTC day).
     showcase_posts_per_day_max: int = _DEFAULT_SHOWCASE_POSTS_PER_DAY_MAX
+
+    # --- Proof-of-speed cases (TASK-045). Non-secret, settable; defaults above. ---
+    # Minimum viral_score for a cluster to be fixed as a marketing case.
+    # Higher than showcase_post_min_score (85.0) — exceptional signals only.
+    showcase_case_min_score: float = _DEFAULT_SHOWCASE_CASE_MIN_SCORE
+    # Hard cap for GET /cases (422 if top_n exceeds this). Default 20.
+    cases_top_n_max: int = _DEFAULT_CASES_TOP_N_MAX
 
     # --- Observability — Sentry (TASK-024). DSN is a secret (sensitive.env); empty
     # default → Sentry off. Non-secret settings have named-constant defaults above.---
