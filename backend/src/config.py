@@ -122,6 +122,14 @@ _DEFAULT_TRENDING_TOP_K_DEFAULT = 10
 _DEFAULT_TRENDING_TOP_K_MAX = 20
 _DEFAULT_TRENDING_WINDOW_SECONDS: int = 86_400  # 24 hours
 
+# Historical engagement baseline (TASK-041). Named, non-secret defaults; time in SECONDS.
+# `engagement_baseline_window_seconds`: look-back window for per-channel history used to
+# compute channel_avg in `_build_score_inputs`. Default 7 days = 604800 s.
+# `engagement_baseline_min_posts`: minimum number of posts inside the window for a
+# channel to use historical avg; fewer posts → fallback to batch-avg + log_event.
+_DEFAULT_ENGAGEMENT_BASELINE_WINDOW_SECONDS: int = 604_800  # 7 days
+_DEFAULT_ENGAGEMENT_BASELINE_MIN_POSTS: int = 10
+
 # Free-plan alert delay (TASK-040). Named, non-secret default; time in SECONDS.
 # Alerts created for Free-plan users are held back for this many seconds before
 # delivery (deliver_after = now + delay). Pro/Team → no delay (deliver_after NULL).
@@ -268,6 +276,15 @@ class Settings(BaseSettings):
     trending_top_k_max: int = _DEFAULT_TRENDING_TOP_K_MAX
     # Look-back window for showcase cluster scores (seconds). Default 24h.
     trending_window_seconds: int = _DEFAULT_TRENDING_WINDOW_SECONDS
+
+    # --- Historical engagement baseline (TASK-041). Non-secret, settable; defaults above.
+    # Look-back window (seconds) for per-channel history used to compute channel_avg.
+    # Default 7d = 604800s. Override via env ENGAGEMENT_BASELINE_WINDOW_SECONDS.
+    engagement_baseline_window_seconds: int = _DEFAULT_ENGAGEMENT_BASELINE_WINDOW_SECONDS
+    # Minimum posts inside the window required to use historical avg; below this
+    # threshold the scorer falls back to batch-avg behaviour + logs a baseline_fallback
+    # event. Override via env ENGAGEMENT_BASELINE_MIN_POSTS.
+    engagement_baseline_min_posts: int = _DEFAULT_ENGAGEMENT_BASELINE_MIN_POSTS
 
     # --- Free-plan alert delay (TASK-040). Non-secret, settable; default above.
     # Seconds to delay alert delivery for Free-plan users. Override in dev with 60. ---

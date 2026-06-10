@@ -32,7 +32,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -40,7 +40,8 @@ from sqlalchemy.orm import Session
 from billing.limits import effective_plan
 from billing.plans import Plan
 from config import get_settings
-from scorer.score import ScoreInputs, compute_components
+from observability.logging import log_event
+from scorer.score import FORWARD_FACTOR, REACTION_FACTOR, ScoreInputs, compute_components
 from storage.database import get_session
 from storage.models.alerts import Alert
 from storage.models.base import utcnow
@@ -108,6 +109,54 @@ def _topic_configs(session: Session, *, user_id: int) -> dict[str, _TopicConfig]
     }
 
 
+def _channel_historical_avg(
+    session: Session,
+    *,
+    user_id: int,
+    channel_id: int,
+    exclude_cluster_id: int,
+    window_start: datetime,
+    min_posts: int,
+) -> float | None:
+    """Return the historical weighted-numerator average for a channel, or None on fallback.
+
+    Computes AVG(views + forwards·F + reactions·R) over all posts of this
+    (user_id, channel_id) pair with `posted_at >= window_start` (sliding window),
+    excluding posts that belong to the cluster currently being scored. This prevents
+    the current batch's signal from contaminating its own baseline — a spike would
+    inflate the avg it is measured against, masking itself.
+
+    Uses the `ix_posts_user_channel_posted` index on (user_id, channel_id, posted_at).
+
+    Returns `None` when:
+    - fewer than `min_posts` posts exist in the window (cold-channel fallback), OR
+    - the computed avg is ≤ 0 (zero-engagement guard).
+    The caller is responsible for emitting ``log_event("baseline_fallback")`` on None.
+    """
+    # NB: must mirror scorer.score.engagement_numerator() — same weighted formula in SQL.
+    weighted_expr = Post.views + Post.forwards * FORWARD_FACTOR + Post.reactions * REACTION_FACTOR
+    stmt = (
+        select(
+            func.count().label("post_count"),
+            func.avg(weighted_expr).label("avg_numerator"),
+        )
+        .where(Post.user_id == user_id)
+        .where(Post.channel_id == channel_id)
+        .where(Post.posted_at >= window_start)
+        .where(
+            (Post.cluster_id == None)  # noqa: E711 — SQLAlchemy IS NULL comparison
+            | (Post.cluster_id != exclude_cluster_id)
+        )
+    )
+    row = session.execute(stmt).one()
+    post_count: int = row.post_count or 0
+    avg_numerator: float | None = row.avg_numerator
+
+    if post_count < min_posts or avg_numerator is None or avg_numerator <= 0:
+        return None
+    return float(avg_numerator)
+
+
 def _build_score_inputs(
     session: Session,
     *,
@@ -121,7 +170,15 @@ def _build_score_inputs(
     This gives each cluster its own engagement signal, eliminating the per-topic
     duplicate-score problem. Degenerate aggregates (no posts) yield zeroed inputs
     the formula guards handle.
+
+    `channel_avg` is now the historical weighted-numerator average over the
+    per-channel sliding window (`engagement_baseline_window_seconds`). When fewer
+    than `engagement_baseline_min_posts` posts exist in the window, or the avg is
+    zero/null (cold channel), the scorer falls back to the batch-avg of the cluster
+    posts (legacy behaviour) and emits a ``baseline_fallback`` log event so the
+    fraction of cold channels is visible in observability.
     """
+    settings = get_settings()
     stmt = select(Post).where(Post.user_id == user_id).where(Post.cluster_id == cluster_id)
     posts = list(session.scalars(stmt).all())
     if not posts:
@@ -143,7 +200,30 @@ def _build_score_inputs(
     earliest = min(p.posted_at for p in posts)
     latest = max(p.posted_at for p in posts)
     delta_hours = (latest - earliest).total_seconds() / _SECONDS_PER_HOUR
-    channel_avg = views / len(posts)
+
+    # Historical channel_avg: use the channel of the first post as the reference
+    # (per-cluster scoring; a cluster spans one or more channels — use the primary
+    # channel, i.e. the first post's channel, for the baseline query).
+    window_start = utcnow() - timedelta(seconds=settings.engagement_baseline_window_seconds)
+    # Pick the most-represented channel in the cluster (most posts) as the baseline
+    # reference — consistent with the "one engagement signal per cluster" design.
+    primary_channel_id: int = max(
+        unique_channels,
+        key=lambda cid: sum(1 for p in posts if p.channel_id == cid),
+    )
+    channel_avg = _channel_historical_avg(
+        session,
+        user_id=user_id,
+        channel_id=primary_channel_id,
+        exclude_cluster_id=cluster_id,
+        window_start=window_start,
+        min_posts=settings.engagement_baseline_min_posts,
+    )
+    if channel_avg is None:
+        # Cold channel (< min_posts in window) or zero avg → fallback to batch-avg.
+        log_event("baseline_fallback", channel_id=primary_channel_id)
+        # Legacy batch-avg: sum(views) / len(posts) — unchanged behaviour.
+        channel_avg = views / len(posts)
 
     return ScoreInputs(
         views=views,
