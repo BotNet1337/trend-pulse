@@ -1,7 +1,7 @@
 ---
 id: TASK-042
 title: Фидбек 👍/👎 на алерт (inline-кнопки) + alert_feedback + precision per user
-status: in-progress         # planned → in-progress → review → done
+status: done                # planned → in-progress → review → done
 owner: backend
 created: 2026-06-10
 updated: 2026-06-10
@@ -75,15 +75,15 @@ API `GET /feedback/{token}` — работает с любым ботом без
   endpoint (rate-limit + HMAC обязательны), миграция (новая таблица — безопасно).
 
 ## Acceptance Criteria
-- [ ] **AC1 — кнопки в сообщении (failing-test anchor).** Given алерт доставляется в TG,
+- [x] **AC1 — кнопки в сообщении (failing-test anchor).** Given алерт доставляется в TG,
   Then payload содержит reply_markup c двумя url-кнопками 👍/👎 с валидными signed-token. RED.
-- [ ] **AC2 — тап пишет вердикт.** GET /feedback/{token(up)} → 200, строка alert_feedback
+- [x] **AC2 — тап пишет вердикт.** GET /feedback/{token(up)} → 200, строка alert_feedback
   c verdict=up; повторный тап down → та же строка, verdict=down (upsert, не дубль).
-- [ ] **AC3 — токен защищён.** Истёкший/подделанный/чужой token → 4xx, БД не тронута;
+- [x] **AC3 — токен защищён.** Истёкший/подделанный/чужой token → 4xx, БД не тронута;
   endpoint под rate-limit.
-- [ ] **AC4 — precision метрика.** Given 3 up + 1 down за окно, Then log_event
+- [x] **AC4 — precision метрика.** Given 3 up + 1 down за окно, Then log_event
   alert_precision: precision=0.75, rated=4 для юзера.
-- [ ] **AC5 — G2.** Живой стек: реальный алерт в TG (или мок Bot API при отсутствии кред) с
+- [x] **AC5 — G2.** Живой стек: реальный алерт в TG (или мок Bot API при отсутствии кред) с
   кнопками; curl по ссылке из кнопки → строка в БД; `make ci-fast` + openapi-drift зелёные.
 
 ## Plan
@@ -115,18 +115,18 @@ API `GET /feedback/{token}` — работает с любым ботом без
   rate-limit, отсутствие user enumeration, no open redirect.
 
 ## Checkpoints
-current_step: 6
+current_step: done
 baseline_commit: "c6be7bcd4d5ded2e6e8d566954b7a4b4ac214173"
 branch: "gsd/phase-e2-alert-feedback-precision"
-lock: "loop-2026-06-10-wave-e"
+lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [x] 3 do (TDD: failing test → minimal code)
 - [x] 4 verify (G2 — tests + real behavior)
 - [x] 5 review (auto, adversarial — 2 HIGH найдены и исправлены)
 - [x] 5.5 security (pass; MEDIUM https-валидатор public_base_url — исправлен)
-- [ ] 6 ship (PR)
-- [ ] 7 learnings (auto)
+- [x] 6 ship (PR #54, squash-merge, CI зелёный)
+- [x] 7 learnings (auto — docs/learnings.md 2026-06-10 TASK-042)
 debug_runs: []
 
 ## Details
