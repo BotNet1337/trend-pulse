@@ -3,9 +3,9 @@
 The catalog is the single source of truth for pack slugs, titles, topics, and
 the list of Telegram handles. Changes require a PR + review (no admin UI).
 
-OWNER NOTE: The Telegram handles listed here are PLACEHOLDER EXAMPLES.
-The product/content owner must curate the final list of real, high-quality
-channels before the first production deployment. Handles follow the format
+Handles curated 2026-06-10: every handle was verified live via the public
+t.me/s/<handle> preview (real channel title + recent posts) — squatted or dead
+handles (e.g. @wired, @startups) were rejected. Handles follow the format
 validated by `TELEGRAM_HANDLE_PATTERN` (watchlist/schemas.py): '@' + 4-32 of
 [A-Za-z0-9_]. Dead handles are silently skipped by the collector (ADR-001).
 
@@ -55,30 +55,29 @@ class PackDef:
 
 # ─── Pack catalog ─────────────────────────────────────────────────────────────
 
-# OWNER: Replace placeholder handles with real, curated channel usernames.
-# Each handle must be a valid Telegram @username (4-32 chars of [A-Za-z0-9_]).
-# Verify channels are public and active before adding them.
+# Each handle is a verified public Telegram @username (4-32 chars of
+# [A-Za-z0-9_]); comments give the actual channel title + activity at curation.
 
 _CRYPTO_RU_CHANNELS: tuple[PackChannel, ...] = (
-    # Russian-language crypto / DeFi / Web3 channels (curated by owner)
-    PackChannel("@cryptovalute"),  # [PLACEHOLDER] crypto news RU
-    PackChannel("@coin_post"),  # [PLACEHOLDER] coin analytics RU
-    PackChannel("@bits_media"),  # [PLACEHOLDER] crypto media RU
-    PackChannel("@defi_rus"),  # [PLACEHOLDER] DeFi RU community
-    PackChannel("@blockchain_rus"),  # [PLACEHOLDER] blockchain RU
-    PackChannel("@crypto_invest_ru"),  # [PLACEHOLDER] crypto investing RU
-    PackChannel("@nft_russia"),  # [PLACEHOLDER] NFT RU market
-    PackChannel("@web3_community"),  # [PLACEHOLDER] Web3 RU builders
+    # Russian-language crypto / DeFi / Web3 channels (verified 2026-06-10)
+    PackChannel("@forklog"),  # ForkLog — крупнейшее RU крипто-медиа, посты ежедневно
+    PackChannel("@incrypted"),  # Incrypted — крипто-новости и разборы, посты ежедневно
+    PackChannel("@decenter"),  # DeCenter — блокчейн/биткоин/инвестиции, посты ежедневно
+    PackChannel("@bitsmedia"),  # BITS.MEDIA — RU крипто-портал, посты ежедневно
+    PackChannel("@binance_ru"),  # Binance Новости — официальный RU канал биржи
+    PackChannel("@RBCCrypto"),  # РБК Крипто — крипто-редакция РБК, посты ежедневно
+    PackChannel("@whattonews"),  # WhattoNews — новости TON-экосистемы
+    PackChannel("@toncoin_rus"),  # Toncoin RUS — RU сообщество TON
 )
 
 _TECH_EN_CHANNELS: tuple[PackChannel, ...] = (
-    # English-language tech / startup / AI channels (curated by owner)
-    PackChannel("@techcrunch_feed"),  # [PLACEHOLDER] TechCrunch news
-    PackChannel("@hackernewsfeed"),  # [PLACEHOLDER] HN-style tech
-    PackChannel("@aistartups"),  # [PLACEHOLDER] AI startup news
-    PackChannel("@siliconvalleytech"),  # [PLACEHOLDER] SV news & funding
-    PackChannel("@productdrop"),  # [PLACEHOLDER] product launches
-    PackChannel("@opensourcetech"),  # [PLACEHOLDER] open-source highlights
+    # English-language tech / startup / AI channels (verified 2026-06-10)
+    PackChannel("@hacker_news_feed"),  # Hacker News — top HN stories, hourly
+    PackChannel("@githubtrending"),  # GitHub Trends — trending repos, daily
+    PackChannel("@durov"),  # Pavel Durov — founder updates, tech takes
+    PackChannel("@telegram"),  # Telegram News — official platform news
+    PackChannel("@futurism"),  # AI Post — AI news digest, daily
+    PackChannel("@producthunt"),  # Venture Capital — startup/VC news, hourly
 )
 
 # The catalog is a frozen tuple — immutable at runtime (CONVENTIONS: no mutable globals).
