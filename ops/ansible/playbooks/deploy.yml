@@ -36,8 +36,12 @@
         project_src: "{{ app_dir }}/development"
         files:
           - docker-compose.yml
-        # version.env supplies image-tag interpolation (${PGVECTOR_IMAGE} etc.),
-        # mirroring local `docker compose --env-file development/version.env`.
+        # version.env supplies image-tag interpolation (${PGVECTOR_IMAGE} etc.);
+        # deploy.env + sensitive.env (rendered by the env role above) supply
+        # interpolation-time values like the required ${FRONTEND_COOKIE_SECRET:?}
+        # in frontend.yml — mirroring the root Makefile's COMPOSE invocation.
         env_files:
           - "{{ app_dir }}/development/version.env"
+          - "{{ app_dir }}/development/env/deploy.env"
+          - "{{ app_dir }}/development/env/sensitive.env"
         state: present
