@@ -1913,6 +1913,49 @@
         ]
       }
     },
+    "/feedback/{token}": {
+      "get": {
+        "description": "Verify signed token, UPSERT alert_feedback, return HTML 'спасибо'.\n\nRate-limited at ``feedback_rate_limit_per_minute`` (default 30/min,\nper-IP via ``rate_limit_key``).\n\nReturns:\n    200: Feedback recorded (or idempotent re-tap).\n    400: Invalid/tampered/expired token (uniform — no oracle).\n    404: Alert not found (FK gone — likely deleted by retention).\n    410: Same as 404 but signals the resource is intentionally gone.",
+        "operationId": "record_feedback_feedback__token__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Feedback",
+        "tags": [
+          "feedback"
+        ]
+      }
+    },
     "/health": {
       "get": {
         "description": "Liveness probe — returns 200 without touching any backing service.",

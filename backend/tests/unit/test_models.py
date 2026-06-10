@@ -50,6 +50,7 @@ def test_all_models_share_base_metadata() -> None:
         "subscriptions",
         "billing_payments",
         "api_keys",  # TASK-028: Team-plan API keys
+        "alert_feedback",  # TASK-042: 👍/👎 verdict per alert
     }
 
 

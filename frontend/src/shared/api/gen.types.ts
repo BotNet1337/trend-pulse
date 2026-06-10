@@ -316,6 +316,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/feedback/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Record Feedback
+         * @description Verify signed token, UPSERT alert_feedback, return HTML 'спасибо'.
+         *
+         *     Rate-limited at ``feedback_rate_limit_per_minute`` (default 30/min,
+         *     per-IP via ``rate_limit_key``).
+         *
+         *     Returns:
+         *         200: Feedback recorded (or idempotent re-tap).
+         *         400: Invalid/tampered/expired token (uniform — no oracle).
+         *         404: Alert not found (FK gone — likely deleted by retention).
+         *         410: Same as 404 but signals the resource is intentionally gone.
+         */
+        get: operations["record_feedback_feedback__token__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -1646,6 +1675,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IpnAck"];
+                };
+            };
+        };
+    };
+    record_feedback_feedback__token__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

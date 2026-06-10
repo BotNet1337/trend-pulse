@@ -82,7 +82,7 @@ class _RecordingBackend:
     def __init__(self) -> None:
         self.sent: list[object] = []
 
-    def send(self, view: object, target: object) -> DeliveryResult:
+    def send(self, view: object, target: object, *, alert_id: int | None = None) -> DeliveryResult:
         self.sent.append(target)
         return DeliveryResult(ok=True, backend=self.name, detail="sent")
 

@@ -15,3 +15,6 @@ smtp_starttls: "true"
 # so the self-alert does not spam on every health tick. Raise to 3 once the pool
 # is expanded to 3+ sessions (one line change here).
 pool_min_healthy: "1"
+# TASK-042: Production public URL for 👍/👎 feedback buttons in Telegram alerts.
+# Must use HTTPS. Matches the Cloudflare-proxied domain provisioned in TF (ADR-005).
+public_base_url: "https://foresignal.biz"

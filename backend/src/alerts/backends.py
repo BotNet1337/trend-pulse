@@ -4,6 +4,8 @@ Two implementations send an `AlertView` to a resolved target:
 
 - `TelegramBotBackend` — POST `<base>/bot<token>/sendMessage` with `chat_id`+`text`
   (the overview §1 message). Default channel, available on every plan.
+  TASK-042: when `public_base_url` is set and `alert_id` is supplied, includes
+  ``reply_markup`` with 👍/👎 inline URL buttons.
 - `WebhookBackend` — validate the URL against SSRF FIRST, then POST the overview §4
   JSON payload with `follow_redirects=False` (a 3xx to an internal host must not
   bypass the guard). Pro/Team channel.
@@ -24,7 +26,12 @@ from alerts.errors import (
     TransientDeliveryError,
     WebhookValidationError,
 )
-from alerts.formatting import AlertView, build_webhook_payload, format_alert_message
+from alerts.formatting import (
+    AlertView,
+    build_reply_markup,
+    build_webhook_payload,
+    format_alert_message,
+)
 from alerts.security import build_ssrf_safe_client
 
 logger = logging.getLogger(__name__)
@@ -66,7 +73,9 @@ class WebhookTarget:
 class DeliveryBackend(Protocol):
     """A channel that can send an alert to a resolved target."""
 
-    def send(self, view: AlertView, target: object) -> DeliveryResult: ...
+    def send(
+        self, view: AlertView, target: object, *, alert_id: int | None = None
+    ) -> DeliveryResult: ...
 
 
 def _raise_for_http_status(status_code: int, *, backend: str) -> None:
@@ -82,19 +91,67 @@ def _raise_for_http_status(status_code: int, *, backend: str) -> None:
 
 
 class TelegramBotBackend:
-    """Send an alert via the Telegram Bot API `sendMessage` method."""
+    """Send an alert via the Telegram Bot API `sendMessage` method.
+
+    TASK-042: when `public_base_url` is non-empty and `alert_id` is passed to
+    `send`, includes ``reply_markup`` with inline 👍/👎 URL buttons pointing at
+    ``GET {public_base_url}/api/feedback/{token}``. When `public_base_url` is
+    empty, ``reply_markup`` is omitted (graceful degradation — delivery does not
+    fail, buttons are just absent).
+    """
 
     name = "telegram"
 
-    def __init__(self, *, base_url: str, timeout_seconds: int) -> None:
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        timeout_seconds: int,
+        jwt_secret: str = "",
+        public_base_url: str = "",
+        feedback_token_ttl_seconds: int = 604800,
+    ) -> None:
         self._base_url = base_url.rstrip("/")
         self._timeout_seconds = timeout_seconds
+        self._jwt_secret = jwt_secret
+        self._public_base_url = public_base_url
+        self._feedback_token_ttl_seconds = feedback_token_ttl_seconds
 
-    def send(self, view: AlertView, target: object) -> DeliveryResult:
+    def send(
+        self,
+        view: AlertView,
+        target: object,
+        *,
+        alert_id: int | None = None,
+    ) -> DeliveryResult:
+        """Send an alert message; include reply_markup when alert_id is provided.
+
+        Args:
+            view:      The alert view to format.
+            target:    Must be a TelegramTarget.
+            alert_id:  DB id of the alert row (required for feedback buttons).
+                       If None, buttons are not included even when base_url is set.
+        """
         if not isinstance(target, TelegramTarget):
             raise PermanentDeliveryError("telegram backend requires a TelegramTarget")
         url = f"{self._base_url}/bot{target.bot_token}/sendMessage"
-        body = {"chat_id": target.chat_id, "text": format_alert_message(view)}
+        body: dict[str, object] = {
+            "chat_id": target.chat_id,
+            "text": format_alert_message(view),
+        }
+        # TASK-042: attach reply_markup when public_base_url is configured and
+        # alert_id is available. build_reply_markup returns None when base_url
+        # is empty, so the key is only added when markup is actually present.
+        if alert_id is not None and self._public_base_url:
+            markup = build_reply_markup(
+                view=view,
+                alert_id=alert_id,
+                jwt_secret=self._jwt_secret,
+                public_base_url=self._public_base_url,
+                ttl_seconds=self._feedback_token_ttl_seconds,
+            )
+            if markup is not None:
+                body["reply_markup"] = markup
         try:
             response = httpx.post(url, json=body, timeout=self._timeout_seconds)
         except httpx.HTTPError as exc:
@@ -113,7 +170,15 @@ class WebhookBackend:
     def __init__(self, *, timeout_seconds: int) -> None:
         self._timeout_seconds = timeout_seconds
 
-    def send(self, view: AlertView, target: object) -> DeliveryResult:
+    def send(
+        self,
+        view: AlertView,
+        target: object,
+        *,
+        alert_id: int | None = None,
+    ) -> DeliveryResult:
+        # alert_id is unused by the webhook backend (feedback buttons are TG-only).
+        _ = alert_id
         if not isinstance(target, WebhookTarget):
             raise PermanentDeliveryError("webhook backend requires a WebhookTarget")
         # SSRF guard is ATOMIC with the connect: the client uses a transport that
