@@ -6,16 +6,39 @@ consume. The Alert row (task-002/008) carries only `cluster_id`, `score`,
 by the notifier from the linked `Cluster` (topic, and the title derived from it)
 and the latest `Score` row (velocity), then packed into an `AlertView`. Keeping
 the formatters pure (no DB, no mutation) makes them trivially testable (AC1).
+
+`build_reply_markup` (TASK-042) constructs the Telegram InlineKeyboardMarkup
+dict with two URL-buttons 👍/👎 pointing at ``GET /api/feedback/{token}``.
+When `public_base_url` is empty it logs a one-time warning and returns None
+so the delivery path degrades gracefully (Invariant).
 """
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime
+
+from alerts.feedback_tokens import sign_feedback_token
+
+logger = logging.getLogger(__name__)
 
 # overview §1 message format. The score in the example is an integer (`Score: 94`)
 # and the channel count is a plain integer — render the score as a rounded int so
 # `94.0` reads as `94`. Named so the format string has no magic literals.
 _WEBHOOK_EVENT = "viral_alert"
 _FIRST_SEEN_TIME_FORMAT = "%H:%M"
+
+# Feedback API path — must match nginx /api/ prefix strip (TASK-042 locate).
+# nginx proxies /api/* → backend root, stripping /api prefix.
+# So the full public URL is: {public_base_url}/api/feedback/{token}.
+_FEEDBACK_API_PATH = "/api/feedback/"
+
+# Button emoji labels — named, not magic literals.
+_BUTTON_UP_LABEL = "👍"
+_BUTTON_DOWN_LABEL = "👎"
+
+# Guard flag so the "no public_base_url" warning is emitted only once per process
+# (avoid log flooding on every alert). Module-level flag.
+_warned_no_base_url: bool = False
 
 
 @dataclass(frozen=True)
@@ -53,4 +76,75 @@ def build_webhook_payload(view: AlertView) -> dict[str, object]:
         "channels_count": view.channels_count,
         "first_seen": view.first_seen.isoformat(),
         "velocity": view.velocity,
+    }
+
+
+def build_reply_markup(
+    *,
+    view: AlertView,
+    alert_id: int,
+    jwt_secret: str,
+    public_base_url: str,
+    ttl_seconds: int,
+) -> dict[str, object] | None:
+    """Build a Telegram InlineKeyboardMarkup with 👍/👎 URL feedback buttons.
+
+    Returns an ``inline_keyboard`` dict for use in ``sendMessage.reply_markup``,
+    or ``None`` when ``public_base_url`` is empty (graceful degradation — alert
+    is delivered without buttons; one-time WARNING logged).
+
+    Each button's URL points to ``{public_base_url}/api/feedback/{token}``
+    where ``token`` is a short HMAC-SHA256-signed token encoding
+    (alert_id, verdict, exp). The nginx edge proxy strips the ``/api/`` prefix
+    before forwarding to the backend.
+
+    Args:
+        view:            AlertView (reserved — currently unused; kept for future
+                         use e.g. including topic in button labels).
+        alert_id:        The alert row id — embedded in the token payload.
+        jwt_secret:      Application jwt_secret for token signing.
+        public_base_url: Publicly reachable domain (e.g. "https://foresignal.biz").
+        ttl_seconds:     Token validity in seconds (e.g. 604800 = 7d).
+
+    Returns:
+        Telegram InlineKeyboardMarkup dict, or None when base_url is empty.
+    """
+    global _warned_no_base_url
+
+    if not public_base_url:
+        if not _warned_no_base_url:
+            logger.warning(
+                "build_reply_markup: public_base_url is empty — "
+                "alert feedback buttons disabled (set PUBLIC_BASE_URL in deploy.env)"
+            )
+            _warned_no_base_url = True
+        return None
+
+    # ``view`` is reserved in the function signature for future use (e.g. including
+    # the topic/title in the button text).  The token encodes only alert_id+verdict+exp;
+    # no AlertView fields are used currently.  Accepted but deliberately unused.
+    _ = view  # reserved — do not remove from signature
+
+    base = public_base_url.rstrip("/")
+
+    token_up = sign_feedback_token(
+        alert_id=alert_id,
+        verdict="up",
+        jwt_secret=jwt_secret,
+        ttl_seconds=ttl_seconds,
+    )
+    token_down = sign_feedback_token(
+        alert_id=alert_id,
+        verdict="down",
+        jwt_secret=jwt_secret,
+        ttl_seconds=ttl_seconds,
+    )
+
+    return {
+        "inline_keyboard": [
+            [
+                {"text": _BUTTON_UP_LABEL, "url": f"{base}{_FEEDBACK_API_PATH}{token_up}"},
+                {"text": _BUTTON_DOWN_LABEL, "url": f"{base}{_FEEDBACK_API_PATH}{token_down}"},
+            ]
+        ]
     }

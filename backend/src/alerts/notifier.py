@@ -101,6 +101,9 @@ def _resolve_channels(user: User, settings: Settings) -> list[_Channel]:
                 backend=TelegramBotBackend(
                     base_url=settings.telegram_api_base_url,
                     timeout_seconds=settings.alert_http_timeout_seconds,
+                    jwt_secret=settings.jwt_secret,
+                    public_base_url=settings.public_base_url,
+                    feedback_token_ttl_seconds=settings.feedback_token_ttl_seconds,
                 ),
                 target=TelegramTarget(
                     bot_token=user.telegram_bot_token, chat_id=user.telegram_chat_id
@@ -148,7 +151,7 @@ def deliver(session: Session, alert: Alert) -> str:
     for channel in channels:
         alert.delivery_attempts += 1
         try:
-            result: DeliveryResult = channel.backend.send(view, channel.target)
+            result: DeliveryResult = channel.backend.send(view, channel.target, alert_id=alert.id)
         except TransientDeliveryError as exc:
             # Remember the transient failure; keep trying other channels, then
             # re-raise so the task retries (a later attempt may succeed).

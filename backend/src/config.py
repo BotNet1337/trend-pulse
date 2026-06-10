@@ -6,7 +6,12 @@ materialized by `make ansible-unpack` into `development/env/*.env`.
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Hosts that are allowed to use plain http:// for public_base_url — dev G2 runs
+# use http://localhost:8000; prod MUST use https:// (enforced by validator below).
+_HTTP_ALLOWED_HOSTS = ("localhost", "127.0.0.1")
 
 # SQLAlchemy 2.0 + psycopg3 driver scheme; the only place the dialect is named.
 # `psycopg` (v3) serves both the sync engine (storage/) and the async engine the
@@ -135,6 +140,27 @@ _DEFAULT_ENGAGEMENT_BASELINE_MIN_POSTS: int = 10
 # delivery (deliver_after = now + delay). Pro/Team → no delay (deliver_after NULL).
 # Default 1800 = 30 min. Override via env FREE_ALERT_DELAY_SECONDS (e.g. 60 for dev).
 _DEFAULT_FREE_ALERT_DELAY_SECONDS: int = 1800
+
+# Alert feedback — HMAC tokens + precision window (TASK-042). Named, non-secret
+# defaults; time is in SECONDS (CONVENTIONS).
+# `feedback_token_ttl_seconds`: how long a 👍/👎 URL button token remains valid
+# (default 7d = 604800s). Matches the precision window so a rated alert is always
+# within the precision window when the user clicks immediately.
+# `precision_window_seconds`: sliding window for per-user alert precision metric
+# (up/down counts, precision=up/(up+down), rated share). Default 7d = 604800s.
+# Kept as a separate setting because the window may diverge from token TTL in
+# future (e.g. a 30d precision window with 7d token lifetime).
+# `public_base_url`: base URL of the publicly reachable deployment (e.g.
+# https://foresignal.biz). Empty string = disabled (no 👍/👎 buttons); graceful
+# degradation — alerts are still delivered, just without the feedback buttons.
+# Must be set in deploy.env / Ansible group_vars for prod.
+# `feedback_rate_limit_per_minute`: per-IP rate limit for the feedback endpoint.
+# Lower than the authenticated API default — the endpoint is unauthenticated and
+# should not be a vector for abuse. Named constant, not a magic literal.
+_DEFAULT_FEEDBACK_TOKEN_TTL_SECONDS: int = 604_800  # 7 days
+_DEFAULT_PRECISION_WINDOW_SECONDS: int = 604_800  # 7 days
+_DEFAULT_PUBLIC_BASE_URL: str = ""
+_DEFAULT_FEEDBACK_RATE_LIMIT_PER_MINUTE: int = 30
 
 # Signal latency metric (TASK-036). Named, non-secret defaults; time in SECONDS.
 # `latency_emit_interval_seconds`: how often the Beat task fires (default 5 min).
@@ -290,6 +316,16 @@ class Settings(BaseSettings):
     # Seconds to delay alert delivery for Free-plan users. Override in dev with 60. ---
     free_alert_delay_seconds: int = _DEFAULT_FREE_ALERT_DELAY_SECONDS
 
+    # --- Alert feedback 👍/👎 (TASK-042). Non-secret, settable; defaults above.
+    # HMAC-signed token TTL (seconds) for feedback URL buttons. Default 7d.
+    # Precision metric sliding window (seconds). Default 7d.
+    # Public base URL for the deployment — empty = buttons disabled (graceful degradation).
+    # Per-minute rate limit for the unauthenticated /feedback/{token} endpoint. ---
+    feedback_token_ttl_seconds: int = _DEFAULT_FEEDBACK_TOKEN_TTL_SECONDS
+    precision_window_seconds: int = _DEFAULT_PRECISION_WINDOW_SECONDS
+    public_base_url: str = _DEFAULT_PUBLIC_BASE_URL
+    feedback_rate_limit_per_minute: int = _DEFAULT_FEEDBACK_RATE_LIMIT_PER_MINUTE
+
     # --- Signal latency metric (TASK-036). Non-secret, settable; defaults above.
     # Beat interval (seconds) for the emit_signal_latency_task.
     # Sliding window (seconds) of delivered alerts included in the metric. ---
@@ -336,6 +372,40 @@ class Settings(BaseSettings):
     environment: str = _DEFAULT_ENVIRONMENT
     # Non-secret: release tag (git sha / image tag injected at build time).
     release: str = _DEFAULT_RELEASE
+
+    @field_validator("public_base_url", mode="before")
+    @classmethod
+    def validate_public_base_url(cls, v: object) -> object:
+        """Validate public_base_url: empty (feature off) or secure URL.
+
+        Rules:
+        - Empty string: allowed — feedback buttons are disabled (graceful degradation).
+        - http:// scheme: allowed ONLY for localhost / 127.0.0.1 (dev G2 runs).
+          Other http:// URLs are rejected to prevent accidental non-TLS prod deploys.
+        - https:// scheme: always allowed.
+        - Any other scheme or format: rejected.
+        """
+        url = str(v).strip() if v is not None else ""
+        if not url:
+            return url
+        if url.startswith("https://"):
+            return url
+        if url.startswith("http://"):
+            # Allow plain http only for localhost / 127.0.0.1 (dev G2 use-cases).
+            # Extract the host part (between "http://" and the next "/" or end).
+            rest = url[len("http://") :]
+            host = rest.split("/")[0].split(":")[0]  # strip port if present
+            if host in _HTTP_ALLOWED_HOSTS:
+                return url
+            raise ValueError(
+                f"public_base_url must use https:// in non-local environments "
+                f"(got http:// with host '{host}'). "
+                f"Allowed http:// hosts: {_HTTP_ALLOWED_HOSTS}."
+            )
+        raise ValueError(
+            f"public_base_url must be empty, start with 'https://', or start with "
+            f"'http://' for localhost/127.0.0.1 (got: {url!r})."
+        )
 
     @property
     def database_url(self) -> str:

@@ -55,3 +55,6 @@ s3_bucket: "trendpulse-backups"
 # Dev/test runs fine with the single session; prod overrides to 1 in prod.yml
 # while pool is being expanded (no spam alerts on known single-session setup).
 pool_min_healthy: "3"
+# TASK-042: Alert feedback 👍/👎 button base URL. Empty = buttons disabled (dev default).
+# Prod overrides to the HTTPS domain in group_vars/prod.yml.
+public_base_url: ""

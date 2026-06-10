@@ -1,7 +1,7 @@
 ---
 id: TASK-042
 title: Фидбек 👍/👎 на алерт (inline-кнопки) + alert_feedback + precision per user
-status: planned             # planned → in-progress → review → done
+status: in-progress         # planned → in-progress → review → done
 owner: backend
 created: 2026-06-10
 updated: 2026-06-10
@@ -115,16 +115,16 @@ API `GET /feedback/{token}` — работает с любым ботом без
   rate-limit, отсутствие user enumeration, no open redirect.
 
 ## Checkpoints
-current_step: 1
-baseline_commit: ""
+current_step: 6
+baseline_commit: "c6be7bcd4d5ded2e6e8d566954b7a4b4ac214173"
 branch: "gsd/phase-e2-alert-feedback-precision"
-lock: ""
-- [ ] 1 locate (scope + patterns + blast radius)
-- [ ] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + real behavior)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (REQUIRED — публичный endpoint + подписанные токены)
+lock: "loop-2026-06-10-wave-e"
+- [x] 1 locate (scope + patterns + blast radius)
+- [x] 2 plan (G1 — minimal, approved)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + real behavior)
+- [x] 5 review (auto, adversarial — 2 HIGH найдены и исправлены)
+- [x] 5.5 security (pass; MEDIUM https-валидатор public_base_url — исправлен)
 - [ ] 6 ship (PR)
 - [ ] 7 learnings (auto)
 debug_runs: []
@@ -134,3 +134,59 @@ debug_runs: []
 callback_query — per-user боты делают setWebhook неуправляемым; deep-link на наш API работает
 с любым ботом без конфигурации. public_base_url — новая обязательная prod-настройка
 (добавить в deploy.env шаблон/group_vars при ship).)
+
+### locate (2026-06-10, loop run)
+- `backends.py:84-105` TelegramBotBackend.send: body={chat_id,text} через httpx.post,
+  timeout 10s, _raise_for_http_status (transient 429/5xx vs permanent 4xx); токен repr=False.
+- `formatting.py:22-39`: AlertView — frozen dataclass (topic,title,score,channels_count,
+  first_seen,velocity); format_alert_message — pure. build_reply_markup(view, public_base_url)
+  -> dict|None; None при пустом base_url (graceful degradation).
+- Rate-limit: slowapi (Redis, in-memory fallback), ключ apikey:hash|user:id|ip:addr,
+  default 120/min из Settings; per-route override через @limiter.limit().
+- Signing-прецедент: fastapi-users JWT HS256 c jwt_secret; HMAC-утилит нет — пишем
+  feedback_tokens.py (HMAC-SHA256, отдельный salt "feedback", exp 7d, компактный token).
+- Модели: UserOwnedBase (id PK + user_id FK CASCADE), utcnow() для timestamps,
+  UniqueConstraint-прецедент uq_alerts_user_cluster; UPSERT-прецедент
+  on_conflict_do_update(constraint=...) в scorer/tasks.py.
+- Миграции: последняя 0012 → новая 0013_alert_feedback.py.
+- Precision-emit: расширить observability/signal_latency.py (+emit_alert_precision),
+  вызов из emit_signal_latency_task (beat 300s), best-effort (warning, не raise).
+- Config: public_base_url ("" default) + feedback_token_ttl_seconds (604800) — оба несекретные;
+  при ship добавить PUBLIC_BASE_URL в ops/ansible/roles/env/templates/deploy.env.j2.
+- Роутер-паттерн: api/<name>/{router,schemas,service}.py, include_router в api/main.py;
+  OpenAPI: make gen-openapi gen-types + коммит дампа (контракт меняется!).
+
+### do (2026-06-10, loop run)
+- TDD RED→GREEN: 22 новых unit (tokens 10, reply_markup 7, precision 5) + 5 integration
+  (feedback API: tap/upsert/4xx/410). Итог: ci-fast 455 unit, integration 130 passed.
+- Токен: base64url(payload).base64url(HMAC-SHA256-trunc16), ~72 символа (< лимита TG url).
+- DeliveryBackend.send получил `alert_id: int | None = None` (нужен для токенов в момент
+  отправки; webhook игнорирует) — лёгкое расширение протокола, notifier.py затронут.
+- precision_window_seconds — отдельная настройка (не привязана к feedback_token_ttl_seconds).
+- Graceful degradation подтверждён: пустой public_base_url → reply_markup не добавляется.
+- Миграция 0013 применена локально (alembic upgrade head через socat-форвард).
+- OpenAPI дамп+типы перегенерированы (новый GET /feedback/{token}).
+
+### verify G2 (2026-06-10, loop run)
+- ci-fast 455 unit зелёный; integration 130 passed/10 skipped; поведенчески на живом ASGI+
+  реальном Postgres: tap up → 200 + строка verdict=up; down-token → та же строка verdict=down
+  (1 строка, UPSERT); expired/tampered/garbage → 400, БД не тронута; reply_markup URL
+  end-to-end работает; emit_alert_precision: precision=0.75 rated=4 total=4 (3up/1down).
+- slowapi при недоступном Redis деградирует в in-memory fallback — boot не падает.
+- openapi-drift-check «падал» только из-за незакоммиченных перегенерённых файлов — закрывается
+  коммитом дампа+типов на ship (файлы на диске корректны).
+- Гочча dev: build_reply_markup даёт /api/feedback/ (nginx-префикс прода); на голом ASGI
+  роут живёт на /feedback/ — 404 без nginx ожидаем.
+
+### review + security + fix-цикл (2026-06-10, loop run)
+- review HIGH-1: precision `total` == `rated` (выпал подзапрос по alerts; unit-моки маскировали).
+  FIX: коррелированный подзапрос COUNT(alerts за окно по delivered_at); RED-тест
+  (5 алертов / 4 оценённых → total=5) падал до фикса, зелёный после.
+- review HIGH-2: `async def` хэндлер с блокирующей sync-сессией → plain `def` (threadpool),
+  как в packs/router.py.
+- review MEDIUM: мёртвые _COL_*-константы задействованы; добавлен реальный 429-тест
+  rate-limit (mini-app, memory:// limiter).
+- security MEDIUM: field_validator public_base_url — пусто=выключено, https:// обязателен,
+  http:// только для localhost (dev); 9 unit-тестов. PUBLIC_BASE_URL прокинут:
+  deploy.env.j2 + group_vars/all.yml ('' default) + group_vars/prod.yml (https://foresignal.biz).
+- Гейты после фиксов: ci-fast 465 unit, integration 132 passed/10 skipped.

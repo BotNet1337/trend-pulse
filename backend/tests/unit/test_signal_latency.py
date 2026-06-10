@@ -39,13 +39,16 @@ def test_emit_signal_latency_log_format_all_none(
 
     mock_session = MagicMock(name="session")
     # Simulate DB returning a row with all-None percentiles and count=0.
+    # Row access uses row._mapping[_COL_*] keys (consistent with production code).
     row = MagicMock()
-    row.e2e_p50 = None
-    row.e2e_p95 = None
-    row.delivery_p50 = None
-    row.delivery_p95 = None
-    row.cnt = 0
-    row.cnt_negative = 0
+    row._mapping = {
+        "e2e_p50": None,
+        "e2e_p95": None,
+        "delivery_p50": None,
+        "delivery_p95": None,
+        "cnt": 0,
+        "cnt_negative": 0,
+    }
     result = MagicMock()
     result.one.return_value = row
     mock_session.execute.return_value = result
@@ -81,12 +84,14 @@ def test_emit_signal_latency_log_format_with_values(
 
     mock_session = MagicMock(name="session")
     row = MagicMock()
-    row.e2e_p50 = 180.0
-    row.e2e_p95 = 420.0
-    row.delivery_p50 = 30.0
-    row.delivery_p95 = 90.0
-    row.cnt = 5
-    row.cnt_negative = 0
+    row._mapping = {
+        "e2e_p50": 180.0,
+        "e2e_p95": 420.0,
+        "delivery_p50": 30.0,
+        "delivery_p95": 90.0,
+        "cnt": 5,
+        "cnt_negative": 0,
+    }
     result = MagicMock()
     result.one.return_value = row
     mock_session.execute.return_value = result
@@ -119,12 +124,14 @@ def test_emit_signal_latency_negative_clamped_reported(
 
     mock_session = MagicMock(name="session")
     row = MagicMock()
-    row.e2e_p50 = 0.0
-    row.e2e_p95 = 0.0
-    row.delivery_p50 = 0.0
-    row.delivery_p95 = 0.0
-    row.cnt = 3
-    row.cnt_negative = 2
+    row._mapping = {
+        "e2e_p50": 0.0,
+        "e2e_p95": 0.0,
+        "delivery_p50": 0.0,
+        "delivery_p95": 0.0,
+        "cnt": 3,
+        "cnt_negative": 2,
+    }
     result = MagicMock()
     result.one.return_value = row
     mock_session.execute.return_value = result

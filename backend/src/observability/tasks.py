@@ -24,7 +24,11 @@ import logging
 from celery_app import celery_app
 from config import get_settings
 from observability.constants import EMIT_SIGNAL_LATENCY_TASK
-from observability.signal_latency import emit_redis_memory, emit_signal_latency
+from observability.signal_latency import (
+    emit_alert_precision,
+    emit_redis_memory,
+    emit_signal_latency,
+)
 from storage.database import get_session
 from storage.redis_client import get_redis_client
 
@@ -61,5 +65,18 @@ def emit_signal_latency_task() -> None:
     except Exception as exc:
         logger.warning(
             "emit_signal_latency_task: Redis metric failed",
+            extra={"exc_type": type(exc).__name__},
+        )
+
+    # --- Part 3: Alert precision per user (TASK-042) — best-effort. ---
+    # Computes up/(up+down) for each user's rated alerts in the 7d window and
+    # emits log_event("alert_precision", ...) per user.  DB failure is logged
+    # as a warning and does not interrupt the other metrics above.
+    try:
+        with get_session() as session:
+            emit_alert_precision(session, settings)
+    except Exception as exc:
+        logger.warning(
+            "emit_signal_latency_task: alert_precision metric failed",
             extra={"exc_type": type(exc).__name__},
         )

@@ -41,15 +41,22 @@ if TYPE_CHECKING:
 
     from config import Settings
 
-logger = logging.getLogger(__name__)
-
-# Column label names produced by the SQL query — named constants, not magic strings.
+# Column label names (SQL aliases) — used in both the f-string SQL template and
+# the row._mapping access so alias names are defined exactly once (no magic strings).
+# alert_precision query columns:
+_COL_USER_ID = "user_id"
+_COL_UP_COUNT = "up_count"
+_COL_DOWN_COUNT = "down_count"
+_COL_TOTAL_ALERTS = "total_alerts"
+# signal_latency query columns:
 _COL_E2E_P50 = "e2e_p50"
 _COL_E2E_P95 = "e2e_p95"
 _COL_DELIVERY_P50 = "delivery_p50"
 _COL_DELIVERY_P95 = "delivery_p95"
 _COL_CNT = "cnt"
 _COL_CNT_NEGATIVE = "cnt_negative"
+
+logger = logging.getLogger(__name__)
 
 # PERCENTILE_CONT fractions — named constants, not magic literals.
 _PERCENTILE_50 = 0.5
@@ -134,8 +141,11 @@ def emit_signal_latency(session: Session, settings: Settings) -> dict[str, objec
     # Note: INTERVAL construction with a bind param uses the Postgres
     # ``make_interval(secs => :n)`` function (avoids f-string SQL).
 
+    # Column aliases use _COL_* constants (single source of truth — no magic strings
+    # at the call site).  Only bind-param values use :name syntax; identifiers (column
+    # aliases that are constant strings) are formatted in via f-string.
     sql = text(
-        """
+        f"""
         WITH min_post AS (
             SELECT cluster_id, MIN(posted_at) AS earliest_posted_at
             FROM posts
@@ -145,24 +155,24 @@ def emit_signal_latency(session: Session, settings: Settings) -> dict[str, objec
         SELECT
             PERCENTILE_CONT(:p50) WITHIN GROUP (ORDER BY
                 GREATEST(EXTRACT(EPOCH FROM (a.delivered_at - mp.earliest_posted_at)), 0)
-            ) AS e2e_p50,
+            ) AS {_COL_E2E_P50},
             PERCENTILE_CONT(:p95) WITHIN GROUP (ORDER BY
                 GREATEST(EXTRACT(EPOCH FROM (a.delivered_at - mp.earliest_posted_at)), 0)
-            ) AS e2e_p95,
+            ) AS {_COL_E2E_P95},
             PERCENTILE_CONT(:p50) WITHIN GROUP (ORDER BY
                 GREATEST(EXTRACT(EPOCH FROM (a.delivered_at - a.first_seen)), 0)
-            ) AS delivery_p50,
+            ) AS {_COL_DELIVERY_P50},
             PERCENTILE_CONT(:p95) WITHIN GROUP (ORDER BY
                 GREATEST(EXTRACT(EPOCH FROM (a.delivered_at - a.first_seen)), 0)
-            ) AS delivery_p95,
-            COUNT(*) AS cnt,
+            ) AS {_COL_DELIVERY_P95},
+            COUNT(*) AS {_COL_CNT},
             COUNT(*) FILTER (WHERE
                 EXTRACT(EPOCH FROM (a.delivered_at - a.first_seen)) < 0
                 OR (
                     mp.earliest_posted_at IS NOT NULL
                     AND EXTRACT(EPOCH FROM (a.delivered_at - mp.earliest_posted_at)) < 0
                 )
-            ) AS cnt_negative
+            ) AS {_COL_CNT_NEGATIVE}
         FROM alerts AS a
         LEFT JOIN min_post AS mp ON mp.cluster_id = a.cluster_id
         WHERE a.delivery_status = :status
@@ -182,12 +192,16 @@ def emit_signal_latency(session: Session, settings: Settings) -> dict[str, objec
         },
     ).one()
 
-    e2e_p50_s: float | None = _extract_seconds(row.e2e_p50)
-    e2e_p95_s: float | None = _extract_seconds(row.e2e_p95)
-    delivery_p50_s: float | None = _extract_seconds(row.delivery_p50)
-    delivery_p95_s: float | None = _extract_seconds(row.delivery_p95)
-    count: int = int(row.cnt) if row.cnt is not None else 0
-    count_negative: int = int(row.cnt_negative) if row.cnt_negative is not None else 0
+    # Access columns by the _COL_* constant keys (single source of truth for alias names).
+    row_map = row._mapping
+    e2e_p50_s: float | None = _extract_seconds(row_map[_COL_E2E_P50])
+    e2e_p95_s: float | None = _extract_seconds(row_map[_COL_E2E_P95])
+    delivery_p50_s: float | None = _extract_seconds(row_map[_COL_DELIVERY_P50])
+    delivery_p95_s: float | None = _extract_seconds(row_map[_COL_DELIVERY_P95])
+    count: int = int(row_map[_COL_CNT]) if row_map[_COL_CNT] is not None else 0
+    count_negative: int = (
+        int(row_map[_COL_CNT_NEGATIVE]) if row_map[_COL_CNT_NEGATIVE] is not None else 0
+    )
 
     log_event(
         "signal_latency",
@@ -244,3 +258,134 @@ def emit_redis_memory(redis: Redis) -> dict[str, object]:
 
     log_event("redis_memory", used=used, peak=peak, max=maxmemory)
     return {"used": used, "peak": peak, "max": maxmemory}
+
+
+def emit_alert_precision(
+    session: Session,
+    settings: Settings,
+) -> list[dict[str, object]]:
+    """Compute and log per-user alert precision for feedback given in a 7d window.
+
+    Precision = up / (up + down) for each user who has rated at least one alert
+    in the ``precision_window_seconds`` sliding window.  Unrated alerts are not
+    counted toward precision (they appear in the ``total_alerts`` field only so
+    ``rated_share = rated / total`` can be computed by the consumer).
+
+    Uses a single SQL query against ``alert_feedback`` JOIN ``alerts`` to compute
+    per-user aggregates without Python-side row iteration.
+
+    Query structure:
+        SELECT
+            af.user_id,
+            SUM(af.verdict) AS up_count,
+            COUNT(*) - SUM(af.verdict) AS down_count,
+            COUNT(*) AS rated,
+            (
+                SELECT COUNT(*) FROM alerts AS a2
+                WHERE a2.user_id = af.user_id
+                  AND a2.delivered_at >= NOW() - make_interval(secs => :window)
+            ) AS total_alerts
+        FROM alert_feedback AS af
+        JOIN alerts AS a ON a.id = af.alert_id
+        WHERE af.updated_at >= NOW() - make_interval(secs => :window)
+        GROUP BY af.user_id
+
+    Design notes:
+    - Read-only: no rows are written or mutated (Invariant).
+    - Aggregates-only in logs — compliance §7.
+    - Best-effort: caller (beat task) must catch and log exceptions; this
+      function raises on unexpected DB errors rather than swallowing them.
+    - Import-safe: does NOT import ``celery_app`` or any task module.
+
+    Args:
+        session:  Open SQLAlchemy ``Session`` (caller manages lifecycle).
+        settings: Application settings; reads ``precision_window_seconds``.
+
+    Returns:
+        List of dicts per user: ``user_id``, ``precision``, ``rated``, ``total``.
+        Empty list when no feedback rows exist in the window.
+    """
+    window_seconds: int = settings.precision_window_seconds
+
+    # Query structure (matches docstring):
+    #
+    # SELECT
+    #     af.user_id                                       AS user_id,
+    #     CAST(SUM(af.verdict) AS BIGINT)                  AS up_count,
+    #     CAST(COUNT(*) - SUM(af.verdict) AS BIGINT)       AS down_count,
+    #     (
+    #         SELECT COUNT(*) FROM alerts AS a2
+    #         WHERE a2.user_id = af.user_id
+    #           AND a2.delivered_at >= NOW() - make_interval(secs => :window_seconds)
+    #     )                                                AS total_alerts
+    # FROM alert_feedback AS af
+    # WHERE af.updated_at >= NOW() - make_interval(secs => :window_seconds)
+    # GROUP BY af.user_id
+    #
+    # ``total_alerts`` counts ALL alerts delivered in the window for that user
+    # (not just rated ones), so ``rated_share = rated / total`` can be derived.
+    # Using a correlated subquery rather than a JOIN to avoid inflating the
+    # alert_feedback aggregate counts.  Named bind params only — no f-string SQL.
+    # Column aliases are the _COL_* string constants (module top); they are
+    # literal identifiers — not user input — so formatting them into the SQL
+    # template is safe and keeps alias names DRY.  The WHERE/JOIN values use
+    # named bind params (:window_seconds) as required.
+    sql = text(
+        f"""
+        SELECT
+            af.user_id AS {_COL_USER_ID},
+            CAST(SUM(af.verdict) AS BIGINT) AS {_COL_UP_COUNT},
+            CAST(COUNT(*) - SUM(af.verdict) AS BIGINT) AS {_COL_DOWN_COUNT},
+            (
+                SELECT COUNT(*)
+                FROM alerts AS a2
+                WHERE a2.user_id = af.user_id
+                  AND a2.delivered_at >= NOW() - make_interval(secs => :window_seconds)
+            ) AS {_COL_TOTAL_ALERTS}
+        FROM alert_feedback AS af
+        WHERE af.updated_at >= NOW() - make_interval(secs => :window_seconds)
+        GROUP BY af.user_id
+        """
+    )
+
+    rows = session.execute(sql, {"window_seconds": float(window_seconds)}).all()
+
+    results: list[dict[str, object]] = []
+    for row in rows:
+        # Access columns by the _COL_* constant keys (single source of truth for
+        # alias names — avoids magic strings at the call site).
+        mapping = row._mapping
+        user_id: int = int(mapping[_COL_USER_ID])
+        up_count: int = int(mapping[_COL_UP_COUNT]) if mapping[_COL_UP_COUNT] is not None else 0
+        down_count: int = (
+            int(mapping[_COL_DOWN_COUNT]) if mapping[_COL_DOWN_COUNT] is not None else 0
+        )
+        total: int = (
+            int(mapping[_COL_TOTAL_ALERTS]) if mapping[_COL_TOTAL_ALERTS] is not None else 0
+        )
+        rated: int = up_count + down_count
+
+        if rated == 0:
+            # Guard: should not happen given GROUP BY filter, but be safe.
+            continue
+
+        precision: float = up_count / rated
+
+        log_event(
+            "alert_precision",
+            user_id=user_id,
+            precision=precision,
+            rated=rated,
+            total=total,
+        )
+
+        results.append(
+            {
+                "user_id": user_id,
+                "precision": precision,
+                "rated": rated,
+                "total": total,
+            }
+        )
+
+    return results
