@@ -49,3 +49,9 @@ class Alert(UserOwnedBase):
     delivery_attempts: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="0", default=0
     )
+    # Free-plan delivery delay (TASK-040). NULL = deliver immediately (Pro/Team and
+    # all pre-migration rows). Non-NULL = do NOT deliver before this UTC instant.
+    # This is the source of truth for the delay; Celery countdown is an optimisation.
+    deliver_after: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )

@@ -21,7 +21,8 @@ Design notes:
 - Never raises on empty data or Redis unavailability (Invariant).
 - Import-safe: does NOT import ``celery_app`` or ``alerts.tasks`` — can be
   imported from any context (tests, API, beat worker) without cycles.
-- TASK-040 ``deliver_after`` field not yet merged → no filter applied (Discussion).
+- TASK-040 ``deliver_after`` filter applied: delayed alerts (deliver_after IS NOT NULL)
+  are excluded from the main latency cut (they inflate p50/p95 by design).
 """
 
 from __future__ import annotations
@@ -167,6 +168,7 @@ def emit_signal_latency(session: Session, settings: Settings) -> dict[str, objec
         WHERE a.delivery_status = :status
           AND a.delivered_at IS NOT NULL
           AND a.delivered_at >= NOW() - make_interval(secs => :window_seconds)
+          AND a.deliver_after IS NULL
         """
     )
 
