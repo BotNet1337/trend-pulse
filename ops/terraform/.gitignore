@@ -1,19 +1,17 @@
-# Terraform local state, plugins, and tfvars (which may carry secrets).
+# Terraform local state and plugins (state is local per environment, NEVER in git — ADR-005)
 .terraform/
 .terraform.lock.hcl
 *.tfstate
 *.tfstate.*
+*.tfplan
 crash.log
 crash.*.log
 
-# tfvars may contain secrets — ignore all EXCEPT the committed *.example.
+# tfvars may contain secrets — ignore all EXCEPT the committed *.example
 *.tfvars
 *.tfvars.json
 !*.tfvars.example
 
-# Backend config passed at init time (may carry creds).
-*.backend.hcl
-
-# Local backend override used during verify/AC2 (not for production use).
-backend_override.tf
-*_override.tf
+# Saved outputs (may reveal infra details)
+outputs.json
+tf_outputs.json

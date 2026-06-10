@@ -24,7 +24,7 @@ vault/sensitive.vault.yml (ENCRYPTED)  ─────┴─► roles/env (sensi
 | Path | Purpose |
 |---|---|
 | `ansible.cfg` | inventory path, `roles_path`, `vault_password_file = .vault-pass` |
-| `inventory/hosts.ini` | `local` (localhost) + `prod` (VPS from Terraform `edge_ipv4`) |
+| `inventory/hosts.ini` | `local` (localhost) + `prod` (VPS from Terraform `server_ip`, see `ops/terraform/environments/prod`) |
 | `site.yml` | top playbook → imports `provision.yml` then `deploy.yml` |
 | `playbooks/unpack-env.yml` | **localhost** — render `deploy.env` + decrypt `sensitive.env` into `development/env/` |
 | `playbooks/provision.yml` | prod host setup — Docker + system packages |

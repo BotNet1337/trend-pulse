@@ -1,0 +1,37 @@
+#cloud-config
+users:
+  - name: ${deploy_user}
+    groups: docker, sudo
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: true
+    ssh_authorized_keys:
+%{ for key in ssh_public_keys ~}
+      - ${key}
+%{ endfor ~}
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - curl
+  - gnupg
+  - lsb-release
+  - ca-certificates
+  - ufw
+  - fail2ban
+
+runcmd:
+  - curl -fsSL https://get.docker.com | sh
+  - systemctl enable docker
+  - systemctl start docker
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 22/tcp
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw --force enable
+  - mkdir -p /opt/trendpulse
+  - chown ${deploy_user}:${deploy_user} /opt/trendpulse
+  - systemctl enable fail2ban
+  - systemctl start fail2ban

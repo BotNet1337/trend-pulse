@@ -1,0 +1,24 @@
+# Hetzner Cloud (project TrendPulse → Security → API Tokens → Generate, Read & Write)
+hetzner_api_token = "YOUR_HETZNER_API_TOKEN"
+server_type       = "cx32"   # 4 vCPU, 8GB RAM, 80GB SSD — closeout requires ≥4GB/≥40GB
+location          = "nbg1"   # Nuremberg; keep close to the Object Storage region
+
+# SSH
+deploy_user    = "deploy"
+ssh_public_key = "ssh-ed25519 AAAA... your-key"
+# ssh_allowed_ips = ["YOUR_IP/32"]  # least-privilege: restrict SSH to your IP
+
+# Cloudflare (zone is created by environments/org — apply that first)
+cloudflare_api_token = "YOUR_CLOUDFLARE_API_TOKEN"
+cloudflare_zone_id   = "YOUR_ZONE_ID"   # cd ../org && terraform output -raw zone_id
+domain               = "foresignal.biz"
+
+# Hetzner Object Storage (TASK-056 — backups)
+# Endpoint format: https://<region>.your-objectstorage.com (fsn1 / nbg1 / hel1)
+# Credentials: Hetzner Console → project TrendPulse → Object Storage → Manage credentials
+s3_endpoint           = "https://nbg1.your-objectstorage.com"
+s3_region             = "nbg1"  # MUST match the slug in s3_endpoint (NOT "eu-central")
+s3_access_key         = "YOUR_S3_ACCESS_KEY"
+s3_secret_key         = "YOUR_S3_SECRET_KEY"
+s3_backup_bucket_name = "trendpulse-backups"
+# backup_expire_after_days = 30

@@ -1,0 +1,19 @@
+# Cloudflare (https://dash.cloudflare.com/profile/api-tokens — see variables.tf for permissions)
+cloudflare_api_token  = "YOUR_CLOUDFLARE_API_TOKEN"
+cloudflare_account_id = "YOUR_ACCOUNT_ID"
+
+# Domain (registrar: GoDaddy — set Cloudflare NS there after apply)
+domain = "foresignal.biz"
+
+# Email routing — all addresses forward to your real mailbox
+email_catch_all_destination = "your-email@gmail.com"
+email_dmarc_rua             = "your-email@gmail.com"
+email_dmarc_policy          = "none"
+
+email_routes = {
+  support = "your-email@gmail.com"
+}
+
+# Resend SMTP (outbound email) — enable later, when SMTP creds are provisioned:
+# resend_enabled    = true
+# resend_dkim_value = "p=MIGfMA0GCSq..."  # Resend → Domains → Add Domain → DNS Records
