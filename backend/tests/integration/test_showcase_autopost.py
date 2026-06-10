@@ -279,6 +279,52 @@ def test_retry_tick_resends_pending_cluster(db_session: Session) -> None:
     )
 
 
+def test_fix_cases_runs_without_tg_creds(db_session: Session) -> None:
+    """TASK-045 invariant: fixation is independent of posting credentials.
+
+    When showcase_bot_token / showcase_channel_chat_id are empty (no posting),
+    _run_tick_body must still call fix_cases() and insert a showcase_cases row
+    for any cluster with viral_score >= showcase_case_min_score.
+
+    RED: with the current code _run_tick_body returns early at the creds guard
+    (line ~104) before fix_cases is called, so no row is inserted → FAIL.
+    GREEN: after restructuring, fix_cases runs unconditionally; creds guard only
+    controls the posting path.
+    """
+    from sqlalchemy import func, select
+
+    from showcase.tasks import _run_tick_body
+    from storage.models.showcase_cases import ShowcaseCase
+
+    now = datetime.now(UTC)
+    showcase_user_id = _seed_showcase_user(db_session)
+    _seed_cluster(
+        db_session,
+        user_id=showcase_user_id,
+        topic="No-creds fixation test",
+        viral_score=92.0,  # >= default threshold of 90.0
+        first_seen=now - timedelta(hours=2),
+    )
+    db_session.commit()
+
+    # Settings with NO posting creds but valid case threshold.
+    settings = _make_settings(
+        showcase_bot_token="",
+        showcase_channel_chat_id="",
+        showcase_case_min_score=90.0,
+    )
+
+    with patch("config.get_settings", return_value=settings):
+        _run_tick_body(db_session)
+
+    db_session.expire_all()
+    count = db_session.scalar(select(func.count(ShowcaseCase.id)))
+    assert count == 1, (
+        f"Expected 1 showcase_cases row even without TG creds, got {count}. "
+        "fix_cases must run independently of the posting-creds guard."
+    )
+
+
 def test_pending_row_does_not_consume_daily_cap(db_session: Session) -> None:
     """AC5 / AC3: a stuck pending row must not eat the daily cap.
 

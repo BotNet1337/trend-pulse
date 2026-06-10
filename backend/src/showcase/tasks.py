@@ -78,6 +78,9 @@ def _run_tick_body(session: Session) -> None:
 
     Separated from the Celery task decorator so unit tests can call this directly
     with a mock/real session without going through Celery plumbing.
+
+    Invariant (TASK-045): fix_cases() runs unconditionally — fixation is independent
+    of posting credentials.  The posting-creds guard only controls the posting path.
     """
     from sqlalchemy import func, select
     from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -93,7 +96,25 @@ def _run_tick_body(session: Session) -> None:
     settings = get_settings()
     global _WARNED_NO_CREDS, _WARNED_NO_PUBLIC_BASE_URL
 
+    now = datetime.now(UTC)
+
+    # --- Fixate qualifying clusters as proof-of-speed cases (TASK-045) ---
+    # Runs unconditionally — fixation is INDEPENDENT of posting credentials.
+    # Best-effort: any exception is logged and suppressed so the beat loop always
+    # continues and posting is never blocked (Invariant).
+    try:
+        from showcase.cases import fix_cases
+
+        fix_cases(session, settings=settings, now=now)
+        session.commit()
+    except Exception as cases_exc:
+        logger.warning(
+            "fix_cases error — suppressed (fixation must not break posting)",
+            extra={"exc_type": type(cases_exc).__name__},
+        )
+
     # AC4: check creds; no-op + warn-once if missing.
+    # Posting guard is AFTER fix_cases so fixation always happens regardless of creds.
     if not settings.showcase_bot_token or not settings.showcase_channel_chat_id:
         if not _WARNED_NO_CREDS:
             _WARNED_NO_CREDS = True
@@ -125,7 +146,6 @@ def _run_tick_body(session: Session) -> None:
     showcase_user_id: int = showcase_row.id
 
     # --- Query showcase clusters within 24h window ---
-    now = datetime.now(UTC)
     window_start = now - timedelta(seconds=settings.trending_window_seconds)
 
     stmt = (

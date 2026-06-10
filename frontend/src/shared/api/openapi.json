@@ -342,6 +342,66 @@
         "title": "Body_verify_verify_auth_verify_post",
         "type": "object"
       },
+      "CaseItem": {
+        "additionalProperties": false,
+        "description": "Aggregate projection of one proof-of-speed case — aggregate fields only.\n\nFields:\n    title:              Sanitized display label (sanitize_topic_label applied).\n    viral_score:        Composite virality score at fixation time.\n    first_seen:         UTC timestamp when the cluster was first detected.\n    mainstream_at:      UTC timestamp when the topic appeared in mainstream media\n                        (operator-filled). Always NOT NULL in responses (cases\n                        without mainstream_at are hidden from this endpoint).\n    lead_time_seconds:  Computed: (mainstream_at - first_seen) in whole seconds.\n                        Positive means we detected the trend before mainstream media.\n    channels_count:     Number of source channels (MVP = 1).\n\nDeliberately absent (security §5.5 / compliance §7):\n    - id (internal PK — not exposed)\n    - raw topic text, post content, channel handles, URLs\n    - created_at (internal audit field)",
+        "properties": {
+          "channels_count": {
+            "title": "Channels Count",
+            "type": "integer"
+          },
+          "first_seen": {
+            "format": "date-time",
+            "title": "First Seen",
+            "type": "string"
+          },
+          "lead_time_seconds": {
+            "title": "Lead Time Seconds",
+            "type": "integer"
+          },
+          "mainstream_at": {
+            "format": "date-time",
+            "title": "Mainstream At",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "viral_score": {
+            "title": "Viral Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "title",
+          "viral_score",
+          "first_seen",
+          "mainstream_at",
+          "lead_time_seconds",
+          "channels_count"
+        ],
+        "title": "CaseItem",
+        "type": "object"
+      },
+      "CasesResponse": {
+        "additionalProperties": false,
+        "description": "Response envelope for GET /cases.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CaseItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CasesResponse",
+        "type": "object"
+      },
       "ChannelRef": {
         "additionalProperties": false,
         "description": "A single source reference: a platform `kind` + its `handle` (ADR-001).",
@@ -1910,6 +1970,59 @@
         "summary": "Receive Ipn",
         "tags": [
           "billing"
+        ]
+      }
+    },
+    "/cases": {
+      "get": {
+        "description": "Return top proof-of-speed cases sorted by lead-time DESC.\n\nPublic endpoint: no authentication required.\n\nOnly cases where the operator has set ``mainstream_at`` are returned\n— cases without a mainstream timestamp are not yet proof-points.\n\nQuery params:\n    top_n: Max items to return.  Defaults to settings.cases_top_n_max.\n           422 if top_n exceeds settings.cases_top_n_max.\n\nResponse sorted by ``lead_time_seconds`` (= mainstream_at - first_seen) DESC.",
+        "operationId": "get_cases_cases_get",
+        "parameters": [
+          {
+            "description": "Max number of cases to return. Defaults to settings.cases_top_n_max; max is settings.cases_top_n_max. Must be ≥ 1 (422 on non-positive). 422 if top_n exceeds the configured maximum.",
+            "in": "query",
+            "name": "top_n",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Max number of cases to return. Defaults to settings.cases_top_n_max; max is settings.cases_top_n_max. Must be ≥ 1 (422 on non-positive). 422 if top_n exceeds the configured maximum.",
+              "title": "Top N"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CasesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Cases",
+        "tags": [
+          "cases"
         ]
       }
     },

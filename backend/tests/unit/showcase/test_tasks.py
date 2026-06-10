@@ -89,7 +89,14 @@ def _import_sender() -> Any:
 
 @pytest.fixture(autouse=True)
 def _reset_warn_once_flags() -> Any:
-    """Reset module-level warn-once flags so tests don't cross-contaminate."""
+    """Reset module-level warn-once flags so tests don't cross-contaminate.
+
+    Also patches `showcase.cases.fix_cases` to a no-op for all unit tests in this
+    file: these tests exercise the posting path only; fixation is covered by
+    integration/test_showcase_autopost.py::test_fix_cases_runs_without_tg_creds.
+    Patching ensures the mock-session scalar/execute sequences are not disrupted
+    by fix_cases DB calls that run before the posting path (TASK-045 restructure).
+    """
     import showcase.sender as sender_mod
     import showcase.tasks as tasks_mod
 
@@ -102,7 +109,8 @@ def _reset_warn_once_flags() -> Any:
     tasks_mod._WARNED_NO_PUBLIC_BASE_URL = False
     sender_mod._WARNED_MISSING.clear()
 
-    yield
+    with patch("showcase.cases.fix_cases", return_value=None):
+        yield
 
     # Restore (or leave reset — tests are isolated either way)
     tasks_mod._WARNED_NO_CREDS = old_warned_creds

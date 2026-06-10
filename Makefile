@@ -39,7 +39,7 @@ TF_DIR      := ops/terraform
         lint fmt typecheck test test-cov test-integration ci ci-fast \
         gen-openapi gen-types openapi-drift-check \
         backup backup-restore-check \
-        showcase-init
+        showcase-init case-mainstream
 
 # Default target: list everything.
 help:
@@ -77,6 +77,8 @@ help:
 	@echo "    gen-openapi      dump app.openapi() → $(OPENAPI_DUMP) (no server)"
 	@echo "    gen-types        regen $(GEN_TYPES) from the committed dump"
 	@echo "    openapi-drift-check  gen-openapi + gen-types + git diff --exit-code (fail on drift)"
+	@echo "  Showcase cases (TASK-045):"
+	@echo "    case-mainstream  ID=<id> AT=<iso8601>  set mainstream_at on a showcase_cases row"
 
 # --- Stack ---
 up:
@@ -220,3 +222,11 @@ openapi-drift-check: gen-openapi gen-types
 # Run once after `make up` on a fresh deploy or when catalog changes.
 showcase-init:
 	$(COMPOSE) exec api uv run python -m api.trending
+
+# --- Proof-of-speed cases — operator mainstream mark (TASK-045) ---
+# Set mainstream_at on a showcase_cases row.
+# Usage: make case-mainstream ID=<id> AT="2026-06-10T15:00:00Z"
+# Validates: mainstream_at must be strictly after first_seen (refuses otherwise).
+# Requires: stack up (postgres accessible via api container).
+case-mainstream:
+	$(COMPOSE) exec api uv run python scripts/case_mainstream.py --id '$(ID)' --at '$(AT)'
