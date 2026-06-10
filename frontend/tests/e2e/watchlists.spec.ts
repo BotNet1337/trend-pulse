@@ -30,6 +30,23 @@ async function registerAndLogin(page: Page, email: string, password: string) {
   });
 }
 
+// TASK-039 onboarding: AuthGuard force-redirects a user with 0 watchlists to
+// /onboarding. Tests that navigate before creating anything seed one watchlist
+// via API first so they exercise their target pages, not the onboarding screen.
+async function seedWatchlist(page: Page) {
+  const resp = await page.request.post('/api/watchlists', {
+    data: {
+      topic: 'seed-topic',
+      channel: { handle: '@seedchannel', kind: 'telegram' },
+      alert_config: { score_threshold: 50, min_channels: 1, notification_lang: 'en' },
+    },
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (resp.status() !== 201) {
+    throw new Error(`seedWatchlist failed: ${resp.status()} ${await resp.text()}`);
+  }
+}
+
 // -------------------------------------------------------------------------------
 
 // AC1 — create watchlist → appears in list (RED anchor, first test written)
@@ -40,6 +57,7 @@ test('AC1 — create watchlist → appears in list', async ({ page }) => {
   const password = 'S3curePassw0rd!';
 
   await registerAndLogin(page, email, password);
+  await seedWatchlist(page);
 
   // Navigate to watchlists (should be accessible after login)
   await page.goto('/watchlists');
@@ -121,10 +139,11 @@ test('AC2 — list → details → edit → delete', async ({ page }) => {
   // Click delete on the item
   const deleteBtn = page.getByRole('button', { name: /delete/i }).first();
   await deleteBtn.click();
-  // Confirm if dialog appears
-  const confirmBtn = page.getByRole('button', { name: /confirm|yes|delete/i }).last();
-  if (await confirmBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
-    await confirmBtn.click();
+  // Confirm ONLY inside a real dialog — a bare /confirm|yes|delete/i locator
+  // matches the (now disabled/detaching) Delete button itself and hangs.
+  const dialog = page.getByRole('dialog');
+  if (await dialog.isVisible({ timeout: 1000 }).catch(() => false)) {
+    await dialog.getByRole('button', { name: /confirm|yes|delete/i }).last().click();
   }
 
   // After delete, item should be gone
@@ -139,6 +158,7 @@ test('AC3 — bad handle → 422 → field error shown', async ({ page }) => {
   const password = 'S3curePassw0rd!';
 
   await registerAndLogin(page, email, password);
+  await seedWatchlist(page);
 
   await page.goto('/watchlists/new');
 
@@ -255,6 +275,7 @@ test('AC6 — nonexistent watchlist id → not-found state', async ({ page }) =>
   const password = 'S3curePassw0rd!';
 
   await registerAndLogin(page, email, password);
+  await seedWatchlist(page);
 
   // Navigate to a clearly nonexistent id
   await page.goto('/watchlists/999999999');
