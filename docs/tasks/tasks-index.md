@@ -3,7 +3,7 @@
 Surgical-change task docs produced by `trendpulse-plan` / `trendpulse-executor`.
 One row per `task-NNN-slug.md`. Newest at the bottom.
 
-Roadmap: [`../architecture/roadmap.md`](../architecture/roadmap.md). Epic A = Backend core, B = landing, C = frontend SPA, D = Hardening & growth (TASK-019..028) — **done**; хвост D: 029 in-progress, 030/032/033 перепривязаны к волне E, 031 — триггер $2k MRR. **Epic E = Path to revenue** (TASK-034..055) — текущая волна: ops-фундамент (E0), первая польза (E1), качество сигнала (E2), витрина (E3), деньги без трения (E4), цены (E5), бизнес-метрики (E6), масштаб (E7), новые рынки (E8). Полные планы: [`../product/epics/`](../product/epics/README.md); болевые точки: [`../architecture/pain-points.md`](../architecture/pain-points.md). Номера TASK-041..055 зарезервированы за эпиками E2..E7 (док создаётся `trendpulse-plan` при взятии в работу).
+Roadmap: [`../architecture/roadmap.md`](../architecture/roadmap.md). Epic A = Backend core, B = landing, C = frontend SPA, D = Hardening & growth (TASK-019..028) — **done**; хвост D: 029 in-progress, 030/032/033 перепривязаны к волне E, 031 — триггер $2k MRR. **Epic E = Path to revenue** (TASK-034..055) — текущая волна: ops-фундамент (E0), первая польза (E1), качество сигнала (E2), витрина (E3), деньги без трения (E4), цены (E5), бизнес-метрики (E6), масштаб (E7), новые рынки (E8). Полные планы: [`../product/epics/`](../product/epics/README.md); болевые точки: [`../architecture/pain-points.md`](../architecture/pain-points.md). Доки E2 (041–043) и E3 (044–046) готовы (planned); номера TASK-047..055 зарезервированы за эпиками E4..E7 (док создаётся `trendpulse-plan` при взятии в работу). TASK-057 — прод-запуск на VPS (launch).
 
 | ID | Title | Epic | Status | Owner | Deps | Updated |
 |----|-------|------|--------|-------|------|---------|
@@ -47,4 +47,11 @@ Roadmap: [`../architecture/roadmap.md`](../architecture/roadmap.md). Epic A = Ba
 | [TASK-038](./task-038-curated-channel-packs.md) | Curated channel packs — каталог, GET /packs, подписка в 1 клик вне лимита CHANNELS | E1 | done | backend | 004, 010 | 2026-06-10 |
 | [TASK-039](./task-039-onboarding-instant-value.md) | Onboarding instant value — showcase-тенант + GET /trending + экран после регистрации | E1 | done | backend | 038 | 2026-06-10 |
 | [TASK-040](./task-040-free-plan-alert-delay.md) | Free-план: задержка алертов 15–30 мин (deliver_after + resweep-уважение) | E1 | done | backend | 008, 010, 023 | 2026-06-10 |
+| [TASK-041](./task-041-historical-engagement-baseline.md) | Historical engagement baseline — channel_avg по скользящему 7d-окну канала | E2 | planned | backend | 008, 022 | 2026-06-10 |
+| [TASK-042](./task-042-alert-feedback-precision.md) | Фидбек 👍/👎 (URL-кнопки в TG-алерте) + alert_feedback + precision per user | E2 | planned | backend | 009, 036 | 2026-06-10 |
+| [TASK-043](./task-043-adaptive-threshold-anti-fatigue.md) | Адаптивный порог по доле 👎 + анти-fatigue (N алертов/час, группировка) | E2 | planned | backend | 042 | 2026-06-10 |
+| [TASK-044](./task-044-showcase-autoposting.md) | Showcase авто-постинг — топ-сигналы в публичный TG-канал (delay + CTA + анти-спам) | E3 | planned | backend | 035, 039 | 2026-06-10 |
+| [TASK-045](./task-045-proof-of-speed-cases.md) | Proof-of-speed — snapshot-кейсы showcase_cases + GET /cases (сырьё лендинга) | E3 | planned | backend | 044 | 2026-06-10 |
+| [TASK-046](./task-046-referral-program-usdt.md) | Реферальная программа USDT — ref_code + начисление при первой оплате + «Пригласи» | E3 | planned | backend | 003, 010 | 2026-06-10 |
 | [TASK-056](./task-056-hetzner-object-storage-infra.md) | Hetzner Object Storage infra — terraform-порт с DO (minio-провайдер, бакет, lifecycle) + S3-env в Ansible | E0 | done | infra | 012 | 2026-06-09 |
+| [TASK-057](./task-057-prod-launch-vps.md) | Прод-запуск на VPS — make deploy (provision→TLS→stack→showcase-init→smoke) одной командой | — | planned | infra | 012, 034, 039 | 2026-06-10 |
