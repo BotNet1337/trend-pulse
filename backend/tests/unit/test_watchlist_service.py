@@ -136,6 +136,51 @@ def test_create_raises_ref_validation_error(monkeypatch: pytest.MonkeyPatch) -> 
     channel_repo.get_or_create.assert_not_called()
 
 
+def test_update_threshold_re_snapshots_floor(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AC6 (TASK-043): manual PATCH threshold → threshold_floor re-snapshotted.
+
+    When a user manually updates score_threshold, the service must set
+    row.threshold_floor = row.threshold so the adapt loop uses the new value
+    as the floor baseline (Discussion: last-write-wins, PATCH re-anchors floor).
+    """
+    from storage.models.watchlists import Watchlist
+
+    # Build a watchlist row with an old threshold and floor.
+    row = Watchlist()
+    row.id = 7
+    row.user_id = 1
+    row.topic = "crypto"
+    row.threshold = 50.0
+    row.threshold_floor = 30.0  # old floor
+    row.min_channels = 1
+    row.lang = "en"
+    row.pack_slug = None
+
+    repo = MagicMock()
+    repo.get_by_id.return_value = row
+    monkeypatch.setattr(service, "WatchlistRepository", lambda: repo)
+
+    from storage.models.channels import Channel, SourceKind
+
+    channel = Channel(source_kind=SourceKind.TELEGRAM, handle="@chan_name")
+    channel.id = 5
+    monkeypatch.setattr(service, "_channel_for", lambda session, channel_id: channel)
+
+    session = MagicMock()
+    session.flush.return_value = None
+
+    from api.watchlist.schemas import AlertConfig, WatchlistUpdate
+
+    data = WatchlistUpdate(alert_config=AlertConfig(score_threshold=90, min_channels=1))
+    service.update(session, user_id=1, watchlist_id=7, data=data)
+
+    # After update: threshold should be 90.0, floor should be re-snapshotted to 90.0.
+    assert row.threshold == pytest.approx(90.0)
+    assert row.threshold_floor == pytest.approx(90.0), (
+        "threshold_floor must be re-snapshotted to the new threshold on PATCH"
+    )
+
+
 def test_create_inserts_and_maps_fields(monkeypatch: pytest.MonkeyPatch) -> None:
     repo = MagicMock()
     repo.list.return_value = []

@@ -6,7 +6,7 @@ materialized by `make ansible-unpack` into `development/env/*.env`.
 
 from functools import lru_cache
 
-from pydantic import field_validator
+from pydantic import ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Hosts that are allowed to use plain http:// for public_base_url — dev G2 runs
@@ -161,6 +161,29 @@ _DEFAULT_FEEDBACK_TOKEN_TTL_SECONDS: int = 604_800  # 7 days
 _DEFAULT_PRECISION_WINDOW_SECONDS: int = 604_800  # 7 days
 _DEFAULT_PUBLIC_BASE_URL: str = ""
 _DEFAULT_FEEDBACK_RATE_LIMIT_PER_MINUTE: int = 30
+
+# Adaptive threshold + anti-fatigue guards (TASK-043). Named, non-secret defaults;
+# time in SECONDS (CONVENTIONS).
+# `threshold_adapt_interval_seconds`: how often the adapt-thresholds beat task runs (6h).
+# `threshold_adapt_step`: how much threshold changes per tick (5.0 score units).
+# `threshold_adapt_range`: max drift from floor in either direction (20.0 score units);
+#   effective ceiling = floor + range; adaptation is clamped to [floor, floor+range].
+# `threshold_adapt_min_ratings`: minimum feedback ratings in the 7d window required
+#   before adaptation fires; fewer ratings → no-op (prevents noise from cold users).
+# `threshold_adapt_up_share`: downvote share strictly above this → threshold grows.
+# `threshold_adapt_down_share`: downvote share strictly below this → threshold shrinks.
+# `alerts_per_hour_limit`: max NEW alert rows creatable per user per sliding 1h window.
+#   Applied in the scorer create-path (not dispatch) — cheap guard before DB insert.
+# `alert_group_window_seconds`: suppress duplicate (user, topic) alerts within this
+#   window (default 1800 = 30 min). MVP: not vector-similarity — topic string match.
+_DEFAULT_THRESHOLD_ADAPT_INTERVAL_SECONDS: int = 21_600  # 6 hours
+_DEFAULT_THRESHOLD_ADAPT_STEP: float = 5.0
+_DEFAULT_THRESHOLD_ADAPT_RANGE: float = 20.0
+_DEFAULT_THRESHOLD_ADAPT_MIN_RATINGS: int = 5
+_DEFAULT_THRESHOLD_ADAPT_UP_SHARE: float = 0.5
+_DEFAULT_THRESHOLD_ADAPT_DOWN_SHARE: float = 0.2
+_DEFAULT_ALERTS_PER_HOUR_LIMIT: int = 6
+_DEFAULT_ALERT_GROUP_WINDOW_SECONDS: int = 1800  # 30 minutes
 
 # Signal latency metric (TASK-036). Named, non-secret defaults; time in SECONDS.
 # `latency_emit_interval_seconds`: how often the Beat task fires (default 5 min).
@@ -326,6 +349,29 @@ class Settings(BaseSettings):
     public_base_url: str = _DEFAULT_PUBLIC_BASE_URL
     feedback_rate_limit_per_minute: int = _DEFAULT_FEEDBACK_RATE_LIMIT_PER_MINUTE
 
+    # --- Adaptive threshold + anti-fatigue guards (TASK-043). Non-secret, settable;
+    # defaults above. ---
+    # Beat interval (seconds) for the adapt-thresholds task (default 6h).
+    threshold_adapt_interval_seconds: int = _DEFAULT_THRESHOLD_ADAPT_INTERVAL_SECONDS
+    # Score-unit step per adapt tick (how much threshold shifts).
+    threshold_adapt_step: float = _DEFAULT_THRESHOLD_ADAPT_STEP
+    # Maximum drift from floor; ceiling = floor + range (score units).
+    threshold_adapt_range: float = _DEFAULT_THRESHOLD_ADAPT_RANGE
+    # Minimum ratings in the 7d window before adaptation fires.
+    threshold_adapt_min_ratings: int = _DEFAULT_THRESHOLD_ADAPT_MIN_RATINGS
+    # Downvote share strictly above this → threshold grows (e.g. 0.5 = 50%).
+    threshold_adapt_up_share: float = _DEFAULT_THRESHOLD_ADAPT_UP_SHARE
+    # Downvote share strictly below this → threshold shrinks (e.g. 0.2 = 20%).
+    threshold_adapt_down_share: float = _DEFAULT_THRESHOLD_ADAPT_DOWN_SHARE
+    # Max new alert rows creatable per user per sliding 1h window (anti-fatigue).
+    # INVARIANT: the rate-guard window counts alerts.first_seen (== cluster first_seen),
+    # which only covers creations from clusters inside scorer_recent_window_seconds —
+    # keep scorer_recent_window_seconds <= 1h (the guard window) or older clusters'
+    # alerts silently escape this cap.
+    alerts_per_hour_limit: int = _DEFAULT_ALERTS_PER_HOUR_LIMIT
+    # Suppress duplicate (user, topic) alerts within this window (seconds).
+    alert_group_window_seconds: int = _DEFAULT_ALERT_GROUP_WINDOW_SECONDS
+
     # --- Signal latency metric (TASK-036). Non-secret, settable; defaults above.
     # Beat interval (seconds) for the emit_signal_latency_task.
     # Sliding window (seconds) of delivered alerts included in the metric. ---
@@ -372,6 +418,26 @@ class Settings(BaseSettings):
     environment: str = _DEFAULT_ENVIRONMENT
     # Non-secret: release tag (git sha / image tag injected at build time).
     release: str = _DEFAULT_RELEASE
+
+    @field_validator("threshold_adapt_step", "threshold_adapt_range")
+    @classmethod
+    def validate_adapt_positive(cls, v: float) -> float:
+        """Fail fast on misconfig: step/range must be positive (ceiling >= floor)."""
+        if v <= 0:
+            raise ValueError("threshold_adapt_step/range must be > 0")
+        return v
+
+    @field_validator("threshold_adapt_down_share")
+    @classmethod
+    def validate_adapt_shares(cls, v: float, info: ValidationInfo) -> float:
+        """Fail fast on misconfig: 0 <= down_share < up_share <= 1 (dead zone sane)."""
+        up = info.data.get("threshold_adapt_up_share")
+        if not 0.0 <= v <= 1.0 or (isinstance(up, float) and not v < up <= 1.0):
+            raise ValueError(
+                "adapt shares must satisfy 0 <= threshold_adapt_down_share < "
+                "threshold_adapt_up_share <= 1"
+            )
+        return v
 
     @field_validator("public_base_url", mode="before")
     @classmethod

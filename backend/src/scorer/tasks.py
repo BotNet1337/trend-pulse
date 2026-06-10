@@ -59,6 +59,10 @@ logger = logging.getLogger(__name__)
 # Seconds → hours conversion for the velocity time delta (named, not a magic literal).
 _SECONDS_PER_HOUR = 3600.0
 
+# Rate-guard sliding window (seconds): matches the alerts_per_hour_limit semantics.
+# Always 1 hour — a named constant so there is no magic literal at the call site.
+_RATE_GUARD_WINDOW_SECONDS: int = 3600
+
 
 @dataclass(frozen=True)
 class _TopicConfig:
@@ -275,6 +279,75 @@ def _persist_score(
     return components.viral_score
 
 
+def check_rate_guard(
+    session: Session,
+    *,
+    user_id: int,
+    settings: "Settings",
+) -> bool:
+    """Rate-guard: True = skip (at/over hourly limit), False = allow creation.
+
+    Counts the user's Alert rows with first_seen >= now - 1h (sliding window).
+    If count >= alerts_per_hour_limit → skip + log_event("alert_rate_limited").
+
+    The 1h window is a named constant (_RATE_GUARD_WINDOW_SECONDS), never a
+    magic literal (CONVENTIONS). Only gates CREATION; idempotency / deliver_after
+    semantics (TASK-040) are unaffected (guard fires before _create_alert_idempotent).
+    """
+    window_start = utcnow() - timedelta(seconds=_RATE_GUARD_WINDOW_SECONDS)
+    count = session.scalar(
+        select(func.count(Alert.id))
+        .where(Alert.user_id == user_id)
+        .where(Alert.first_seen >= window_start)
+    )
+    count = int(count) if count is not None else 0
+    limit = settings.alerts_per_hour_limit
+    if count >= limit:
+        log_event(
+            "alert_rate_limited",
+            user_id=user_id,
+            count=count,
+            limit=limit,
+        )
+        return True
+    return False
+
+
+def check_group_guard(
+    session: Session,
+    *,
+    user_id: int,
+    cluster: Cluster,
+    settings: "Settings",
+) -> bool:
+    """Group-guard: True = skip (duplicate topic in window), False = allow creation.
+
+    Checks if the user already has an alert for the same topic (via alerts JOIN clusters)
+    within alert_group_window_seconds.  Topic match via clusters.topic — MVP approach
+    (no vector similarity; clusters already deduplicate semantics — Discussion).
+
+    On skip: log_event("alert_group_limited") with user_id + cluster_id (NOT topic
+    string — raw content invariant, TASK-039 learnings: topic may be raw user text).
+    """
+    window_start = utcnow() - timedelta(seconds=settings.alert_group_window_seconds)
+    existing_alert_id = session.scalar(
+        select(Alert.id)
+        .join(Cluster, Alert.cluster_id == Cluster.id)
+        .where(Alert.user_id == user_id)
+        .where(Cluster.topic == cluster.topic)
+        .where(Alert.first_seen >= window_start)
+        .limit(1)
+    )
+    if existing_alert_id is not None:
+        log_event(
+            "alert_group_limited",
+            user_id=user_id,
+            cluster_id=cluster.id,
+        )
+        return True
+    return False
+
+
 def _create_alert_idempotent(
     session: Session,
     *,
@@ -372,6 +445,15 @@ def _score_user(
         if viral_score <= config.threshold:
             # Below (or at) threshold → no alert (AC3).
             continue
+
+        # --- Anti-fatigue guards (TASK-043): both must pass before creation. ---
+        # Rate-guard: max N new alerts per user per sliding 1h window.
+        if check_rate_guard(session, user_id=user_id, settings=settings):
+            continue
+        # Group-guard: no duplicate (user, topic) alerts within group-window.
+        if check_group_guard(session, user_id=user_id, cluster=cluster, settings=settings):
+            continue
+
         alert_id = _create_alert_idempotent(
             session,
             user_id=user_id,
