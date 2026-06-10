@@ -61,7 +61,7 @@ help:
 	@echo "    backup           pg_dump → Hetzner Object Storage (one-shot, requires S3_* env)"
 	@echo "    backup-restore-check  download latest dump → disposable PG → smoke-check (PASS/FAIL)"
 	@echo "  IaC (ops/ — Terraform + Ansible, ADR-005 §5):"
-	@echo "    tf-validate      terraform init -backend=false + validate (ops/terraform)"
+	@echo "    tf-validate      terraform init -backend=false + validate (ops/terraform/environments/{org,prod})"
 	@echo "    ansible-lint     ansible-lint over ops/ansible"
 	@echo "    ansible-check    ansible-playbook --syntax-check + --check (dry-run)"
 	@echo "  Dev / CI (uv run in backend/):"
@@ -146,8 +146,10 @@ backup-restore-check:
 # validate without touching the remote backend (AC2; -backend=false). init
 # fetches provider schemas; needs network the first time.
 tf-validate:
-	terraform -chdir=$(TF_DIR) init -backend=false
-	terraform -chdir=$(TF_DIR) validate
+	terraform -chdir=$(TF_DIR)/environments/org init -backend=false
+	terraform -chdir=$(TF_DIR)/environments/org validate
+	terraform -chdir=$(TF_DIR)/environments/prod init -backend=false
+	terraform -chdir=$(TF_DIR)/environments/prod validate
 
 ansible-lint:
 	ansible-lint $(ANSIBLE_DIR)
