@@ -48,7 +48,25 @@ async function registerAndLogin(page: Page, prefix: string): Promise<string> {
   const email = uniqueEmail(prefix);
   await register(page, email);
   await login(page, email);
+  await seedWatchlist(page);
   return email;
+}
+
+// TASK-039 onboarding: AuthGuard force-redirects a user with 0 watchlists to
+// /onboarding, so a freshly registered user never reaches /billing or /account.
+// Seed one watchlist via API right after login.
+async function seedWatchlist(page: Page) {
+  const resp = await page.request.post('/api/watchlists', {
+    data: {
+      topic: 'seed-topic',
+      channel: { handle: '@seedchannel', kind: 'telegram' },
+      alert_config: { score_threshold: 50, min_channels: 1, notification_lang: 'en' },
+    },
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (resp.status() !== 201) {
+    throw new Error(`seedWatchlist failed: ${resp.status()} ${await resp.text()}`);
+  }
 }
 
 // ---------------------------------------------------------------------------

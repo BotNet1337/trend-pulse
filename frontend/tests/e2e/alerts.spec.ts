@@ -38,6 +38,24 @@ async function registerAndLogin(page: Page, email: string, password: string) {
   });
 }
 
+// TASK-039 onboarding: AuthGuard force-redirects a user with 0 watchlists to
+// /onboarding, so a freshly registered user never reaches /alerts. Seed one
+// watchlist via API (cookie-authenticated) so these specs exercise their
+// target pages instead of the onboarding screen.
+async function seedWatchlist(page: Page) {
+  const resp = await page.request.post("/api/watchlists", {
+    data: {
+      topic: "seed-topic",
+      channel: { handle: "@seedchannel", kind: "telegram" },
+      alert_config: { score_threshold: 50, min_channels: 1, notification_lang: "en" },
+    },
+    headers: { "Content-Type": "application/json" },
+  });
+  if (resp.status() !== 201) {
+    throw new Error(`seedWatchlist failed: ${resp.status()} ${await resp.text()}`);
+  }
+}
+
 // ─── AC6 — auth guard ─────────────────────────────────────────────────────────
 
 // AC6 — unauth guard is tested first (fast, no seeding needed)
@@ -58,6 +76,7 @@ test("AC4 — empty state shown when no alerts exist", async ({ page }) => {
   const password = "S3curePassw0rd!";
 
   await registerAndLogin(page, email, password);
+  await seedWatchlist(page);
   await page.goto("/alerts");
   await expect(page).toHaveURL(/\/alerts/, { timeout: 8_000 });
 
@@ -77,6 +96,7 @@ test("AC1 — alerts feed shows seeded alerts (RED anchor)", async ({ page }) =>
   const password = "S3curePassw0rd!";
 
   await registerAndLogin(page, email, password);
+  await seedWatchlist(page);
 
   // At this point the user has no alerts (new registration).
   // Navigate to /alerts — should show empty state or list (AC1 with seeded data
@@ -100,6 +120,7 @@ test("AC3 — nonexistent alert id shows not-found state", async ({ page }) => {
   const password = "S3curePassw0rd!";
 
   await registerAndLogin(page, email, password);
+  await seedWatchlist(page);
 
   // Navigate to a detail page with a non-existent id
   await page.goto("/alerts/99999999");
