@@ -16,6 +16,7 @@ import {
   ConfirmEmailPage,
   ForgotPasswordPage,
   NotFoundPage,
+  OnboardingPage,
   ResetPasswordPage,
   SignInPage,
   SignUpPage,
@@ -123,6 +124,16 @@ const watchlistDetailRoute = createRoute({
   component: WatchlistDetailPage,
 });
 
+// Onboarding route — accessible to any authenticated user (TASK-039).
+// Decision: do NOT block access for users who already have watchlists; the route
+// is just not redirected TO (the redirect criterion is 0 watchlists, handled in
+// AuthGuard).  Direct navigation is always allowed.
+const onboardingRoute = createRoute({
+  getParentRoute: () => protectedContentRoute,
+  path: paths.onboarding,
+  component: OnboardingPage,
+});
+
 const signInRoute = createRoute({
   getParentRoute: () => anonymousLayoutRoute,
   path: paths.auth.signIn,
@@ -170,6 +181,7 @@ const routeTree = rootRoute.addChildren([
       watchlistsListRoute,
       watchlistCreateRoute,
       watchlistDetailRoute,
+      onboardingRoute,
     ]),
   ]),
   anonymousLayoutRoute.addChildren([

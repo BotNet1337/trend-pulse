@@ -111,6 +111,17 @@ _DEFAULT_FRONTEND_BASE_URL = "http://localhost"
 # Daily cadence is sufficient because reminder windows are in whole days (7/3/1).
 _DEFAULT_RENEWAL_CHECK_INTERVAL_SECONDS: int = 86_400
 
+# Trending / showcase tenant (TASK-039). Named, non-secret defaults.
+# `showcase_user_email`: system user created by ensure_showcase_tenant(); never
+# a real login — hashed_password is random and unpublished (security invariant).
+# `trending_top_k_default`: default number of clusters returned by GET /trending.
+# `trending_top_k_max`: hard cap (422 if exceeded).
+# `trending_window_seconds`: look-back window for showcase clusters (24h = 86400s).
+_DEFAULT_SHOWCASE_USER_EMAIL = "showcase@internal"
+_DEFAULT_TRENDING_TOP_K_DEFAULT = 10
+_DEFAULT_TRENDING_TOP_K_MAX = 20
+_DEFAULT_TRENDING_WINDOW_SECONDS: int = 86_400  # 24 hours
+
 # Signal latency metric (TASK-036). Named, non-secret defaults; time in SECONDS.
 # `latency_emit_interval_seconds`: how often the Beat task fires (default 5 min).
 # `latency_window_seconds`: sliding window of delivered alerts to measure (default 1h).
@@ -242,6 +253,15 @@ class Settings(BaseSettings):
     # --- Renewal notifications (TASK-027). Non-secret, settable; default above.
     # Beat interval (seconds) for the check_expiring_subscriptions task. ---
     renewal_check_interval_seconds: int = _DEFAULT_RENEWAL_CHECK_INTERVAL_SECONDS
+
+    # --- Trending / showcase tenant (TASK-039). Non-secret, settable; defaults above. ---
+    # Email for the system showcase user (never a real login; password random).
+    showcase_user_email: str = _DEFAULT_SHOWCASE_USER_EMAIL
+    # Default and max number of trending items returned by GET /trending.
+    trending_top_k_default: int = _DEFAULT_TRENDING_TOP_K_DEFAULT
+    trending_top_k_max: int = _DEFAULT_TRENDING_TOP_K_MAX
+    # Look-back window for showcase cluster scores (seconds). Default 24h.
+    trending_window_seconds: int = _DEFAULT_TRENDING_WINDOW_SECONDS
 
     # --- Signal latency metric (TASK-036). Non-secret, settable; defaults above.
     # Beat interval (seconds) for the emit_signal_latency_task.
