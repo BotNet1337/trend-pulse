@@ -19,7 +19,6 @@ Topic sanitization (compliance §7, AC5):
   TRENDING_LABEL_MAX_LEN characters. This keeps the public endpoint aggregate-only.
 """
 
-import re
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
@@ -31,49 +30,11 @@ from config import get_settings
 from storage.models.clusters import Cluster
 from storage.models.scores import Score
 from storage.models.users import User
+from textutils import TOPIC_LABEL_MAX_LEN as TRENDING_LABEL_MAX_LEN  # noqa: F401 (re-export)
+from textutils import sanitize_topic_label as _sanitize_topic_label  # public alias
 
-# Maximum character length for the sanitized topic display label returned in
-# TrendingItem.topic. Longer strings are truncated with an ellipsis.
-# Named constant (CONVENTIONS: no magic literals).
-TRENDING_LABEL_MAX_LEN: int = 80
-
-# Regex matching tokens that leak raw content (URLs, @-handles, emails).
-# Order matters: URL pattern is most specific and must come first so that
-# e-mail addresses (which contain @) are also removed by the URL branch when
-# they appear inside URLs; standalone emails follow; then @-handles.
-_RAW_CONTENT_RE = re.compile(
-    r"https?://\S+"  # http/https URLs
-    r"|t\.me/\S+"  # bare t.me links (no scheme)
-    r"|\S+@\S+\.\S+"  # email addresses
-    r"|@\w+",  # @-handles
-    re.IGNORECASE,
-)
-
-
-def _sanitize_topic_label(raw: str) -> str:
-    """Return a safe display label from a raw cluster topic string.
-
-    Strips URLs (http/https/t.me), @-handles, and email addresses, then
-    collapses runs of whitespace to a single space and caps the result to
-    TRENDING_LABEL_MAX_LEN characters (with ellipsis if truncated).
-
-    This is the API boundary sanitization required by compliance §7 (AC5):
-    ``clusters.topic`` may be raw post text; only a clean display label is
-    returned to callers.
-
-    Args:
-        raw: The raw ``clusters.topic`` value (centroid label from pipeline).
-
-    Returns:
-        A sanitized, human-readable display label ≤ TRENDING_LABEL_MAX_LEN chars.
-    """
-    cleaned = _RAW_CONTENT_RE.sub("", raw)
-    # Collapse multiple whitespace characters (including newlines) to a single space.
-    cleaned = re.sub(r"\s+", " ", cleaned).strip()
-    if len(cleaned) > TRENDING_LABEL_MAX_LEN:
-        # Reserve one character for the ellipsis so total len ≤ TRENDING_LABEL_MAX_LEN.
-        cleaned = cleaned[: TRENDING_LABEL_MAX_LEN - 1].rstrip() + "…"
-    return cleaned
+# Re-export so existing callers of the old import path keep working.
+# Internal implementations now delegate to textutils.sanitize_topic_label.
 
 
 def _get_showcase_user_id(session: Session) -> int | None:
