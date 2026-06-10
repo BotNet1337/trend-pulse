@@ -1,7 +1,7 @@
 ---
 id: TASK-041
 title: Historical engagement baseline — channel_avg по скользящему окну канала, не по батчу
-status: review              # planned → in-progress → review → done
+status: done                # planned → in-progress → review → done
 owner: backend
 created: 2026-06-10
 updated: 2026-06-10
@@ -68,14 +68,14 @@ content; проверить на locate, что `posts`-строки живут 
   строже/мягче) — задокументировать в learnings; скорость score-tick (доп. запрос на канал).
 
 ## Acceptance Criteria
-- [ ] **AC1 — ровный канал не триггерит (failing-test anchor).** Given канал с 7d-фоном
+- [x] **AC1 — ровный канал не триггерит (failing-test anchor).** Given канал с 7d-фоном
   ≈X и новый пост ≈X, Then engagement ≈ 1.0 (не спайк). RED первым.
-- [ ] **AC2 — спайк ловится.** Given фон ≈X и пост 10X, Then engagement ≈ 10 и при threshold
+- [x] **AC2 — спайк ловится.** Given фон ≈X и пост 10X, Then engagement ≈ 10 и при threshold
   ниже composite-score алерт создаётся.
-- [ ] **AC3 — холодный канал = fallback.** Given < min_posts постов за окно, Then
+- [x] **AC3 — холодный канал = fallback.** Given < min_posts постов за окно, Then
   channel_avg = batch-avg (как сейчас) + log_event("baseline_fallback").
-- [ ] **AC4 — окно скользит.** Посты старше окна не влияют на baseline.
-- [ ] **AC5 — G2.** Живой стек: два канала (ровный/спайковый) через реальный score-tick —
+- [x] **AC4 — окно скользит.** Посты старше окна не влияют на baseline.
+- [x] **AC5 — G2.** Живой стек: два канала (ровный/спайковый) через реальный score-tick —
   алерт только по спайковому; `make ci-fast` зелёный; explain запроса baseline — index/ok.
 
 ## Plan
@@ -106,18 +106,18 @@ content; проверить на locate, что `posts`-строки живут 
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 6
+current_step: done
 baseline_commit: "0600f58062fa0078825f3acb10ae19f923000a42"
 branch: "gsd/phase-e2-historical-engagement-baseline"
-lock: "loop-2026-06-10-wave-e"
+lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [x] 3 do (TDD: failing test → minimal code)
 - [x] 4 verify (G2 — tests + real behavior)
 - [x] 5 review (auto, adversarial)
 - [x] 5.5 security (n/a — подтверждено review: внутренняя математика, ORM bind params, без нового input)
-- [ ] 6 ship (PR)
-- [ ] 7 learnings (auto)
+- [x] 6 ship (PR #52, squash-merged 2026-06-10, CI зелёный)
+- [x] 7 learnings (auto — docs/learnings.md 2026-06-10 TASK-041)
 debug_runs: []
 
 ## Details
