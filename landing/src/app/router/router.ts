@@ -18,6 +18,10 @@ import { AccessibilityStatementPage } from '@/pages/legal/accessibility-statemen
 import { SecurityPage } from '@/pages/legal/security';
 import { DpaOverviewPage } from '@/pages/legal/dpa';
 import { DoNotSellOrSharePage } from '@/pages/legal/do-not-sell-or-share';
+import { BlogIndexPage } from '@/pages/blog/blog-index';
+import { DetectViralTelegramContentEarlyPage } from '@/pages/blog/detect-viral-telegram-content-early';
+import { TelegramTrendAlertsVsTgstatTelemetrPage } from '@/pages/blog/telegram-trend-alerts-vs-tgstat-telemetr';
+import { CryptoPaymentsForSaasGuidePage } from '@/pages/blog/crypto-payments-for-saas-guide';
 
 const rootRoute = createRootRoute({
   component: RootLayout,
@@ -102,6 +106,30 @@ const doNotSellRoute = createRoute({
   component: DoNotSellOrSharePage,
 });
 
+const blogIndexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/blog',
+  component: BlogIndexPage,
+});
+
+const blogDetectViralRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/blog/detect-viral-telegram-content-early',
+  component: DetectViralTelegramContentEarlyPage,
+});
+
+const blogVsTgstatTelemetrRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/blog/telegram-trend-alerts-vs-tgstat-telemetr',
+  component: TelegramTrendAlertsVsTgstatTelemetrPage,
+});
+
+const blogCryptoPaymentsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/blog/crypto-payments-for-saas-guide',
+  component: CryptoPaymentsForSaasGuidePage,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   pricingRoute,
@@ -116,6 +144,10 @@ const routeTree = rootRoute.addChildren([
   securityRoute,
   dpaRoute,
   doNotSellRoute,
+  blogIndexRoute,
+  blogDetectViralRoute,
+  blogVsTgstatTelemetrRoute,
+  blogCryptoPaymentsRoute,
 ]);
 
 export function createAppRouter() {

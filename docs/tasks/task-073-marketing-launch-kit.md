@@ -1,12 +1,12 @@
 ---
 id: TASK-073
 title: Маркетинговый launch-kit — X-аккаунт, SEO-статьи /blog/*, каталоги, closed-alpha
-status: planned             # planned → in-progress → review → done
+status: review              # planned → in-progress → review → done
 owner: infra
 created: 2026-06-11
 updated: 2026-06-11
 baseline_commit: "c390c4c"
-branch: ""
+branch: "task/073-marketing-launch-kit"
 tags: [launch, marketing, landing, content, runbook, growth]
 ---
 
@@ -190,18 +190,22 @@ alternativeto + крипто-каталоги засабмичены; 10–20 al
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
+current_step: 7
 baseline_commit: "c390c4c"
-branch: ""
+branch: "task/073-marketing-launch-kit"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (blog-страницы + черновики всех текстов + runbook-процедуры)
-- [ ] 4 verify (G2 — build/seo:validate + AC3-сверка; live AC1/AC4/AC5 — owner-таймлайн)
-- [ ] 5 review (auto, adversarial — фокус: честность контента)
-- [ ] 5.5 security (skip-кандидат — статический контент; подтвердить на review)
-- [ ] 6 ship (кодовая часть + черновики; owner-шаги — blocked-список в Details)
-- [ ] 7 learnings (auto)
+- [x] 3 do (blog-страницы + черновики всех текстов + runbook-процедуры — Details)
+- [x] 4 verify (G2 2026-06-11: unit 24/24, lint clean, build+sitemap 17 url,
+  seo:validate 17 routes ok, e2e против прод-сборки 21 passed / 2 skipped;
+  live AC1/AC4/AC5 — owner-таймлайн, blocked-список O1–O8 в Details)
+- [x] 5 review (adversarial, фокус честность: 2 правки — history «paid plans only»,
+  дедуп formatBlogDate; AC3-grep чист, инварианты закреплены юнит-тестами)
+- [x] 5.5 security (skip подтверждён: статический контент, нет input/auth/secrets;
+  diff просканирован — токенов/личных данных/внутренних URL нет)
+- [x] 6 ship (кодовая часть + черновики; owner-шаги — blocked-список O1–O8 в Details)
+- [ ] 7 learnings (в отчёте исполнителя; docs/learnings.md — вне scope этого запуска)
 debug_runs: []
 
 ## Details
@@ -213,3 +217,119 @@ Deps: TASK-057 (живой прод — без него некуда звать)
 Ship-модель как у 059/060: кодовая часть (blog) + все черновики мержатся сразу;
 owner-шаги (X, PH-триггер, alpha, 2-недельное наблюдение AC5) — blocked-список,
 закрывается по мере исполнения. AC5-таймлайн (2 недели) НЕ держит ship.)
+
+(do 2026-06-11, executor. Решения do-стадии:
+**Кодовая часть.** Блог = реестр статей `landing/src/shared/blog/articles.ts`
+(slug/path/title/seoTitle/seoDescription/datePublished/readingTime/excerpt — единый
+источник для индекса, seo.ts и тестов) + generic-рендерер
+`pages/blog/blog-article-layout.tsx` (блог-близнец `legal-page.tsx`, проза вместо
+аккордеона) + `blog-index.tsx` + 3 статьи. SEO: blog-ветка в `routeMeta` читает
+реестр (switch не разрастается), статьи получают JSON-LD `BlogPosting`.
+Slug'и зафиксированы: `/blog/detect-viral-telegram-content-early`,
+`/blog/telegram-trend-alerts-vs-tgstat-telemetr` (бренд в slug НЕ зашит),
+`/blog/crypto-payments-for-saas-guide`. Бренд везде через `SITE.brandName`;
+цены в крипто-гайде интерполируются из `SITE.pricing.plans` (урок task-017) —
+оба инварианта закреплены юнит-тестами `tests/unit/blog.test.ts` (скан исходников
+на литерал бренда, на `$NN`-литералы, на запрещённые обещания из урока task-018,
+на дату проверки фактов о конкурентах).
+**Runbook/черновики.** Один источник = этот раздел (full-system-test.md не трогаем:
+маркетинг — не системный тест). Все внешние тексты ниже прошли AC3-сверку
+с overview §6 / config.json до записи.)
+
+### Owner-runbook (blocked-список; зеркало для MANUAL-TODO §8)
+
+Статусы проставляет owner по мере исполнения. Код/черновики уже в репо.
+
+- [ ] **O1 — X-аккаунт (AC1).** Handle: `@foresignal`; занят → `@foresignal_biz`
+  → `@trendpulse_fs` (финальный выбор вписать сюда). Website: `https://foresignal.biz`.
+  Bio (EN, ≤160):
+  > Detect viral Telegram content before it explodes. Real-time alerts from public
+  > channels, measurable lead time. Free plan available.
+- [ ] **O2 — закреп (AC1).** Взять operator-confirmed кейс из
+  `GET https://foresignal.biz/api/v1/cases` (реальные `first_seen`/`lead_time`) +
+  скрин поста showcase-канала (TASK-070) со штампом «detected HH:MM UTC». Шаблон:
+  > "{title}" — detected {HH:MM} UTC, mainstream pickup {HH:MM} UTC.
+  > {N} min ahead. Viral score {score}.
+  > Spotted automatically in public Telegram channels. Live feed: {showcase_url}
+  > Try it: https://foresignal.biz
+  Кейсов нет → подтвердить кейс по процедуре TASK-045 ИЛИ закреп = скрин поста
+  канала со штампом, без цифр. Цифры НЕ выдумывать.
+- [ ] **O3 — 5 постов за неделю (AC1).** Ритм: 1 пост/будний день, далее 2–3/нед.
+  Черновики (EN):
+  1. **Intro.** «Most "breaking" Telegram news is hours old by the time you see it.
+     Foresignal watches public channels and alerts you when a story *starts*
+     spreading — with a first-seen timestamp, so the lead time is measurable, not
+     marketing. https://foresignal.biz»
+  2. **How it works.** «How we detect viral content early: 1) read public channels
+     in your watchlist 2) cluster the same story across channels (rephrased,
+     translated — still one story) 3) score the spread velocity 4) alert when it
+     crosses your threshold. Public channels only, raw content discarded after 48h.»
+  3. **Proof-of-speed кейс.** Шаблон O2 с другим кейсом из /api/v1/cases + скрин.
+  4. **Blog: how-to.** «Manual playbook for spotting viral Telegram posts before
+     mainstream: cross-channel repetition, first-hour velocity, upstream channels.
+     And why it stops scaling past a few dozen channels →
+     https://foresignal.biz/blog/detect-viral-telegram-content-early»
+  5. **Blog: честное сравнение.** «TGStat and Telemetr are great channel catalogs.
+     We are not one. Alert-first vs catalog-first — an honest comparison of which
+     tool fits which job →
+     https://foresignal.biz/blog/telegram-trend-alerts-vs-tgstat-telemetr»
+  Правило: каждый пост с цифрами — только из /api/v1/cases; AC3-сверка перед
+  публикацией (сомнение = вычеркнуть).
+- [ ] **O4 — Product Hunt черновик (AC4).** Заполнить на producthunt.com/posts/new,
+  НЕ сабмитить до триггера «7 подряд зелёных дней внешнего аптайм-монитора
+  (TASK-060)»; дату старта зелёной серии вписать сюда: ____.
+  - Name: Foresignal; Tagline (≤60): «Viral Telegram trends, detected before they
+    explode»; Topics: Analytics, Social Media, Crypto.
+  - Description: «Foresignal monitors public Telegram channels, clusters the same
+    story across channels and alerts you the moment it starts spreading — with a
+    first-seen timestamp and measurable lead time. Telegram bot + webhook delivery,
+    API on the top plan. Crypto payments (NOWPayments), free plan available.
+    Public channels only; raw content discarded after 48 hours.»
+  - Gallery: скрин hero лендинга; скрин алерта в Telegram; секция proof-of-speed
+    (/#proof-of-speed); скрин pricing; скрин showcase-канала.
+  - First comment (maker): «Maker here. Foresignal started as a personal tool:
+    I wanted to know about breaking crypto stories before the big aggregators
+    posted them. It reads public Telegram channels, clusters the same story across
+    channels and scores how fast it spreads. Every detection records its lead time
+    vs mainstream pickup — that number is the product. Happy to answer anything,
+    including why payments are crypto-only.»
+- [ ] **O5 — alternativeto.net (AC4).** Засабмитить приложение
+  (alternativeto.net/manage-item/) как alternative to TGStat и Telemetr.
+  Описание — первый абзац PH-description (O4). Лицензия: Freemium.
+- [ ] **O6 — индексация showcase-канала (AC4).** Проверить появление канала 070
+  в tgstat.com и telemetr.io (поиск по @handle). Не индексирован → у tgstat есть
+  форма «добавить канал» (tgstat.com/add) — добавить вручную; результат/дату
+  вписать сюда: ____.
+- [ ] **O7 — closed-alpha приглашения (AC5).** 10–20 личных DM из крипто-комьюнити
+  owner'а (НЕ паблик-бласт). Шаблон DM (EN; допустим личный перевод, фактов не
+  менять):
+  > Hey {name} — I built a thing you might actually use. Foresignal watches public
+  > Telegram channels and pings you when a story starts going viral (before the big
+  > channels pick it up; lead time is measured per detection). I'm inviting 10–20
+  > people I trust to a closed alpha — you get the Pro plan free for the test
+  > period, set up in ~5 minutes. Interested? https://foresignal.biz
+  Pro выдаётся вручную owner'ом (механизма промокодов нет и не пишем). Каждому
+  приглашённому: попросить честный 👍/👎 на алертах (кнопки TASK-042) и разрешение
+  цитировать фидбек.
+- [ ] **O8 — наблюдение 2 недели (AC5).** Воронка TASK-050 (регистрация → пак →
+  первый алерт) + money-dashboard TASK-051. Цель: ≥5 активаций, ≥2 цитаты/кейса
+  с явным разрешением. <5 активаций — тоже результат: причины из фидбека →
+  learnings → вход следующей итерации. Отчёт вписать сюда: ____.
+
+### Процедуры (AC6 — воспроизводимость)
+
+1. **X-постинг-ритм:** 2–3 поста/нед после стартовой недели; типы: кейс
+   (шаблон O2, данные только из /api/v1/cases), how-it-works/компл-факт, ссылка на
+   blog-статью. Перед каждым постом — AC3-чек: факт есть в overview §6/config.json?
+   нет → не публикуем. Личные данные пользователей — никогда.
+2. **PH-сабмит-триггер:** ежедневный аптайм-монитор TASK-060; 7 подряд зелёных
+   дней → сабмит O4 во вторник–четверг; день сабмита — отвечать на каждый
+   комментарий; фейл аптайма в серии → счётчик заново.
+3. **Alpha-онбординг:** DM (O7) → регистрация → owner вручную включает Pro →
+   через 3 дня спросить «получил первый полезный алерт?» → через 2 недели — итог
+   по воронке 050 + сбор цитат (только с явного разрешения).
+4. **Новая статья в блог:** добавить запись в `articles.ts` + страницу в
+   `pages/blog/` + роут в `router.ts` + путь в `SITE_ROUTES`; meta подхватятся
+   seo.ts/sitemap автоматически; гейты: `npm run test:unit && npm run build &&
+   npm run seo:validate` (юнит-тесты сами проверят уникальность title, отсутствие
+   литерала бренда и захардкоженных цен).
