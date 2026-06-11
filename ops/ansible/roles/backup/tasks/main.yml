@@ -1,5 +1,6 @@
 ---
-# Role: backup — install the daily pg_backup cron job on the prod host (TASK-034).
+# Role: backup — install the daily pg_backup cron job on the prod host (TASK-034)
+# + logrotate for the backup log and the weekly restore-check cron (TASK-061).
 #
 # Runs `make -C release backup-now` from the app directory once a day at
 # {{ backup_cron_hour }}:{{ backup_cron_minute }} UTC. The release bundle's
@@ -20,6 +21,25 @@
     group: root
     mode: "0640"
 
+# TASK-061: the log was the only audit trail AND grew forever. Weekly rotation,
+# 8 archives (~2 months of history), compressed.
+- name: Install logrotate config for the backup log
+  ansible.builtin.copy:
+    dest: /etc/logrotate.d/trendpulse-backup
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      {{ backup_cron_log }} {
+          weekly
+          rotate 8
+          compress
+          delaycompress
+          missingok
+          notifempty
+          create 0640 root root
+      }
+
 - name: Set MAILTO="" for trendpulse-pg-backup cron (suppress email, log-only)
   ansible.builtin.cron:
     name: MAILTO
@@ -28,6 +48,10 @@
     value: ""
     state: present
 
+# Fail-hooks (TASK-061): a failed backup / restore-check pings the ops TG chat
+# via the host_alerts script (deploy.yml runs that role first, so
+# host_alerts_script_path is in scope). Distinct reason per job → distinct
+# throttle buckets. The script always exits 0 — the hook never spams MAILTO.
 - name: Install daily pg_backup cron job
   ansible.builtin.cron:
     name: "trendpulse-pg-backup"
@@ -36,4 +60,19 @@
     minute: "{{ backup_cron_minute }}"
     job: >-
       cd {{ app_dir }} && make -C release backup-now >> {{ backup_cron_log }} 2>&1
+      || {{ host_alerts_script_path }} send pg_backup_failed
+      "daily pg backup failed, see {{ backup_cron_log }}"
+    state: present
+
+- name: Install weekly pg restore-check cron job (TASK-061)
+  ansible.builtin.cron:
+    name: "trendpulse-pg-restore-check"
+    user: root
+    weekday: "{{ backup_restore_check_cron_weekday }}"
+    hour: "{{ backup_restore_check_cron_hour }}"
+    minute: "{{ backup_restore_check_cron_minute }}"
+    job: >-
+      cd {{ app_dir }} && make -C release restore-check >> {{ backup_cron_log }} 2>&1
+      || {{ host_alerts_script_path }} send pg_restore_check_failed
+      "weekly restore-check failed, see {{ backup_cron_log }}"
     state: present

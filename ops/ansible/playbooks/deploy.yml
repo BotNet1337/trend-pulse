@@ -49,6 +49,10 @@
     # Issues the Let's Encrypt cert on the host + installs the renew timer.
     # Skipped when tls_enabled=false (bare-IP smoke run).
     - role: tls
+    # Installs the host→TG alert script + disk/memory check cron (TASK-061).
+    # Order matters: AFTER env (script reads rendered sensitive.env creds),
+    # BEFORE backup (backup cron fail-hooks call the script).
+    - role: host_alerts
     # Installs the daily pg_backup cron job (points at release/scripts).
     - role: backup
   tasks:

@@ -1,0 +1,34 @@
+---
+# Role: host_alerts — install the host→Telegram alert script + periodic
+# disk/memory check cron (TASK-061).
+#
+# Runs in deploy.yml AFTER the env role (the script reads the rendered
+# sensitive.env for OPS_TELEGRAM_* creds) and BEFORE the backup role (whose
+# cron fail-hooks call {{ host_alerts_script_path }}). Empty creds → the script
+# is a silent no-op, so a deploy without the ops bot stays valid (TASK-035
+# invariant). All tasks idempotent: re-deploys are 0-changed.
+
+- name: Ensure alert throttle state directory exists
+  ansible.builtin.file:
+    path: "{{ host_alerts_state_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Install trendpulse-host-alert.sh (single host→TG alert channel)
+  ansible.builtin.template:
+    src: trendpulse-host-alert.sh.j2
+    dest: "{{ host_alerts_script_path }}"
+    owner: root
+    group: root
+    # 0750 root-only: the script embeds paths to (and reads) the 0600 secrets file.
+    mode: "0750"
+
+- name: Install periodic disk/memory check cron job
+  ansible.builtin.cron:
+    name: "trendpulse-host-alert-check"
+    user: root
+    minute: "{{ host_alerts_check_minute }}"
+    job: "{{ host_alerts_script_path }} check"
+    state: present

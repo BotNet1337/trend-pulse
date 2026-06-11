@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+# trendpulse-host-alert.sh — the single host→Telegram alert channel (TASK-061).
+# {{ ansible_managed }} — rendered by ansible (roles/host_alerts); do NOT edit on
+# the host (ADR-005 discipline): change roles/host_alerts defaults and re-deploy.
+#
+# Usage:
+#   trendpulse-host-alert.sh check                   # cron: disk / memory thresholds
+#   trendpulse-host-alert.sh send <reason> [<text>]  # one-shot (cron fail-hooks)
+#
+# Behaviour mirrors the backend notify_ops (TASK-035):
+#   * missing env file / empty OPS_TELEGRAM_* creds  -> silent no-op (exit 0)
+#   * per-reason throttle: max 1 alert per reason per window (state files)
+#   * Telegram unreachable -> log + exit 0 (cron must never spam MAILTO)
+# Secrets hygiene: the bot token is read from the 0600 sensitive.env inside this
+# 0750 root-only script, never echoed/logged. Residual risk (accepted, see
+# TASK-061): the Bot API URL embeds the token, so a short-lived curl process is
+# visible in `ps` on this single-operator host.
+set -u
+
+ENV_FILE="{{ host_alerts_env_file }}"
+STATE_DIR="{{ host_alerts_state_dir }}"
+LOG_FILE="{{ host_alerts_log }}"
+THROTTLE_SECONDS="{{ host_alerts_throttle_seconds }}"
+CURL_TIMEOUT_SECONDS="{{ host_alerts_curl_timeout_seconds }}"
+DISK_USED_PCT_MAX="{{ host_alerts_disk_pct }}"
+MEM_AVAILABLE_PCT_MIN="{{ host_alerts_mem_available_pct }}"
+
+log() {
+    # Diagnostics only — never include the token. Log failure must not fail us.
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) host-alert: $*" >> "$LOG_FILE" 2>/dev/null || true
+}
+
+# Extract KEY=VALUE from the env file without sourcing it (values may contain
+# shell metacharacters; sourcing rendered secrets would be an injection hazard).
+env_value() {
+    sed -n "s/^$1=//p" "$ENV_FILE" 2>/dev/null | tail -n 1
+}
+
+# Fresh host before the first env-role render -> silent no-op (on the normal
+# deploy path the env role runs before host_alerts, so the file exists).
+[ -f "$ENV_FILE" ] || exit 0
+BOT_TOKEN="$(env_value OPS_TELEGRAM_BOT_TOKEN)"
+CHAT_ID="$(env_value OPS_TELEGRAM_CHAT_ID)"
+# Empty creds -> alerting disabled by configuration: silent no-op (notify_ops pattern).
+[ -n "$BOT_TOKEN" ] && [ -n "$CHAT_ID" ] || exit 0
+
+throttled() {
+    # Returns 0 (throttled) when an alert for this reason fired inside the window.
+    local state_file="$STATE_DIR/$1" now last
+    [ -f "$state_file" ] || return 1
+    now="$(date +%s)"
+    last="$(cat "$state_file" 2>/dev/null || echo 0)"
+    case "$last" in '' | *[!0-9]*) last=0 ;; esac
+    [ $((now - last)) -lt "$THROTTLE_SECONDS" ]
+}
+
+send_alert() {
+    # send_alert <reason> <text> — always returns 0 (alerting must never break
+    # the calling cron line; the alert IS the error path).
+    local reason="$1" text="$2"
+    if throttled "$reason"; then
+        log "throttled reason=$reason"
+        return 0
+    fi
+    # Send FIRST, then record state: on a 100%-full disk the state write fails,
+    # and a repeated alert is better than silence (TASK-061 edge case).
+    if curl -fsS -o /dev/null --max-time "$CURL_TIMEOUT_SECONDS" \
+        --data-urlencode "chat_id=$CHAT_ID" \
+        --data-urlencode "text=[trendpulse host] $reason: $text" \
+        "https://api.telegram.org/bot$BOT_TOKEN/sendMessage"; then
+        mkdir -p "$STATE_DIR" 2>/dev/null || true
+        date +%s > "$STATE_DIR/$reason" 2>/dev/null || log "state write failed reason=$reason"
+    else
+        log "send failed reason=$reason (telegram unreachable or rejected)"
+    fi
+    return 0
+}
+
+check_host() {
+    # Disk: used% on / above threshold.
+    local disk_used_pct mem_total_kb mem_available_kb
+    disk_used_pct="$(df -P / | awk 'NR==2 { gsub("%", "", $5); print $5 }')"
+    case "$disk_used_pct" in '' | *[!0-9]*) disk_used_pct=0 ;; esac
+    if [ "$disk_used_pct" -gt "$DISK_USED_PCT_MAX" ]; then
+        send_alert "disk_usage_high" \
+            "disk used ${disk_used_pct}% > ${DISK_USED_PCT_MAX}% on /"
+    fi
+    # Memory: MemAvailable below threshold % of MemTotal.
+    mem_total_kb="$(awk '/^MemTotal:/ { print $2 }' /proc/meminfo 2>/dev/null)"
+    mem_available_kb="$(awk '/^MemAvailable:/ { print $2 }' /proc/meminfo 2>/dev/null)"
+    case "$mem_total_kb" in '' | *[!0-9]* | 0) return 0 ;; esac
+    case "$mem_available_kb" in '' | *[!0-9]*) return 0 ;; esac
+    if [ $((mem_available_kb * 100)) -lt $((mem_total_kb * MEM_AVAILABLE_PCT_MIN)) ]; then
+        send_alert "memory_low" \
+            "MemAvailable ${mem_available_kb}kB < ${MEM_AVAILABLE_PCT_MIN}% of MemTotal ${mem_total_kb}kB"
+    fi
+    return 0
+}
+
+case "${1:-}" in
+    check)
+        check_host
+        ;;
+    send)
+        # Trust boundary: reason/text come ONLY from internal callers (the cron
+        # fail-hooks in roles/backup and check_host above) — all literals. The
+        # charset guard below is defense-in-depth: reason names a state file,
+        # so reject anything that could traverse paths if a caller ever changes.
+        if [ -z "${2:-}" ]; then
+            echo "usage: $0 send <reason> [<text>]" >&2
+            exit 64
+        fi
+        case "$2" in
+            *[!a-zA-Z0-9_-]*)
+                echo "invalid reason '$2' (allowed: [a-zA-Z0-9_-])" >&2
+                exit 64
+                ;;
+        esac
+        send_alert "$2" "${3:-cron job failed, see $LOG_FILE}"
+        ;;
+    *)
+        echo "usage: $0 {check|send <reason> [<text>]}" >&2
+        exit 64
+        ;;
+esac
+exit 0

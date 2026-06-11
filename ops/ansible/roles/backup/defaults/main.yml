@@ -8,3 +8,13 @@ backup_cron_hour: "3"
 backup_cron_minute: "0"
 # Log file for cron job output (MAILTO= silences email; log captures stdout+stderr).
 backup_cron_log: "/var/log/trendpulse-backup.log"
+
+# Weekly restore-check cron (TASK-061): Sunday 04:30 UTC — off-peak, and clear
+# of the daily 03:00 backup (restore-check pulls the latest dump and boots a
+# throwaway PG — heavy). Same log file = one audit trail.
+# Weekday (0 = Sunday) of the weekly restore-check run.
+backup_restore_check_cron_weekday: "0"
+# Hour (0-23, UTC) of the weekly restore-check run.
+backup_restore_check_cron_hour: "4"
+# Minute (0-59) of the hour.
+backup_restore_check_cron_minute: "30"
