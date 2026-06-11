@@ -11,13 +11,17 @@
 
 import logging
 from dataclasses import dataclass
+from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from billing.constants import _BILLING_PATH
 from billing.gateway.base import IpnEvent, PaymentGateway
+from billing.notifications import send_underpaid_notice
 from billing.plans import BillingPeriod, Plan
 from billing.service import activate_or_extend
+from config import get_settings
 from storage.models.base import utcnow
 from storage.models.subscriptions import BillingPayment
 from storage.models.users import User
@@ -28,6 +32,7 @@ logger = logging.getLogger(__name__)
 _ACTIVATING_STATUSES = frozenset({"finished", "confirmed"})
 
 _STATUS_PROCESSED = "processed"
+_STATUS_PARTIALLY_PAID = "partially_paid"
 
 
 class IpnRejected(Exception):
@@ -110,7 +115,13 @@ def process_ipn(
         logger.info(
             "billing.ipn non-activating status=%s order_id=%s", event.status, event.order_id
         )
+        # TASK-048: notify the user about an underpayment exactly once — only on
+        # the STATUS TRANSITION (NOWPayments re-sends IPNs; a replayed
+        # partially_paid already sees status == "partially_paid" and stays silent).
+        status_transition = payment.status != event.status
         payment.status = event.status
+        if event.status == _STATUS_PARTIALLY_PAID and status_transition:
+            _notify_underpaid(session, payment=payment, event=event)
 
     session.flush()
 
@@ -120,6 +131,40 @@ def process_ipn(
         activated=activated,
         idempotent_replay=False,
     )
+
+
+def _notify_underpaid(session: Session, *, payment: BillingPayment, event: IpnEvent) -> None:
+    """Best-effort «complete your payment» email on the partially_paid transition.
+
+    INVARIANT (AC7): never raises — the IPN must ack 200 with the status saved
+    even when templates/SMTP are down (same pattern as the referral hook above).
+
+    - `amount_due = payment.amount - event.actually_paid`, only when positive;
+      `actually_paid` absent/dust-overpaid → the email omits the exact sum.
+    - The link is `payment.payment_url` from OUR DB (persisted from the
+      NOWPayments create-invoice response) — NEVER a URL from the IPN body
+      (signed but external input = phishing vector). NULL (pre-0021 row) →
+      frontend `/billing` fallback.
+    - PII-safe logging: ids + exception TYPE only (the EmailSendError text
+      carries the recipient address — same rationale as billing.tasks).
+    """
+    try:
+        user = session.get(User, payment.user_id)
+        if user is None:  # pragma: no cover - FK guarantees presence
+            return
+        amount_due: Decimal | None = None
+        if event.actually_paid is not None:
+            due = payment.amount - event.actually_paid
+            if due > 0:
+                amount_due = due
+        pay_url = payment.payment_url or f"{get_settings().frontend_base_url}{_BILLING_PATH}"
+        send_underpaid_notice(user=user, payment=payment, amount_due=amount_due, pay_url=pay_url)
+    except Exception as exc:  # broad catch: email is best-effort, never fails the IPN
+        logger.warning(
+            "billing.ipn underpaid email hook failed user_id=%s error=%s (non-fatal)",
+            payment.user_id,
+            type(exc).__name__,
+        )
 
 
 def _assert_invoice_matches(payment: BillingPayment, event: IpnEvent) -> None:

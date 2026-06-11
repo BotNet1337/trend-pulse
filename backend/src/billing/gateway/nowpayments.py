@@ -63,6 +63,20 @@ def _to_decimal(value: object, *, field: str) -> Decimal:
         raise IpnVerificationError(f"IPN field {field!r} is not a valid amount") from exc
 
 
+def _to_optional_decimal(value: object, *, field: str) -> Decimal | None:
+    """Parse an OPTIONAL numeric field; absent or unparseable → None, not an error.
+
+    TASK-048: `actually_paid` only enriches the underpaid notice — a malformed
+    value must never fail an already-verified IPN.
+    """
+    if value is None:
+        return None
+    try:
+        return _to_decimal(value, field=field)
+    except IpnVerificationError:
+        return None
+
+
 class NowPaymentsGateway:
     """`PaymentGateway` over the NOWPayments REST API."""
 
@@ -191,4 +205,5 @@ class NowPaymentsGateway:
             status=status,
             amount=_to_decimal(body.get("price_amount"), field="price_amount"),
             currency=str(body.get("price_currency", "")),
+            actually_paid=_to_optional_decimal(body.get("actually_paid"), field="actually_paid"),
         )

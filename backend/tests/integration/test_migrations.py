@@ -76,3 +76,35 @@ def test_upgrade_head_creates_schema_with_vector_extension() -> None:
         assert current == head
     finally:
         engine.dispose()
+
+
+def test_billing_payment_url_migration_up_down() -> None:
+    """0021 (TASK-048): upgrade adds `billing_payments.payment_url` (nullable),
+    downgrade drops it cleanly, and re-upgrade restores it."""
+    from alembic import command
+
+    def _billing_columns(engine_: object) -> set[str]:
+        return {col["name"] for col in inspect(engine_).get_columns("billing_payments")}
+
+    engine = create_engine(get_settings().database_url)
+    try:
+        # Self-contained: rebuild the schema via alembic regardless of test order.
+        with engine.begin() as conn:
+            tables = (
+                conn.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'"))
+                .scalars()
+                .all()
+            )
+            for table in tables:
+                conn.execute(text(f'DROP TABLE IF EXISTS "{table}" CASCADE'))
+
+        command.upgrade(_alembic_config(), "head")
+        assert "payment_url" in _billing_columns(engine)
+
+        command.downgrade(_alembic_config(), "0020")
+        assert "payment_url" not in _billing_columns(engine)
+
+        command.upgrade(_alembic_config(), "head")
+        assert "payment_url" in _billing_columns(engine)
+    finally:
+        engine.dispose()

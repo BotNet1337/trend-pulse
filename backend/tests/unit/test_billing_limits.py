@@ -10,6 +10,9 @@ _packs_usage counts DISTINCT pack_slug, assert_within_limit(PACKS) raises at Fre
 TASK-049: Free CHANNELS cap changed 5→0 (Free = воронка, паки + задержка).
          PACKS cap for Free remains 1 — pack subscribe still works.
 
+TASK-048: expiry rollback gets a 72h grace window (GRACE_PERIOD_SECONDS) —
+         «expired → Free» honestly becomes «expired + grace elapsed → Free».
+
 The single entry under test is `billing.assert_within_limit`; `effective_plan`
 resolves the rollback. The session is mocked so these stay unit tests.
 """
@@ -19,6 +22,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from billing.constants import GRACE_PERIOD_SECONDS
 from billing.limits import (
     PlanLimitExceeded,
     _channel_usage,
@@ -30,6 +34,9 @@ from billing.plans import Plan, Resource
 from storage.models.base import utcnow
 from storage.models.subscriptions import Subscription
 from storage.models.users import User
+
+_ONE_HOUR = timedelta(hours=1)
+_GRACE = timedelta(seconds=GRACE_PERIOD_SECONDS)
 
 
 def _user(plan: str = "free", user_id: int = 1) -> User:
@@ -53,8 +60,13 @@ def _active_sub(plan: Plan) -> Subscription:
     return Subscription(user_id=1, plan=plan.value, expires_at=utcnow() + timedelta(days=10))
 
 
-def _expired_sub(plan: Plan) -> Subscription:
-    return Subscription(user_id=1, plan=plan.value, expires_at=utcnow() - timedelta(days=1))
+def _expired_sub(plan: Plan, *, expired_for: timedelta = _GRACE + _ONE_HOUR) -> Subscription:
+    """A subscription whose expiry passed `expired_for` ago (default: beyond grace).
+
+    TASK-048: the default is PAST the 72h grace window so the legacy
+    «expired → Free» tests keep their meaning («expired + grace → Free»).
+    """
+    return Subscription(user_id=1, plan=plan.value, expires_at=utcnow() - expired_for)
 
 
 # --- AC7: channel cap per plan ---
@@ -130,10 +142,11 @@ def test_team_topics_unlimited_passes() -> None:
     assert_within_limit(session, _user("team"), Resource.TOPICS)
 
 
-# --- AC8: expiry rollback ---
+# --- AC8: expiry rollback (+ 72h grace, TASK-048 AC4) ---
 
 
 def test_expired_pro_rolls_back_to_free() -> None:
+    """AC8 + grace TASK-048: expired beyond the 72h grace window → Free."""
     session = _session_with(subscription=_expired_sub(Plan.PRO))
     assert effective_plan(session, _user("pro")) is Plan.FREE
 
@@ -141,6 +154,42 @@ def test_expired_pro_rolls_back_to_free() -> None:
 def test_active_pro_stays_pro() -> None:
     session = _session_with(subscription=_active_sub(Plan.PRO))
     assert effective_plan(session, _user("pro")) is Plan.PRO
+
+
+def test_expired_1h_ago_within_grace_stays_pro() -> None:
+    """AC4 (TASK-048): expiry 1h ago is inside the 72h grace → plan retained."""
+    session = _session_with(subscription=_expired_sub(Plan.PRO, expired_for=_ONE_HOUR))
+    assert effective_plan(session, _user("pro")) is Plan.PRO
+
+
+def test_expired_71h_ago_within_grace_stays_pro() -> None:
+    """AC4 (TASK-048): 71h after expiry is still inside the 72h grace."""
+    session = _session_with(subscription=_expired_sub(Plan.PRO, expired_for=timedelta(hours=71)))
+    assert effective_plan(session, _user("pro")) is Plan.PRO
+
+
+def test_expired_73h_ago_beyond_grace_is_free() -> None:
+    """AC4 (TASK-048): 73h after expiry the grace is over → Free."""
+    session = _session_with(subscription=_expired_sub(Plan.PRO, expired_for=timedelta(hours=73)))
+    assert effective_plan(session, _user("pro")) is Plan.FREE
+
+
+def test_expired_team_within_grace_stays_team() -> None:
+    """AC4 (TASK-048): grace applies to every paid plan, not just Pro."""
+    session = _session_with(subscription=_expired_sub(Plan.TEAM, expired_for=_ONE_HOUR))
+    assert effective_plan(session, _user("team")) is Plan.TEAM
+
+
+def test_no_subscription_row_is_free_no_grace() -> None:
+    """TASK-048: a missing subscription row never gets grace — Free as before."""
+    session = _session_with(subscription=None)
+    assert effective_plan(session, _user("pro")) is Plan.FREE
+
+
+def test_null_expiry_is_free_no_grace() -> None:
+    """TASK-048: `expires_at IS NULL` (no paid period) stays Free — no grace."""
+    session = _session_with(subscription=Subscription(user_id=1, plan="pro", expires_at=None))
+    assert effective_plan(session, _user("pro")) is Plan.FREE
 
 
 def test_expired_pro_blocks_channels_over_free_cap() -> None:

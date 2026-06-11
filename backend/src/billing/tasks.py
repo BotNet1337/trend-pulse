@@ -22,13 +22,17 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from billing.constants import (
     _SECONDS_PER_DAY,
     CHECK_EXPIRING_SUBSCRIPTIONS_TASK,
     RENEWAL_REMINDER_DAYS,
 )
+from billing.deps import BillingNotConfiguredError, get_gateway
+from billing.gateway.base import PaymentGateway
 from billing.notifications import send_renewal_reminder
+from billing.service import find_or_create_renewal_invoice
 from celery_app import celery_app
 from storage.database import get_session
 from storage.models.subscriptions import Subscription
@@ -64,6 +68,55 @@ def _current_window(days_left: float) -> int | None:
     )
 
 
+def _renewal_gateway() -> PaymentGateway | None:
+    """The configured billing gateway, or None when billing is not set up.
+
+    Best-effort (TASK-048): an unconfigured gateway must never break the sweep —
+    reminders then fall back to the frontend `/billing` URL (AC3).
+    """
+    try:
+        return get_gateway()
+    except BillingNotConfiguredError:
+        logger.info("renewal sweep: billing gateway not configured — using /billing fallback")
+        return None
+
+
+def _precreate_renewal_invoice(
+    session: Session,
+    *,
+    subscription: Subscription,
+    user: User,
+    gateway: PaymentGateway | None,
+) -> str | None:
+    """Best-effort one-click invoice pre-creation for one subscription (TASK-048).
+
+    Returns the hosted payment-page URL, or None on any failure — the reminder
+    is more important than one-click, so errors degrade to the `/billing`
+    fallback and the sweep continues (AC3). The invoice row is committed
+    immediately so a later email failure cannot roll it back.
+
+    PII-safe: logs ids + exception TYPE only (no URLs, no addresses).
+    """
+    if gateway is None:
+        return None
+    try:
+        renew_url = find_or_create_renewal_invoice(
+            session, user=user, sub=subscription, gateway=gateway
+        )
+        # Persist the pre-created invoice row independently of the email outcome.
+        session.commit()
+        return renew_url
+    except Exception as exc:  # broad catch: best-effort, never abort the sweep
+        session.rollback()
+        logger.warning(
+            "renewal invoice pre-create failed subscription_id=%s user_id=%s error=%s",
+            subscription.id,
+            user.id,
+            type(exc).__name__,
+        )
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Core business logic (testable without Celery)
 # ---------------------------------------------------------------------------
@@ -82,6 +135,7 @@ def _check_expiring_subscriptions() -> int:
     cutoff: datetime = now + timedelta(days=max(RENEWAL_REMINDER_DAYS))
 
     sent: int = 0
+    gateway = _renewal_gateway()
 
     with get_session() as session:
         rows = (
@@ -121,11 +175,19 @@ def _check_expiring_subscriptions() -> int:
                 )
                 continue
 
+            # One-click renewal (TASK-048): pre-create (or reuse) a pending
+            # NOWPayments invoice and link straight to its payment page.
+            # Best-effort — None falls back to frontend `/billing` (AC3).
+            renew_url = _precreate_renewal_invoice(
+                session, subscription=subscription, user=user, gateway=gateway
+            )
+
             try:
                 send_renewal_reminder(
                     subscription=subscription,
                     user=user,
                     window_days=current_window,
+                    renew_url=renew_url,
                 )
                 # Mark sent + persist per-subscription so a later failure in the
                 # sweep cannot roll back an already-delivered reminder (exactly-once).

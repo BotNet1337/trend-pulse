@@ -84,3 +84,33 @@ def test_verify_ipn_tampered_body_rejected() -> None:
     tampered = raw.replace(b"finished", b"confirmed")
     with pytest.raises(IpnVerificationError):
         _gateway().verify_ipn(headers={_SIG_HEADER: sig}, raw_body=tampered)
+
+
+# ─── TASK-048: optional `actually_paid` on the IpnEvent ────────────────────────
+
+
+def test_verify_ipn_parses_actually_paid_when_present() -> None:
+    """AC6 (TASK-048): a numeric `actually_paid` rides into the event as Decimal."""
+    body = _ipn_body()
+    body["actually_paid"] = "20.5"
+    raw, sig = _sign(body, _IPN_SECRET)
+    event = _gateway().verify_ipn(headers={_SIG_HEADER: sig}, raw_body=raw)
+    assert event.actually_paid == Decimal("20.5")
+
+
+def test_verify_ipn_actually_paid_absent_is_none() -> None:
+    """AC6 (TASK-048): no `actually_paid` field → None (field is optional)."""
+    raw, sig = _sign(_ipn_body(), _IPN_SECRET)
+    event = _gateway().verify_ipn(headers={_SIG_HEADER: sig}, raw_body=raw)
+    assert event.actually_paid is None
+
+
+def test_verify_ipn_actually_paid_invalid_is_none_not_error() -> None:
+    """AC6 (TASK-048): a non-numeric `actually_paid` degrades to None — the
+    verified IPN is still accepted (optional field never fails verification)."""
+    body = _ipn_body()
+    body["actually_paid"] = "not-a-number"
+    raw, sig = _sign(body, _IPN_SECRET)
+    event = _gateway().verify_ipn(headers={_SIG_HEADER: sig}, raw_body=raw)
+    assert event.status == "finished"
+    assert event.actually_paid is None

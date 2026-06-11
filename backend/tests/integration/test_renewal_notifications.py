@@ -16,13 +16,47 @@ Marked `@pytest.mark.integration` — not run in `make ci-fast`.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy import select
 
+from billing.gateway.base import GatewayError, Invoice
+from billing.plans import BillingPeriod, Plan
 from billing.tasks import _check_expiring_subscriptions
-from storage.models.subscriptions import Subscription
+from storage.models.subscriptions import BillingPayment, Subscription
 from storage.models.users import PLAN_FREE, PLAN_PRO, User
+
+
+class _FakeGateway:
+    """In-memory PaymentGateway for sweep tests (create_invoice only)."""
+
+    def __init__(
+        self,
+        payment_url: str = "https://np.example/pay/oneclick-1",
+        error: Exception | None = None,
+    ) -> None:
+        self.create_calls = 0
+        self._payment_url = payment_url
+        self._error = error
+
+    def create_invoice(
+        self, *, plan: Plan, period: BillingPeriod, user: User, order_id: str
+    ) -> Invoice:
+        self.create_calls += 1
+        if self._error is not None:
+            raise self._error
+        return Invoice(
+            order_id=order_id,
+            payment_url=self._payment_url,
+            redirect_url=self._payment_url,
+            amount=Decimal("29"),
+            currency="usd",
+        )
+
+    def verify_ipn(self, *, headers: dict[str, str], raw_body: bytes) -> object:
+        raise NotImplementedError("the sweep never verifies IPNs")
 
 
 def _make_user(
@@ -246,3 +280,142 @@ def test_renewal_does_not_write_to_alerts_table(db_session: object) -> None:
 
     count_alerts = db_session.execute(text("SELECT COUNT(*) FROM alerts")).scalar()
     assert count_alerts == 0, f"Alerts table should be empty, got {count_alerts} rows"
+
+
+# ---------------------------------------------------------------------------
+# TASK-048 — one-click renewal invoice: pre-create, reuse, fallback
+# ---------------------------------------------------------------------------
+
+
+def _user_payments(session: object, user: User) -> list[BillingPayment]:
+    return list(
+        session.scalars(  # type: ignore[attr-defined]
+            select(BillingPayment).where(BillingPayment.user_id == user.id)
+        ).all()
+    )
+
+
+@pytest.mark.integration
+def test_sweep_precreates_one_click_invoice(db_session: object) -> None:
+    """AC1 (TASK-048): the reminder carries the payment_url of a pre-created
+    pending invoice, and the billing_payments row persists that URL."""
+    now = datetime.now(UTC)
+    user = _make_user(db_session, email="oneclick@example.com", plan=PLAN_PRO)
+    _make_subscription(db_session, user=user, plan=PLAN_PRO, expires_at=now + timedelta(days=3))
+    db_session.commit()
+
+    gateway = _FakeGateway()
+    sent_kwargs: list[dict[str, object]] = []
+
+    def _capture(**kwargs: object) -> None:
+        sent_kwargs.append(kwargs)
+
+    with (
+        patch("billing.tasks.get_gateway", return_value=gateway),
+        patch("billing.tasks.send_renewal_reminder", side_effect=_capture),
+    ):
+        count = _check_expiring_subscriptions()
+
+    assert count == 1
+    assert sent_kwargs[0]["renew_url"] == "https://np.example/pay/oneclick-1"
+
+    payments = _user_payments(db_session, user)
+    assert len(payments) == 1
+    assert payments[0].status == "pending"
+    assert payments[0].plan == "pro"
+    assert payments[0].period == "month"  # no processed payments → MONTH fallback
+    assert payments[0].payment_url == "https://np.example/pay/oneclick-1"
+
+
+@pytest.mark.integration
+def test_sweep_reuses_invoice_across_windows(db_session: object) -> None:
+    """AC2 (TASK-048): the invoice pre-created in the 3d window is REUSED in the
+    1d window — no second billing_payments row, same renew_url."""
+    now = datetime.now(UTC)
+    user = _make_user(db_session, email="reuse@example.com", plan=PLAN_PRO)
+    sub = _make_subscription(
+        db_session, user=user, plan=PLAN_PRO, expires_at=now + timedelta(days=3)
+    )
+    db_session.commit()
+
+    gateway = _FakeGateway()
+    sent_kwargs: list[dict[str, object]] = []
+
+    def _capture(**kwargs: object) -> None:
+        sent_kwargs.append(kwargs)
+
+    with (
+        patch("billing.tasks.get_gateway", return_value=gateway),
+        patch("billing.tasks.send_renewal_reminder", side_effect=_capture),
+    ):
+        assert _check_expiring_subscriptions() == 1  # window 3 → invoice created
+
+        # Time passes: the subscription slides into the 1-day window.
+        db_session.expire_all()
+        db_session.execute(
+            Subscription.__table__.update()
+            .where(Subscription.id == sub.id)
+            .values(expires_at=datetime.now(UTC) + timedelta(hours=20))
+        )
+        db_session.commit()
+
+        assert _check_expiring_subscriptions() == 1  # window 1 → reuse
+
+    assert gateway.create_calls == 1, "the 1d window must reuse the 3d-window invoice"
+    assert len(sent_kwargs) == 2
+    assert sent_kwargs[0]["renew_url"] == sent_kwargs[1]["renew_url"]
+    assert len(_user_payments(db_session, user)) == 1
+
+
+@pytest.mark.integration
+def test_sweep_falls_back_when_gateway_not_configured(db_session: object) -> None:
+    """AC3 (TASK-048): no NOWPayments credentials → reminder still goes out with
+    renew_url=None (the sender renders the frontend /billing fallback)."""
+    now = datetime.now(UTC)
+    user = _make_user(db_session, email="fallback@example.com", plan=PLAN_PRO)
+    _make_subscription(db_session, user=user, plan=PLAN_PRO, expires_at=now + timedelta(days=3))
+    db_session.commit()
+
+    sent_kwargs: list[dict[str, object]] = []
+
+    def _capture(**kwargs: object) -> None:
+        sent_kwargs.append(kwargs)
+
+    # get_gateway NOT patched: test settings carry no NOWPayments credentials,
+    # so the sweep takes the BillingNotConfiguredError → None path for real.
+    with patch("billing.tasks.send_renewal_reminder", side_effect=_capture):
+        count = _check_expiring_subscriptions()
+
+    assert count == 1
+    assert sent_kwargs[0]["renew_url"] is None
+    assert _user_payments(db_session, user) == []
+
+
+@pytest.mark.integration
+def test_sweep_continues_when_invoice_creation_fails(db_session: object) -> None:
+    """AC3 (TASK-048): a gateway error during pre-creation degrades that user to
+    the /billing fallback and the sweep still processes everyone."""
+    now = datetime.now(UTC)
+    user1 = _make_user(db_session, email="gwfail1@example.com", plan=PLAN_PRO)
+    user2 = _make_user(db_session, email="gwfail2@example.com", plan=PLAN_PRO)
+    _make_subscription(db_session, user=user1, plan=PLAN_PRO, expires_at=now + timedelta(days=1))
+    _make_subscription(db_session, user=user2, plan=PLAN_PRO, expires_at=now + timedelta(days=3))
+    db_session.commit()
+
+    gateway = _FakeGateway(error=GatewayError("NOWPayments is down"))
+    sent_kwargs: list[dict[str, object]] = []
+
+    def _capture(**kwargs: object) -> None:
+        sent_kwargs.append(kwargs)
+
+    with (
+        patch("billing.tasks.get_gateway", return_value=gateway),
+        patch("billing.tasks.send_renewal_reminder", side_effect=_capture),
+    ):
+        count = _check_expiring_subscriptions()
+
+    assert count == 2
+    assert gateway.create_calls == 2
+    assert all(kw["renew_url"] is None for kw in sent_kwargs)
+    assert _user_payments(db_session, user1) == []
+    assert _user_payments(db_session, user2) == []

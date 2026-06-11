@@ -214,6 +214,155 @@ def test_activate_or_extend_year_adds_365_days() -> None:
     assert user.plan == "pro"
 
 
+# ─── TASK-048: payment_url persistence + find_or_create_renewal_invoice ───────
+
+
+def _invoice(payment_url: str = "https://np.example/pay/new") -> object:
+    from billing.gateway.base import Invoice
+
+    return Invoice(
+        order_id="tp-order-x",
+        payment_url=payment_url,
+        redirect_url=payment_url,
+        amount=Decimal("29"),
+        currency="usd",
+    )
+
+
+def _renewal_session(
+    *,
+    last_processed: object | None = None,
+    pending: object | None = None,
+) -> MagicMock:
+    """Mock session: 1st scalars() = last processed payment, 2nd = pending invoice."""
+    session = MagicMock()
+    first_result = MagicMock()
+    first_result.first.return_value = last_processed
+    second_result = MagicMock()
+    second_result.first.return_value = pending
+    session.scalars.side_effect = [first_result, second_result]
+    return session
+
+
+def _sub(plan: str = "pro") -> object:
+    from storage.models.subscriptions import Subscription
+
+    return Subscription(user_id=1, plan=plan, expires_at=None)
+
+
+def _pending_payment(payment_url: str | None) -> object:
+    from storage.models.subscriptions import BillingPayment
+
+    return BillingPayment(
+        user_id=1,
+        order_id="tp-order-old",
+        payment_id=None,
+        plan="pro",
+        period="month",
+        amount=Decimal("29"),
+        currency="usd",
+        status="pending",
+        payment_url=payment_url,
+    )
+
+
+def test_create_invoice_persists_payment_url() -> None:
+    """AC1 (TASK-048): the gateway's payment_url lands on the pending row."""
+    session = MagicMock()
+    gateway = MagicMock()
+    gateway.create_invoice.return_value = _invoice("https://np.example/pay/abc")
+
+    invoice = service.create_invoice(
+        session, user=_user(), plan=Plan.PRO, period=BillingPeriod.MONTH, gateway=gateway
+    )
+
+    persisted = session.add.call_args.args[0]
+    assert invoice.payment_url == "https://np.example/pay/abc"
+    assert persisted.payment_url == "https://np.example/pay/abc"
+
+
+def test_find_or_create_reuses_fresh_pending_invoice() -> None:
+    """AC2 (TASK-048): a fresh pending invoice with payment_url is reused as-is."""
+    pending = _pending_payment("https://np.example/pay/old")
+    session = _renewal_session(pending=pending)
+    gateway = MagicMock()
+
+    url = service.find_or_create_renewal_invoice(session, user=_user(), sub=_sub(), gateway=gateway)
+
+    assert url == "https://np.example/pay/old"
+    gateway.create_invoice.assert_not_called()
+    session.add.assert_not_called()
+
+
+def test_find_or_create_creates_when_no_pending() -> None:
+    """AC1 (TASK-048): no reusable pending invoice → create one (fallback MONTH)."""
+    session = _renewal_session()
+    gateway = MagicMock()
+    gateway.create_invoice.return_value = _invoice("https://np.example/pay/new")
+
+    url = service.find_or_create_renewal_invoice(session, user=_user(), sub=_sub(), gateway=gateway)
+
+    assert url == "https://np.example/pay/new"
+    gateway.create_invoice.assert_called_once()
+    assert gateway.create_invoice.call_args.kwargs["period"] is BillingPeriod.MONTH
+    persisted = session.add.call_args.args[0]
+    assert persisted.payment_url == "https://np.example/pay/new"
+    assert persisted.status == "pending"
+
+
+def test_find_or_create_uses_last_processed_period() -> None:
+    """Decision (TASK-048): renewal period = period of the LAST processed payment."""
+    last = _pending_payment(None)
+    last.period = "year"  # type: ignore[attr-defined]
+    session = _renewal_session(last_processed=last)
+    gateway = MagicMock()
+    gateway.create_invoice.return_value = _invoice()
+
+    service.find_or_create_renewal_invoice(session, user=_user(), sub=_sub(), gateway=gateway)
+
+    assert gateway.create_invoice.call_args.kwargs["period"] is BillingPeriod.YEAR
+
+
+def test_find_or_create_invalid_stored_period_falls_back_to_month() -> None:
+    """Edge: an unparseable stored period never crashes the sweep — MONTH fallback."""
+    last = _pending_payment(None)
+    last.period = "fortnight"  # type: ignore[attr-defined]
+    session = _renewal_session(last_processed=last)
+    gateway = MagicMock()
+    gateway.create_invoice.return_value = _invoice()
+
+    service.find_or_create_renewal_invoice(session, user=_user(), sub=_sub(), gateway=gateway)
+
+    assert gateway.create_invoice.call_args.kwargs["period"] is BillingPeriod.MONTH
+
+
+def test_find_or_create_skips_pending_without_payment_url() -> None:
+    """Edge: a pre-0021 pending row (payment_url IS NULL) is not reused — the
+    lookup filters it out in SQL, so the second scalars() returns None here."""
+    session = _renewal_session(pending=None)
+    gateway = MagicMock()
+    gateway.create_invoice.return_value = _invoice("https://np.example/pay/new")
+
+    url = service.find_or_create_renewal_invoice(session, user=_user(), sub=_sub(), gateway=gateway)
+
+    assert url == "https://np.example/pay/new"
+    gateway.create_invoice.assert_called_once()
+
+
+def test_find_or_create_free_plan_returns_none() -> None:
+    """Edge: a non-priceable plan (free / manual grant) → None, no gateway call."""
+    session = MagicMock()
+    gateway = MagicMock()
+
+    url = service.find_or_create_renewal_invoice(
+        session, user=_user(), sub=_sub("free"), gateway=gateway
+    )
+
+    assert url is None
+    gateway.create_invoice.assert_not_called()
+    session.scalars.assert_not_called()
+
+
 def test_activate_or_extend_year_keeps_month_remainder() -> None:
     """AC3 (TASK-047): paying a year on an active month sub extends from the old
     expiry — the remaining days never burn (ADR-004 §4)."""

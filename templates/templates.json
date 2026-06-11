@@ -112,5 +112,26 @@
       "daysLeft": 3,
       "renewUrl": "https://app.trendpulse.local/billing"
     }
+  },
+  {
+    "eventName": "billing.underpaid",
+    "templatePath": "billing/underpaid",
+    "subject": "Complete your Foresignal payment",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "userName": { "type": "string" },
+        "planName": { "type": "string" },
+        "amountDue": { "type": ["number", "string", "null"] },
+        "payUrl": { "type": "string" }
+      },
+      "required": ["userName", "planName", "payUrl"]
+    },
+    "previewDefaults": {
+      "userName": "Alex",
+      "planName": "pro",
+      "amountDue": "9.00",
+      "payUrl": "https://nowpayments.io/payment/?iid=preview"
+    }
   }
 ]

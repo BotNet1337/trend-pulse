@@ -36,6 +36,8 @@ _ORDER_ID_MAX = 128
 _PAYMENT_ID_MAX = 128
 _STATUS_MAX = 32
 _CURRENCY_MAX = 32
+# Hosted payment-page URL (TASK-048). 2048 covers any practical URL length.
+_PAYMENT_URL_MAX = 2048
 # Monetary precision for the invoice amount (NOWPayments price_amount). Crypto
 # amounts can carry many decimals; store as exact Numeric, never float.
 _AMOUNT_PRECISION = 38
@@ -101,6 +103,12 @@ class BillingPayment(Base):
     )
     currency: Mapped[str] = mapped_column(String(_CURRENCY_MAX), nullable=False)
     status: Mapped[str] = mapped_column(String(_STATUS_MAX), nullable=False)
+    # Hosted payment-page URL from the gateway response (TASK-048, migration 0021):
+    # persisted so a pre-created renewal invoice can be REUSED across the 7/3/1
+    # reminder windows and the underpaid notice can link to the same page. The URL
+    # comes ONLY from the NOWPayments API response — never from an IPN body.
+    # NULL for rows created before 0021 (such rows are never reused).
+    payment_url: Mapped[str | None] = mapped_column(String(_PAYMENT_URL_MAX), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )

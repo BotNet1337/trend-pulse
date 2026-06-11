@@ -535,20 +535,24 @@ class TestAC4ExpiredPlanFree:
     """AC4: effective_plan(session, user) returns FREE for expired Pro → delay applied."""
 
     def test_expired_pro_treated_as_free(self) -> None:
-        """effective_plan returns FREE for expired subscription."""
+        """effective_plan returns FREE for an expired subscription.
+
+        TASK-048: expiry now carries a 72h grace window — «expired» honestly
+        means «expired AND the grace elapsed», so the sub expired 4 days ago.
+        """
         from billing.limits import effective_plan
         from billing.plans import Plan
         from storage.models.users import User
 
         now_fixed = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
 
-        # Build a Pro user with an expired subscription.
+        # Build a Pro user with a subscription expired beyond the grace window.
         user = MagicMock(spec=User)
         user.plan = "pro"
         user.id = 3
 
         expired_sub = MagicMock()
-        expired_sub.expires_at = now_fixed - timedelta(days=1)  # expired yesterday
+        expired_sub.expires_at = now_fixed - timedelta(days=4)  # beyond 72h grace
 
         session = MagicMock()
         session.scalars.return_value.one_or_none.return_value = expired_sub

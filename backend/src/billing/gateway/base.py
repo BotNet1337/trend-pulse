@@ -41,6 +41,11 @@ class IpnEvent:
     status: str
     amount: Decimal
     currency: str
+    # Amount actually paid so far (NOWPayments `actually_paid`, TASK-048) — used
+    # by the underpaid notice to compute the remaining balance. Optional with a
+    # default so existing constructions keep working; None when the field is
+    # absent or unparseable (it never affects signature verification).
+    actually_paid: Decimal | None = None
 
 
 class PaymentGateway(Protocol):
