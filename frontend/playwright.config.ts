@@ -22,6 +22,14 @@ export default defineConfig({
   reporter: [["html", { outputFolder: "playwright-report", open: "never" }]],
   use: {
     baseURL: BASE_URL,
+    // TASK-032 CSRF: the backend rejects cookie-auth mutations without an Origin
+    // header. A real browser sends Origin on same-origin POST/PATCH/DELETE, but
+    // Playwright's APIRequestContext (page.request.*) does not — set it so the
+    // request context mirrors the browser. new URL().origin normalizes the :80
+    // default port away → matches the backend allow-list (http://localhost).
+    extraHTTPHeaders: {
+      Origin: new URL(BASE_URL).origin,
+    },
     // Artifacts on failure
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
