@@ -20,7 +20,7 @@ Isolation:
 Public helpers (unit-testable without DB):
 - ``should_fix_case(cluster, settings)`` — pure threshold check.
 - ``build_case_title(raw_topic)`` — sanitize a raw topic string.
-- ``build_case_snapshot(cluster)`` — return the snapshot dict.
+- ``build_case_snapshot(cluster, *, channels_count)`` — return the snapshot dict.
 """
 
 from __future__ import annotations
@@ -35,12 +35,6 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
-
-# MVP channels_count: the scorer does not persist per-cluster channel counts yet.
-# We default to 1 (safe, honest) — a real join would be needed to expose the
-# actual source channel count.
-# TODO: when scorer persists channels_count per cluster, join and use it here.
-_CHANNELS_COUNT_MVP: int = 1
 
 
 # ---------------------------------------------------------------------------
@@ -96,19 +90,23 @@ def build_case_title(raw_topic: str) -> str:
     return sanitize_topic_label(raw_topic)
 
 
-def build_case_snapshot(cluster: Any) -> dict[str, Any]:
+def build_case_snapshot(cluster: Any, *, channels_count: int) -> dict[str, Any]:
     """Return a snapshot dict with all fields required for a showcase_cases insert.
 
     Fields:
         title:          Sanitized label (sanitize_topic_label applied).
         viral_score:    cluster.viral_score at fixation time.
         first_seen:     cluster.first_seen (detection timestamp).
-        channels_count: MVP = 1 (see _CHANNELS_COUNT_MVP docstring).
+        channels_count: Real unique-channel count of the cluster at scoring time
+                        (scores.channels_count, persisted by the scorer — TASK-066).
 
-    Compliance: no raw topic text; only the sanitized title is included.
+    Compliance: no raw topic text; only the sanitized title is included. The
+    channel count is an aggregate number — no channel ids/handles.
 
     Args:
-        cluster: Object with .topic (str), .viral_score (float), .first_seen (datetime).
+        cluster:        Object with .topic (str), .viral_score (float),
+                        .first_seen (datetime).
+        channels_count: Real per-cluster channel count (keyword-only).
 
     Returns:
         Dict with keys: title, viral_score, first_seen, channels_count.
@@ -117,7 +115,7 @@ def build_case_snapshot(cluster: Any) -> dict[str, Any]:
         "title": build_case_title(str(cluster.topic)),
         "viral_score": float(cluster.viral_score),
         "first_seen": cluster.first_seen,
-        "channels_count": _CHANNELS_COUNT_MVP,
+        "channels_count": channels_count,
     }
 
 
@@ -175,6 +173,7 @@ def fix_cases(
             Cluster.id,
             Cluster.topic,
             Score.viral_score,
+            Score.channels_count,
             Cluster.first_seen,
         )
         .join(Score, (Score.cluster_id == Cluster.id) & (Score.user_id == Cluster.user_id))
@@ -197,7 +196,7 @@ def fix_cases(
                 title=title,
                 viral_score=float(row.viral_score),
                 first_seen=row.first_seen,
-                channels_count=_CHANNELS_COUNT_MVP,
+                channels_count=row.channels_count,
                 mainstream_at=None,
                 created_at=now,
             )

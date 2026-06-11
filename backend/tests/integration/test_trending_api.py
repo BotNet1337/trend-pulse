@@ -76,6 +76,7 @@ def _make_score(
         engagement=0.5,
         cross_channel=0.5,
         viral_score=viral_score,
+        channels_count=channels_count,
     )
     session.add(score)
     session.flush()
@@ -179,6 +180,10 @@ def test_trending_returns_top_k_sorted_desc(
     assert scores[0] == pytest.approx(90.0)
     assert scores[1] == pytest.approx(75.0)
     assert scores[2] == pytest.approx(55.0)
+
+    # TASK-066 AC2: channels_count comes from the persisted Score row (not a fake 1).
+    counts = [item["channels_count"] for item in items]
+    assert counts == [5, 3, 2], f"Expected real per-cluster channel counts, got {counts}"
 
 
 # ─── AC5 — no raw content fields ──────────────────────────────────────────────

@@ -897,7 +897,8 @@ export interface components {
          *                             without mainstream_at are hidden from this endpoint).
          *         lead_time_seconds:  Computed: (mainstream_at - first_seen) in whole seconds.
          *                             Positive means we detected the trend before mainstream media.
-         *         channels_count:     Number of source channels (MVP = 1).
+         *         channels_count:     Number of source channels in the cluster at fixation
+         *                             time (real count from scores.channels_count).
          *
          *     Deliberately absent (security §5.5 / compliance §7):
          *         - id (internal PK — not exposed)
@@ -1164,7 +1165,9 @@ export interface components {
          *                       stripped at the API boundary; length is capped to
          *                       TRENDING_LABEL_MAX_LEN (80) characters (compliance §7, AC5).
          *       viral_score:    Composite virality score (score.viral_score).
-         *       channels_count: Number of channels contributing to this cluster.
+         *       channels_count: Real number of unique channels contributing to this cluster
+         *                       at scoring time (scores.channels_count, persisted by the
+         *                       scorer). Aggregate number only — no channel ids/handles.
          *       first_seen:     UTC timestamp when the cluster was first detected.
          *
          *     Deliberately absent (compliance §7):

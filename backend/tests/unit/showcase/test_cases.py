@@ -185,14 +185,18 @@ class TestIdempotency:
 
 
 class TestSnapshotFields:
-    """build_case_snapshot returns a dict with all required snapshot keys."""
+    """build_case_snapshot returns a dict with all required snapshot keys.
+
+    TASK-066: the snapshot takes an explicit keyword-only ``channels_count``
+    (the real per-cluster channel count from scores) — no MVP=1 hardcode.
+    """
 
     def test_snapshot_has_required_keys(self) -> None:
         """Snapshot dict contains: title, viral_score, first_seen, channels_count."""
         cases_mod = _import_cases()
         now = _now()
         cluster = FakeCluster(id=10, topic="DeFi surge", viral_score=92.0, first_seen=now)
-        snap = cases_mod.build_case_snapshot(cluster)
+        snap = cases_mod.build_case_snapshot(cluster, channels_count=3)
         assert "title" in snap
         assert "viral_score" in snap
         assert "first_seen" in snap
@@ -208,7 +212,7 @@ class TestSnapshotFields:
             viral_score=91.0,
             first_seen=now,
         )
-        snap = cases_mod.build_case_snapshot(cluster)
+        snap = cases_mod.build_case_snapshot(cluster, channels_count=2)
         assert "https://" not in snap["title"]
         assert "@spammer" not in snap["title"]
 
@@ -217,7 +221,7 @@ class TestSnapshotFields:
         cases_mod = _import_cases()
         now = _now()
         cluster = FakeCluster(id=12, topic="rally", viral_score=93.5, first_seen=now)
-        snap = cases_mod.build_case_snapshot(cluster)
+        snap = cases_mod.build_case_snapshot(cluster, channels_count=1)
         assert abs(snap["viral_score"] - 93.5) < 0.001
 
     def test_snapshot_first_seen_matches_cluster(self) -> None:
@@ -225,17 +229,36 @@ class TestSnapshotFields:
         cases_mod = _import_cases()
         now = _now()
         cluster = FakeCluster(id=13, topic="rally", viral_score=90.1, first_seen=now)
-        snap = cases_mod.build_case_snapshot(cluster)
+        snap = cases_mod.build_case_snapshot(cluster, channels_count=1)
         assert snap["first_seen"] == now
 
-    def test_snapshot_channels_count_is_positive_int(self) -> None:
-        """channels_count in snapshot must be a positive integer (MVP=1)."""
+    def test_snapshot_channels_count_matches_argument(self) -> None:
+        """channels_count in snapshot equals the explicitly passed real count."""
         cases_mod = _import_cases()
         now = _now()
         cluster = FakeCluster(id=14, topic="rally", viral_score=90.1, first_seen=now)
-        snap = cases_mod.build_case_snapshot(cluster)
+        snap = cases_mod.build_case_snapshot(cluster, channels_count=5)
         assert isinstance(snap["channels_count"], int)
-        assert snap["channels_count"] >= 1
+        assert snap["channels_count"] == 5
+
+    def test_snapshot_channels_count_boundaries(self) -> None:
+        """Boundary counts pass through untouched: 0 (degraded), 1 (single), large."""
+        cases_mod = _import_cases()
+        now = _now()
+        cluster = FakeCluster(id=16, topic="rally", viral_score=90.1, first_seen=now)
+        for count in (0, 1, 10_000):
+            snap = cases_mod.build_case_snapshot(cluster, channels_count=count)
+            assert snap["channels_count"] == count
+
+    def test_snapshot_channels_count_is_keyword_only(self) -> None:
+        """channels_count must be keyword-only — positional call raises TypeError."""
+        import pytest
+
+        cases_mod = _import_cases()
+        now = _now()
+        cluster = FakeCluster(id=17, topic="rally", viral_score=90.1, first_seen=now)
+        with pytest.raises(TypeError):
+            cases_mod.build_case_snapshot(cluster, 3)  # intentional positional misuse
 
     def test_snapshot_no_raw_content_field(self) -> None:
         """Snapshot must NOT have a raw 'topic' field from cluster — only 'title'."""
@@ -245,7 +268,7 @@ class TestSnapshotFields:
         cluster = FakeCluster(
             id=15, topic="raw post text https://evil.com xyz", viral_score=90.5, first_seen=now
         )
-        snap = cases_mod.build_case_snapshot(cluster)
+        snap = cases_mod.build_case_snapshot(cluster, channels_count=1)
         # No raw 'topic' key (only 'title' which is sanitized)
         assert "topic" not in snap or snap.get("topic") == snap.get("title"), (
             "If 'topic' is stored, it must equal the sanitized 'title'"

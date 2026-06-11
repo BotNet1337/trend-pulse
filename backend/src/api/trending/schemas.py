@@ -27,7 +27,9 @@ class TrendingItem(BaseModel):
                       stripped at the API boundary; length is capped to
                       TRENDING_LABEL_MAX_LEN (80) characters (compliance §7, AC5).
       viral_score:    Composite virality score (score.viral_score).
-      channels_count: Number of channels contributing to this cluster.
+      channels_count: Real number of unique channels contributing to this cluster
+                      at scoring time (scores.channels_count, persisted by the
+                      scorer). Aggregate number only — no channel ids/handles.
       first_seen:     UTC timestamp when the cluster was first detected.
 
     Deliberately absent (compliance §7):

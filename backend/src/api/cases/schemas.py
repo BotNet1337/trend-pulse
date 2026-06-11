@@ -23,7 +23,8 @@ class CaseItem(BaseModel):
                             without mainstream_at are hidden from this endpoint).
         lead_time_seconds:  Computed: (mainstream_at - first_seen) in whole seconds.
                             Positive means we detected the trend before mainstream media.
-        channels_count:     Number of source channels (MVP = 1).
+        channels_count:     Number of source channels in the cluster at fixation
+                            time (real count from scores.channels_count).
 
     Deliberately absent (security §5.5 / compliance §7):
         - id (internal PK — not exposed)

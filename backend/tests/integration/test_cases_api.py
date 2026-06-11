@@ -68,6 +68,7 @@ def _seed_cluster_and_score(
     topic: str,
     viral_score: float,
     first_seen: datetime | None = None,
+    channels_count: int = 1,
 ) -> int:
     """Seed cluster + score. Returns cluster id."""
     from storage.models.clusters import Cluster
@@ -91,6 +92,7 @@ def _seed_cluster_and_score(
         velocity=1.0,
         engagement=1.0,
         cross_channel=0.5,
+        channels_count=channels_count,
     )
     session.add(score)
     session.flush()
@@ -473,6 +475,40 @@ def test_fix_cases_snapshot_fields_are_complete(
     assert row.channels_count >= 1
     assert row.mainstream_at is None  # filled by operator later
     assert row.created_at is not None
+
+
+def test_fix_cases_persists_real_channels_count_from_score(
+    db_session_committing: Session,
+) -> None:
+    """TASK-066 AC3: fix_cases copies the real scores.channels_count into the snapshot."""
+    from sqlalchemy import select
+
+    from config import get_settings
+    from showcase.cases import fix_cases
+    from storage.models.showcase_cases import ShowcaseCase
+
+    settings = get_settings()
+    now = datetime.now(UTC)
+
+    showcase_uid = _seed_showcase_user(db_session_committing)
+    _seed_cluster_and_score(
+        db_session_committing,
+        user_id=showcase_uid,
+        topic="multi channel surge",
+        viral_score=settings.showcase_case_min_score + 5.0,
+        first_seen=now - timedelta(hours=2),
+        channels_count=5,
+    )
+    db_session_committing.commit()
+
+    fix_cases(db_session_committing, settings=settings, now=now)
+    db_session_committing.commit()
+
+    row = db_session_committing.scalar(select(ShowcaseCase))
+    assert row is not None
+    assert row.channels_count == 5, (
+        f"Expected snapshot channels_count == 5 (real count from scores), got {row.channels_count}"
+    )
 
 
 def test_fix_cases_title_is_sanitized(

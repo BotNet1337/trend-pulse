@@ -260,6 +260,7 @@ def _persist_score(
             velocity=components.velocity,
             engagement=components.engagement,
             cross_channel=components.cross_channel,
+            channels_count=inputs.unique_channels_count,
             viral_score=components.viral_score,
             computed_at=now,
         )
@@ -269,6 +270,7 @@ def _persist_score(
                 velocity=components.velocity,
                 engagement=components.engagement,
                 cross_channel=components.cross_channel,
+                channels_count=inputs.unique_channels_count,
                 viral_score=components.viral_score,
                 computed_at=now,
             ),

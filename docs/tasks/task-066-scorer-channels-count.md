@@ -1,7 +1,7 @@
 ---
 id: TASK-066
 title: Scorer персистирует channels_count per cluster — реальный счётчик в trending и proof-of-speed кейсах
-status: planned        # planned → in-progress → review → done
+status: review         # planned → in-progress → review → done
 owner: backend
 created: 2026-06-11
 updated: 2026-06-11
@@ -119,20 +119,20 @@ upsert `_persist_score` — `backend/src/scorer/tasks.py:244-279`). Поэтом
 
 ## Acceptance Criteria
 
-- [ ] **AC1 — персистенция.** Given кластер с постами из 3 разных каналов When
+- [x] **AC1 — персистенция.** Given кластер с постами из 3 разных каналов When
   scorer-тик (`_score_user` → `_persist_score`) Then строка `scores` несёт
   `channels_count == 3`; повторный тик с 4-м каналом → upsert обновляет до 4
   (integration, паттерн `test_persist_score_upsert_no_growth` —
   `test_scorer_alerts.py:295`).
-- [ ] **AC2 — trending.** Given showcase-кластер с `channels_count=3` в scores When
+- [x] **AC2 — trending.** Given showcase-кластер с `channels_count=3` в scores When
   `GET /v1/trending/{pack}` Then `items[].channels_count == 3` (не 1).
-- [ ] **AC3 — кейсы.** Given showcase-кластер с viral_score ≥ min_score и
+- [x] **AC3 — кейсы.** Given showcase-кластер с viral_score ≥ min_score и
   `channels_count=5` When `fix_cases` Then строка `showcase_cases.channels_count == 5`;
   `GET /v1/cases` отдаёт 5 (существующая выдача `api/cases/service.py:60` — без правок).
-- [ ] **AC4 — миграция безопасна.** Given БД с существующими строками `scores` When
+- [x] **AC4 — миграция безопасна.** Given БД с существующими строками `scores` When
   `alembic upgrade head` Then старые строки читаются с `channels_count == 1`
   (то же значение, что фейкали потребители, — без регресса витрин).
-- [ ] **AC5 — нет дрейфа.** `make ci` зелёный, включая `openapi-drift-check`
+- [x] **AC5 — нет дрейфа.** `make ci` зелёный, включая `openapi-drift-check`
   (типы перегенерированы в том же PR); `grep -rn "_CHANNELS_COUNT_MVP"` = 0;
   3 TODO удалены.
 
@@ -196,17 +196,17 @@ upsert `_persist_score` — `backend/src/scorer/tasks.py:244-279`). Поэтом
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
-baseline_commit: "c390c4c"
-branch: ""
+current_step: 6
+baseline_commit: "11d7f2c"
+branch: "task/066-scorer-channels-count"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + runtime + real behavior)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (if touches auth/input/secrets/OAuth)
-- [ ] 6 ship (confirm plan done → PR(s))
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + runtime + real behavior)
+- [x] 5 review (auto, adversarial)
+- [x] 5.5 security (skip — diff не касается auth/input/secrets; подтверждено на review)
+- [x] 6 ship (confirm plan done → PR(s))
 - [ ] 7 learnings (auto)
 debug_runs: []
 
@@ -217,3 +217,21 @@ debug_runs: []
 `scores` (владелец значения — scorer, потребители уже джойнят Score), миграция 0020
 с default=1 для старых строк. deps: TASK-022 (per-cluster посты, FK миграции 0007),
 TASK-045 (showcase_cases + fix_cases).)
+
+(do/verify 2026-06-11, executor agent-a661c09, baseline 11d7f2c: номер миграции
+перепроверен на do — head цепочки = 0019, номер **0020** свободен, взят как в доке;
+`down_revision="0019"`. TDD: RED — 7 unit-тестов на новую сигнатуру
+`build_case_snapshot(cluster, *, channels_count)` упали TypeError, затем GREEN.
+Verify (make up недоступен — bridge-подсети исчерпаны): lint ✓, mypy strict ✓
+(167 файлов), unit 603 passed; integration против одноразового
+pgvector/pgvector:pg16 на localhost:15432 — 227 passed / 10 skipped (skip только
+среда: templates-сервис и sentence_transformers); AC4 проверен вживую отдельной БД:
+строка scores, созданная на 0019, после `upgrade head` читается с channels_count=1,
+`downgrade 0019` дропает только колонку (данные целы). openapi-drift: регенераты
+gen-openapi/gen-types закоммичены в том же PR. grep `_CHANNELS_COUNT_MVP` = 0,
+3 TODO удалены. Review: APPROVE, 2 LOW (опционально: парный assert
+viral_score+channels_count в AC2-тесте; смысловая асимметрия 0-для-пустых vs
+1-для-backfill — осознанный edge case из плана). Security: skip подтверждён —
+нет auth/input/secrets поверхностей. Дедуп-кейс per plan: тот же кластер с выросшим
+счётчиком на следующем тике НЕ переписывает showcase_cases-строку
+(on_conflict_do_nothing) — кейс фиксирует момент первого пересечения порога.)
