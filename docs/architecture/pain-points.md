@@ -20,25 +20,23 @@ Source abstraction (ADR-001), cross-tenant чтение каналов, сегм
 | **P2** Эмбеддинг per-user (O(юзеры×посты), embed внутри `run_batch(user_id)`) | десятки-сотни юзеров | **TASK-037**: Redis-кэш по SHA-256 текста, TTL 48ч | **TASK-052**: глобальный pipeline по контенту |
 | **P3** Задержка сигнала ~7 мин (батч 60с + скорер 300с) — продаём скорость, не меряем | уже (концептуально) | **TASK-036**: метрика p50/p95 «пост→алерт» | **TASK-053**: событийный скоринг горячих кластеров |
 | **P4** Один VPS = одна точка отказа | первый инцидент провайдера | **TASK-034**: автобэкап (healthcheck уже есть) + внешний прибор /ready (TASK-060) | managed Postgres/Redis (ops-решение, когда выручка покроет) |
-| **P5** Токены открыто в БД | если утечка (низкая вероятность, высокий ущерб) | **accepted-risk — см. ниже** | **TASK-032**: at-rest шифрование перед публичным запуском / первым B2B |
+| **P5** Токены открыто в БД | если утечка (низкая вероятность, высокий ущерб) | **accepted-risk — см. ниже** | ~~**TASK-032**: at-rest шифрование перед публичным запуском / первым B2B~~ **done** (TASK-032, 2026-06-11): Fernet at-rest на `telegram_bot_token`/`webhook_url`, ключ из vault (FIELD_ENCRYPTION_KEY), migration 0019 |
 | **P6** Единый Postgres | тысячи юзеров (конец года) | индексы уже стоят (task-020/022); ретенция истории по планам | шардирование / отдельное векторное хранилище — **не в этом году** |
 | **P7** Redis = брокер + буфер + локи | тысячи юзеров | строгий TTL есть (48ч); мониторинг памяти — в **TASK-036** | **TASK-055**: два Redis-инстанса |
 | **P8** Бэкапы и восстановление | любой инцидент, хоть на 5 юзерах | **TASK-034**: ежедневный дамп + проверка восстановления — **не обсуждается** | managed DB с PITR (вместе с P4) |
 
-## P5 — Accepted risk (зафиксировано осознанно, 2026-06-09)
+## P5 — ЗАКРЫТ (TASK-032, 2026-06-11)
 
-`users.telegram_bot_token` и `users.webhook_url` хранятся в Postgres **в открытом виде**
-(honest-долг из task-003/009). Риск принят до публичного запуска при компенсирующих мерах:
+~~Accepted risk~~ **Реализовано**: `users.telegram_bot_token` и `users.webhook_url` теперь хранятся
+в Postgres **зашифрованными** (Fernet, `cryptography` lib, TypeDecorator `EncryptedString`).
 
-- TLS на транспорте (nginx edge, [network-design.md](./network-design.md));
-- Postgres не публикует порты наружу (отдельная сеть `postgres_net`);
-- секреты вычищаются из логов и Sentry (`_SCRUB_FIELD_SUFFIXES` в `observability/sentry.py` —
-  `_token`, `_secret`, `_password`, …);
-- токен ограничен по ущербу: бот-токен юзера позволяет слать сообщения от его бота, не даёт доступ
-  к аккаунту.
+- Ключ: `FIELD_ENCRYPTION_KEY` из env/vault (32-byte urlsafe-base64; validated at startup).
+- Lazy key resolution из `get_settings()` (lru_cached) — работает и в API и в Celery worker без app-init зависимости.
+- Migration 0019: шифрует existing plaintext-строки идемпотентно; InvalidToken-fallback на read-only (dual-read для rolling deploy).
+- Dev default: детерминированный placeholder (`_make_dev_fernet_key()`), не реальный ключ.
+- **Перед prod deploy**: установить `FIELD_ENCRYPTION_KEY` в vault (vault_field_encryption_key).
 
-**Срок пересмотра:** перед публичным запуском или первым B2B-клиентом — выполняется
-[TASK-032](../tasks/task-032-security-hardening.md) (Fernet/pgcrypto at-rest, ключ из env).
+Компенсирующие меры из accepted-risk по-прежнему активны (TLS, изолированная сеть, scrub в логах).
 
 ## Что выбрать, если делать только три вещи на этой неделе
 

@@ -38,7 +38,7 @@ Roadmap: [`../architecture/roadmap.md`](../architecture/roadmap.md). Epic A = Ba
 | [TASK-029](./task-029-frontend-ssr-enablement.md) | Frontend SSR enablement (TanStack hydration, cookie-forward) + manualChunks | D | done | frontend | 013, 014 | 2026-06-09 |
 | [TASK-030](./task-030-api-hardening-errors-versioning.md) | API hardening — единый error-envelope + machine-readable коды + /api/v1 версионирование | D | done | backend | 019 | 2026-06-09 |
 | [TASK-031](./task-031-twitter-source.md) | Twitter/X source readiness (collector/twitter по ADR-001 + per-source лимиты) | D | planned | backend | 005 | 2026-06-09 |
-| [TASK-032](./task-032-security-hardening.md) | Security hardening — per-route rate-limit + CSRF в nginx + at-rest шифрование (app-level, опц.) | D | planned | infra | 011, 012 | 2026-06-09 |
+| [TASK-032](./task-032-security-hardening.md) | Security hardening — per-route rate-limit + CSRF Origin middleware + Fernet at-rest encryption (closes P5) | D | done | infra | 011, 012 | 2026-06-11 |
 | [TASK-033](./task-033-gdpr-data-export.md) | GDPR data-export (GET /account/export, Art.20 portability) | D | planned | backend | 011 | 2026-06-09 |
 | [TASK-034](./task-034-pg-backup-restore-check.md) | Postgres backups — ежедневный дамп в Hetzner Object Storage + restore-check | E0 | done | infra | 056 | 2026-06-10 |
 | [TASK-035](./task-035-tg-pool-health.md) | TG-пул: целевой размер ≥3, health-метрика, self-alert опсам | E0 | done | backend | 005, 024 | 2026-06-10 |
