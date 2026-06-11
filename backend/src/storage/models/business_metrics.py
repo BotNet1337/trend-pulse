@@ -27,9 +27,7 @@ class BusinessMetricsDaily(Base):
     """One row per UTC calendar day holding funnel + billing snapshot counters."""
 
     __tablename__ = "business_metrics_daily"
-    __table_args__ = (
-        UniqueConstraint("day", name="uq_business_metrics_daily_day"),
-    )
+    __table_args__ = (UniqueConstraint("day", name="uq_business_metrics_daily_day"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     # UTC calendar date — the idempotency / conflict key.
