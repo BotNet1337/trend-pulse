@@ -51,3 +51,7 @@ fastapi_users = FastAPIUsers[User, int](get_user_manager, [auth_backend])
 
 # Reusable dependency that all user-facing routes depend on (ADR-002 tenant scope).
 current_user = fastapi_users.current_user(active=True)
+
+# Superuser-gated dependency for ops / admin endpoints (TASK-051).
+# Returns 401 if unauthenticated, 403 if authenticated but not a superuser.
+current_superuser = fastapi_users.current_user(active=True, superuser=True)

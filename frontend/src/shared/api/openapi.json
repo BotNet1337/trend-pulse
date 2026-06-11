@@ -342,6 +342,52 @@
         "title": "Body_verify_verify_v1_auth_verify_post",
         "type": "object"
       },
+      "BusinessMetricsResponse": {
+        "additionalProperties": false,
+        "description": "Aggregate business metrics response (no per-user data, extra='forbid').\n\nAll fields are global aggregates; no `email`, `user_id`, or other PII.\n`extra='forbid'` means an accidental per-user field would raise at response\nvalidation time, making the invariant structurally enforced.",
+        "properties": {
+          "active_subscriptions_by_plan": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Active Subscriptions By Plan",
+            "type": "object"
+          },
+          "avg_check_30d": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Avg Check 30D",
+            "type": "string"
+          },
+          "funnel_last_30d": {
+            "$ref": "#/components/schemas/FunnelSummary"
+          },
+          "mrr": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Mrr",
+            "type": "string"
+          },
+          "repeat_payment_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repeat Payment Rate"
+          }
+        },
+        "required": [
+          "mrr",
+          "active_subscriptions_by_plan",
+          "avg_check_30d",
+          "funnel_last_30d",
+          "repeat_payment_rate"
+        ],
+        "title": "BusinessMetricsResponse",
+        "type": "object"
+      },
       "CaseItem": {
         "additionalProperties": false,
         "description": "Aggregate projection of one proof-of-speed case — aggregate fields only.\n\nFields:\n    title:              Sanitized display label (sanitize_topic_label applied).\n    viral_score:        Composite virality score at fixation time.\n    first_seen:         UTC timestamp when the cluster was first detected.\n    mainstream_at:      UTC timestamp when the topic appeared in mainstream media\n                        (operator-filled). Always NOT NULL in responses (cases\n                        without mainstream_at are hidden from this endpoint).\n    lead_time_seconds:  Computed: (mainstream_at - first_seen) in whole seconds.\n                        Positive means we detected the trend before mainstream media.\n    channels_count:     Number of source channels (MVP = 1).\n\nDeliberately absent (security §5.5 / compliance §7):\n    - id (internal PK — not exposed)\n    - raw topic text, post content, channel handles, URLs\n    - created_at (internal audit field)",
@@ -529,6 +575,80 @@
           "detail"
         ],
         "title": "ErrorModel",
+        "type": "object"
+      },
+      "FunnelDayRow": {
+        "additionalProperties": false,
+        "description": "One UTC calendar day's funnel counters (from business_metrics_daily).",
+        "properties": {
+          "active_paid": {
+            "title": "Active Paid",
+            "type": "integer"
+          },
+          "churned": {
+            "title": "Churned",
+            "type": "integer"
+          },
+          "day": {
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "first_alerts_delivered": {
+            "title": "First Alerts Delivered",
+            "type": "integer"
+          },
+          "first_feedback": {
+            "title": "First Feedback",
+            "type": "integer"
+          },
+          "new_paid": {
+            "title": "New Paid",
+            "type": "integer"
+          },
+          "packs_attached": {
+            "title": "Packs Attached",
+            "type": "integer"
+          },
+          "registrations": {
+            "title": "Registrations",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "day",
+          "registrations",
+          "packs_attached",
+          "first_alerts_delivered",
+          "first_feedback",
+          "new_paid",
+          "churned",
+          "active_paid"
+        ],
+        "title": "FunnelDayRow",
+        "type": "object"
+      },
+      "FunnelSummary": {
+        "additionalProperties": false,
+        "description": "30-day funnel window with daily rows + summary conversion rate.",
+        "properties": {
+          "conversion_free_to_paid": {
+            "title": "Conversion Free To Paid",
+            "type": "number"
+          },
+          "daily": {
+            "items": {
+              "$ref": "#/components/schemas/FunnelDayRow"
+            },
+            "title": "Daily",
+            "type": "array"
+          }
+        },
+        "required": [
+          "daily",
+          "conversion_free_to_paid"
+        ],
+        "title": "FunnelSummary",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -2218,6 +2338,33 @@
         "summary": "Record Feedback",
         "tags": [
           "feedback"
+        ]
+      }
+    },
+    "/v1/ops/business-metrics": {
+      "get": {
+        "description": "Return an aggregate business metrics snapshot.\n\nAuth:\n- 401 if no valid session cookie.\n- 403 if authenticated but not a superuser.\n- 200 with JSON body for a superuser.\n\nAll values are global aggregates; no per-user identifiers are included.",
+        "operationId": "get_business_metrics_v1_ops_business_metrics_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusinessMetricsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Business metrics snapshot (superuser only)",
+        "tags": [
+          "ops"
         ]
       }
     },

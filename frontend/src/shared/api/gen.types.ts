@@ -419,6 +419,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ops/business-metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Business metrics snapshot (superuser only)
+         * @description Return an aggregate business metrics snapshot.
+         *
+         *     Auth:
+         *     - 401 if no valid session cookie.
+         *     - 403 if authenticated but not a superuser.
+         *     - 200 with JSON body for a superuser.
+         *
+         *     All values are global aggregates; no per-user identifiers are included.
+         */
+        get: operations["get_business_metrics_v1_ops_business_metrics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/packs": {
         parameters: {
             query?: never;
@@ -837,6 +864,27 @@ export interface components {
             token: string;
         };
         /**
+         * BusinessMetricsResponse
+         * @description Aggregate business metrics response (no per-user data, extra='forbid').
+         *
+         *     All fields are global aggregates; no `email`, `user_id`, or other PII.
+         *     `extra='forbid'` means an accidental per-user field would raise at response
+         *     validation time, making the invariant structurally enforced.
+         */
+        BusinessMetricsResponse: {
+            /** Active Subscriptions By Plan */
+            active_subscriptions_by_plan: {
+                [key: string]: number;
+            };
+            /** Avg Check 30D */
+            avg_check_30d: string;
+            funnel_last_30d: components["schemas"]["FunnelSummary"];
+            /** Mrr */
+            mrr: string;
+            /** Repeat Payment Rate */
+            repeat_payment_rate: number | null;
+        };
+        /**
          * CaseItem
          * @description Aggregate projection of one proof-of-speed case — aggregate fields only.
          *
@@ -931,6 +979,41 @@ export interface components {
             detail: string | {
                 [key: string]: string;
             };
+        };
+        /**
+         * FunnelDayRow
+         * @description One UTC calendar day's funnel counters (from business_metrics_daily).
+         */
+        FunnelDayRow: {
+            /** Active Paid */
+            active_paid: number;
+            /** Churned */
+            churned: number;
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** First Alerts Delivered */
+            first_alerts_delivered: number;
+            /** First Feedback */
+            first_feedback: number;
+            /** New Paid */
+            new_paid: number;
+            /** Packs Attached */
+            packs_attached: number;
+            /** Registrations */
+            registrations: number;
+        };
+        /**
+         * FunnelSummary
+         * @description 30-day funnel window with daily rows + summary conversion rate.
+         */
+        FunnelSummary: {
+            /** Conversion Free To Paid */
+            conversion_free_to_paid: number;
+            /** Daily */
+            daily: components["schemas"]["FunnelDayRow"][];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1941,6 +2024,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_business_metrics_v1_ops_business_metrics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessMetricsResponse"];
                 };
             };
         };

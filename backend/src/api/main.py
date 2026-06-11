@@ -51,6 +51,7 @@ from api.packs.router import router as packs_router
 from api.rate_limit import limiter, rate_limit_handler
 from api.referral import router as referral_router
 from api.routes import account_router, ops_router
+from api.routes.ops_business import router as ops_business_router
 from api.trending.router import router as trending_router
 from api.watchlist import router as watchlist_router
 from billing.deps import BillingNotConfiguredError
@@ -337,6 +338,9 @@ v1_router.include_router(cases_router)
 
 # --- Referral program (TASK-046): GET /referral/me — auth-gated, lazy code gen. ---
 v1_router.include_router(referral_router)
+
+# --- Business metrics dashboard (TASK-051): GET /ops/business-metrics — superuser-only. ---
+v1_router.include_router(ops_business_router)
 
 # Mount the versioned router on the app (all routes become /v1/...).
 app.include_router(v1_router)
