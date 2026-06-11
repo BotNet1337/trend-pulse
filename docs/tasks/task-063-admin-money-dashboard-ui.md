@@ -208,8 +208,8 @@ lock: ""
 - [x] 4 verify (G2 — tests + runtime + real behavior)
 - [x] 5 review (auto, adversarial)
 - [x] 5.5 security (if touches auth/input/secrets/OAuth)
-- [x] 6 ship (confirm plan done → PR(s))
-- [ ] 7 learnings (auto)
+- [x] 6 ship (confirm plan done → PR(s) — PR #99)
+- [x] 7 learnings (mirrored into Details; ledger entry deferred to orchestrator)
 debug_runs: []
 
 ## Details
