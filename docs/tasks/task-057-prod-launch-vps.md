@@ -455,7 +455,7 @@ lock: ""
 - [x] 5 review (auto, adversarial)
 - [x] 5.5 security (REQUIRED — host surface + TLS + secrets)
 - [x] 6 ship (PR)
-- [ ] 7 learnings (auto)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details
