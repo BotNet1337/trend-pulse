@@ -110,6 +110,8 @@
         cmd: "bash scripts/smoke.sh"
         chdir: "{{ release_dir }}"
       environment:
-        HOST: "{{ 'https://' + prod_domain if (tls_enabled | default(true)) else 'http://' + ansible_default_ipv4.address }}"
+        # The SPA + /api live at app.<domain> (apex serves the landing site), so
+        # smoke targets the app subdomain. Bare-IP (tls off) hits the default server.
+        HOST: "{{ 'https://app.' + prod_domain if (tls_enabled | default(true)) else 'http://' + ansible_default_ipv4.address }}"
       register: smoke_result
       changed_when: false
