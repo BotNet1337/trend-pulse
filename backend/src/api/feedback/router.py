@@ -150,4 +150,10 @@ def record_feedback(
         verdict=verdict_int,
     )
 
+    # Funnel event (TASK-050): emit aggregate-only breadcrumb for feedback step.
+    # Emitted on every feedback tap (not only "first" — aggregate SQL handles first-only).
+    from analytics.constants import FUNNEL_FEEDBACK_GIVEN
+
+    log_event(FUNNEL_FEEDBACK_GIVEN, alert_id=alert_id, user_id=user_id, verdict=verdict_int)
+
     return HTMLResponse(content=_HTML_THANKS, status_code=200)

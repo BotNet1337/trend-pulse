@@ -218,6 +218,12 @@ _DEFAULT_CASES_TOP_N_MAX: int = 20
 # Fixed reward per referred user's first payment. Override via REFERRAL_REWARD_USDT.
 _DEFAULT_REFERRAL_REWARD_USDT: float = 10.0
 
+# Business-metrics daily aggregate (TASK-050). Named, non-secret default; time in SECONDS.
+# `business_metrics_interval_seconds`: how often the Beat task fires (default 24h = 86400s).
+# One run per day computes yesterday (complete) + today (partial running total).
+# Override via env BUSINESS_METRICS_INTERVAL_SECONDS (e.g. 60 for dev/testing).
+_DEFAULT_BUSINESS_METRICS_INTERVAL_SECONDS: int = 86_400  # 24 hours
+
 # TG account pool health + ops self-alert (TASK-035). Named, non-secret defaults.
 # `pool_min_healthy` is the operational target: fewer healthy accounts = degraded
 # (warn metric + self-alert). POOL_MIN=1 remains the hard floor in collector/constants
@@ -463,6 +469,10 @@ class Settings(BaseSettings):
     # Fixed USDT reward paid to the referrer when a referred user makes their first
     # payment. Override via env REFERRAL_REWARD_USDT (e.g. for A/B testing the amount).
     referral_reward_usdt: float = _DEFAULT_REFERRAL_REWARD_USDT
+
+    # --- Business-metrics daily aggregate (TASK-050). Non-secret, settable; default above.
+    # Beat interval (seconds) for the aggregate_business_metrics task. Default 24h. ---
+    business_metrics_interval_seconds: int = _DEFAULT_BUSINESS_METRICS_INTERVAL_SECONDS
 
     # --- Observability — Sentry (TASK-024). DSN is a secret (sensitive.env); empty
     # default → Sentry off. Non-secret settings have named-constant defaults above.---

@@ -95,6 +95,11 @@ class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
         the registration response (blast radius isolation, TASK-046).
         """
         logger.info("user registered: id=%s", user.id)
+        # Funnel event (TASK-050): emit aggregate-only breadcrumb (no email/content).
+        from analytics.constants import FUNNEL_USER_REGISTERED
+        from observability.logging import log_event
+
+        log_event(FUNNEL_USER_REGISTERED, user_id=user.id)
         # Referral binding (TASK-046): extract ref_code from the request body,
         # resolve the referrer, and write referred_by on the new user.
         # All errors degrade silently (try/except + log).
