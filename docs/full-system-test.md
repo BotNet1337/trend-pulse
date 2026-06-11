@@ -81,6 +81,9 @@ make ps    # api/postgres/redis/worker/beat — без host-портов
 ## B. Живые внешние интеграции (нужны реальные креды/ML)
 
 ### B1. Telegram-коллектор (живое чтение публичного канала) — AC3 task-005
+> **Prereq для live-TG прогона:** пул аккаунтов заполнен по runbook'у →
+> [`development/scripts/README.md`](../development/scripts/README.md) §«Пул технических аккаунтов».
+
 Нужно: `TELEGRAM_API_ID/HASH` + ≥1 session-строка тех-аккаунта в `TELEGRAM_POOL_SESSIONS` (см. `development/scripts/README.md`, `get-telegram-session.sh`).
 ```sh
 # с пробросом креды из sensitive.env (POOL_MIN=1 — хватает одной dev-сессии)
