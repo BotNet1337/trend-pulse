@@ -4,6 +4,378 @@
  */
 
 export interface paths {
+    "/account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Account
+         * @description Delete the authenticated user and all their data (cascade) -> 204.
+         */
+        delete: operations["delete_account_account_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Alerts
+         * @description List the caller's alerts with cursor pagination and plan-based history window.
+         *
+         *     Free plan → returns empty list + history_unavailable=True (not 403).
+         *     Pro/Team → returns alerts within the plan's history window (30/90 days).
+         *     Always tenant-scoped: only the caller's alerts are returned.
+         *     Pass `cursor` from the previous response's `next_cursor` field to load the next page.
+         *     Invalid cursor → 422.
+         */
+        get: operations["list_alerts_alerts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/alerts/{alert_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Alert
+         * @description Get one alert detail. Foreign or missing alert → 404 (no existence leak).
+         */
+        get: operations["get_alert_alerts__alert_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Api Keys
+         * @description List all API keys for the caller (masked: prefix/name/timestamps, no key/key_hash).
+         */
+        get: operations["list_api_keys_api_keys_get"];
+        put?: never;
+        /**
+         * Create Api Key
+         * @description Issue a new API key for the caller (Team plan only).
+         *
+         *     Free/Pro → PlanLimitExceeded → 403 (via api/main.py exception handler).
+         *     Plaintext key is returned ONCE in the response body and never stored in DB.
+         */
+        post: operations["create_api_key_api_keys_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api-keys/{key_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Api Key
+         * @description Soft-revoke an API key owned by the caller.
+         *
+         *     Unknown id or another tenant's id → 404 (no existence leak, ADR-002).
+         *     The key_hash row is kept for audit; revoked_at marks it inactive.
+         */
+        delete: operations["revoke_api_key_api_keys__key_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/forgot-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reset:Forgot Password */
+        post: operations["reset_forgot_password_auth_forgot_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/google/authorize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Oauth:Google.Jwt.Authorize */
+        get: operations["oauth_google_jwt_authorize_auth_google_authorize_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/google/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Oauth:Google.Jwt.Callback
+         * @description The response varies based on the authentication backend used.
+         */
+        get: operations["oauth_google_jwt_callback_auth_google_callback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/jwt/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Auth:Jwt.Login */
+        post: operations["auth_jwt_login_auth_jwt_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/jwt/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Auth:Jwt.Logout */
+        post: operations["auth_jwt_logout_auth_jwt_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register:Register */
+        post: operations["register_register_auth_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/request-verify-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify:Request-Token */
+        post: operations["verify_request_token_auth_request_verify_token_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/reset-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reset:Reset Password */
+        post: operations["reset_reset_password_auth_reset_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify:Verify */
+        post: operations["verify_verify_auth_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/billing/invoice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Invoice
+         * @description Create a NOWPayments invoice for the caller's chosen plan/period.
+         */
+        post: operations["create_invoice_billing_invoice_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/billing/ipn": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive Ipn
+         * @description Receive a NOWPayments IPN: verify HMAC over the RAW body, then apply.
+         */
+        post: operations["receive_ipn_billing_ipn_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Cases
+         * @description Return top proof-of-speed cases sorted by lead-time DESC.
+         *
+         *     Public endpoint: no authentication required.
+         *
+         *     Only cases where the operator has set ``mainstream_at`` are returned
+         *     — cases without a mainstream timestamp are not yet proof-points.
+         *
+         *     Query params:
+         *         top_n: Max items to return.  Defaults to settings.cases_top_n_max.
+         *                422 if top_n exceeds settings.cases_top_n_max.
+         *
+         *     Response sorted by ``lead_time_seconds`` (= mainstream_at - first_seen) DESC.
+         */
+        get: operations["get_cases_cases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/feedback/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Record Feedback
+         * @description Verify signed token, UPSERT alert_feedback, return HTML 'спасибо'.
+         *
+         *     Rate-limited at ``feedback_rate_limit_per_minute`` (default 30/min,
+         *     per-IP via ``rate_limit_key``).
+         *
+         *     Returns:
+         *         200: Feedback recorded (or idempotent re-tap).
+         *         400: Invalid/tampered/expired token (uniform — no oracle).
+         *         404: Alert not found (FK gone — likely deleted by retention).
+         *         410: Same as 404 but signals the resource is intentionally gone.
+         */
+        get: operations["record_feedback_feedback__token__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -14,14 +386,94 @@ export interface paths {
         /**
          * Health
          * @description Liveness probe — returns 200 without touching any backing service.
-         *
-         *     Intentionally at root (no /v1 prefix): the compose/nginx healthcheck probes
-         *     `http://localhost:8000/health` directly, bypassing nginx (ADR-007 §4).
          */
         get: operations["health_health_get"];
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ops/business-metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Business metrics snapshot (superuser only)
+         * @description Return an aggregate business metrics snapshot.
+         *
+         *     Auth:
+         *     - 401 if no valid session cookie.
+         *     - 403 if authenticated but not a superuser.
+         *     - 200 with JSON body for a superuser.
+         *
+         *     All values are global aggregates; no per-user identifiers are included.
+         */
+        get: operations["get_business_metrics_ops_business_metrics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/packs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Packs
+         * @description Return the full curated pack catalog (auth required — AC1).
+         *
+         *     No DB query: the catalog is a static in-memory structure. Auth is required
+         *     so unauthenticated crawlers cannot enumerate the catalog.
+         */
+        get: operations["get_packs_packs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/packs/{slug}/subscribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Subscribe Pack
+         * @description Subscribe to a curated pack — creates watchlist rows with pack_slug marker.
+         *
+         *     - 404 if slug not in catalog.
+         *     - 402 if the user has reached their PACKS plan limit (handled globally).
+         *     - Idempotent: re-subscribing the same pack returns created=0, not an error.
+         *     - Skip-conflicts (channel already watched manually) are counted in `skipped`.
+         */
+        post: operations["subscribe_pack_packs__slug__subscribe_post"];
+        /**
+         * Unsubscribe Pack
+         * @description Unsubscribe from a pack — deletes all watchlist rows with this pack_slug.
+         *
+         *     - 404 if slug not in catalog (unknown pack — not just "not subscribed").
+         *     - 200 with deleted=0 if the slug is valid but the user is not subscribed.
+         *     - Manual watchlists (pack_slug IS NULL) are NEVER touched.
+         */
+        delete: operations["unsubscribe_pack_packs__slug__subscribe_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -47,435 +499,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/account": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Delete Account
-         * @description Delete the authenticated user and all their data (cascade) -> 204.
-         */
-        delete: operations["delete_account_v1_account_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/alerts": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Alerts
-         * @description List the caller's alerts with cursor pagination and plan-based history window.
-         *
-         *     Free plan → returns empty list + history_unavailable=True (not 403).
-         *     Pro/Team → returns alerts within the plan's history window (30/90 days).
-         *     Always tenant-scoped: only the caller's alerts are returned.
-         *     Pass `cursor` from the previous response's `next_cursor` field to load the next page.
-         *     Invalid cursor → 422.
-         */
-        get: operations["list_alerts_v1_alerts_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/alerts/{alert_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Alert
-         * @description Get one alert detail. Foreign or missing alert → 404 (no existence leak).
-         */
-        get: operations["get_alert_v1_alerts__alert_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/api-keys": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Api Keys
-         * @description List all API keys for the caller (masked: prefix/name/timestamps, no key/key_hash).
-         */
-        get: operations["list_api_keys_v1_api_keys_get"];
-        put?: never;
-        /**
-         * Create Api Key
-         * @description Issue a new API key for the caller (Team plan only).
-         *
-         *     Free/Pro → PlanLimitExceeded → 403 (via api/main.py exception handler).
-         *     Plaintext key is returned ONCE in the response body and never stored in DB.
-         */
-        post: operations["create_api_key_v1_api_keys_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/api-keys/{key_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Revoke Api Key
-         * @description Soft-revoke an API key owned by the caller.
-         *
-         *     Unknown id or another tenant's id → 404 (no existence leak, ADR-002).
-         *     The key_hash row is kept for audit; revoked_at marks it inactive.
-         */
-        delete: operations["revoke_api_key_v1_api_keys__key_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/auth/forgot-password": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Reset:Forgot Password */
-        post: operations["reset_forgot_password_v1_auth_forgot_password_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/auth/google/authorize": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Oauth:Google.Jwt.Authorize */
-        get: operations["oauth_google_jwt_authorize_v1_auth_google_authorize_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/auth/google/callback": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Oauth:Google.Jwt.Callback
-         * @description The response varies based on the authentication backend used.
-         */
-        get: operations["oauth_google_jwt_callback_v1_auth_google_callback_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/auth/jwt/login": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Auth:Jwt.Login */
-        post: operations["auth_jwt_login_v1_auth_jwt_login_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/auth/jwt/logout": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Auth:Jwt.Logout */
-        post: operations["auth_jwt_logout_v1_auth_jwt_logout_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/auth/register": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Register:Register */
-        post: operations["register_register_v1_auth_register_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/auth/request-verify-token": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Verify:Request-Token */
-        post: operations["verify_request_token_v1_auth_request_verify_token_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/auth/reset-password": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Reset:Reset Password */
-        post: operations["reset_reset_password_v1_auth_reset_password_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/auth/verify": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Verify:Verify */
-        post: operations["verify_verify_v1_auth_verify_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/billing/invoice": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Create Invoice
-         * @description Create a NOWPayments invoice for the caller's chosen plan/period.
-         */
-        post: operations["create_invoice_v1_billing_invoice_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/billing/ipn": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Receive Ipn
-         * @description Receive a NOWPayments IPN: verify HMAC over the RAW body, then apply.
-         */
-        post: operations["receive_ipn_v1_billing_ipn_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/cases": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Cases
-         * @description Return top proof-of-speed cases sorted by lead-time DESC.
-         *
-         *     Public endpoint: no authentication required.
-         *
-         *     Only cases where the operator has set ``mainstream_at`` are returned
-         *     — cases without a mainstream timestamp are not yet proof-points.
-         *
-         *     Query params:
-         *         top_n: Max items to return.  Defaults to settings.cases_top_n_max.
-         *                422 if top_n exceeds settings.cases_top_n_max.
-         *
-         *     Response sorted by ``lead_time_seconds`` (= mainstream_at - first_seen) DESC.
-         */
-        get: operations["get_cases_v1_cases_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/feedback/{token}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Record Feedback
-         * @description Verify signed token, UPSERT alert_feedback, return HTML 'спасибо'.
-         *
-         *     Rate-limited at ``feedback_rate_limit_per_minute`` (default 30/min,
-         *     per-IP via ``rate_limit_key``).
-         *
-         *     Returns:
-         *         200: Feedback recorded (or idempotent re-tap).
-         *         400: Invalid/tampered/expired token (uniform — no oracle).
-         *         404: Alert not found (FK gone — likely deleted by retention).
-         *         410: Same as 404 but signals the resource is intentionally gone.
-         */
-        get: operations["record_feedback_v1_feedback__token__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/packs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Packs
-         * @description Return the full curated pack catalog (auth required — AC1).
-         *
-         *     No DB query: the catalog is a static in-memory structure. Auth is required
-         *     so unauthenticated crawlers cannot enumerate the catalog.
-         */
-        get: operations["get_packs_v1_packs_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/packs/{slug}/subscribe": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Subscribe Pack
-         * @description Subscribe to a curated pack — creates watchlist rows with pack_slug marker.
-         *
-         *     - 404 if slug not in catalog.
-         *     - 402 if the user has reached their PACKS plan limit (handled globally).
-         *     - Idempotent: re-subscribing the same pack returns created=0, not an error.
-         *     - Skip-conflicts (channel already watched manually) are counted in `skipped`.
-         */
-        post: operations["subscribe_pack_v1_packs__slug__subscribe_post"];
-        /**
-         * Unsubscribe Pack
-         * @description Unsubscribe from a pack — deletes all watchlist rows with this pack_slug.
-         *
-         *     - 404 if slug not in catalog (unknown pack — not just "not subscribed").
-         *     - 200 with deleted=0 if the slug is valid but the user is not subscribed.
-         *     - Manual watchlists (pack_slug IS NULL) are NEVER touched.
-         */
-        delete: operations["unsubscribe_pack_v1_packs__slug__subscribe_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/referral/me": {
+    "/referral/me": {
         parameters: {
             query?: never;
             header?: never;
@@ -489,7 +513,7 @@ export interface paths {
          *     The ref_code is generated lazily on first call and cached on the user row.
          *     Only rewards where referrer_id == current_user.id are returned.
          */
-        get: operations["get_referral_me_v1_referral_me_get"];
+        get: operations["get_referral_me_referral_me_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -498,7 +522,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/trending": {
+    "/trending": {
         parameters: {
             query?: never;
             header?: never;
@@ -519,7 +543,7 @@ export interface paths {
          *     Response includes warming_up=true when the showcase tenant is not yet warmed up
          *     (fresh deploy); the frontend should display «собираем сигналы…» in that case.
          */
-        get: operations["get_trending_v1_trending_get"];
+        get: operations["get_trending_trending_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -528,7 +552,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/users/me": {
+    "/users/me": {
         parameters: {
             query?: never;
             header?: never;
@@ -542,7 +566,7 @@ export interface paths {
          *     Behind `current_user` dependency: returns 401 without a valid auth cookie.
          *     Tenant-scoped: only reads data belonging to the requesting user.
          */
-        get: operations["get_users_me_v1_users_me_get"];
+        get: operations["get_users_me_users_me_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -551,7 +575,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/users/me/delivery-config": {
+    "/users/me/delivery-config": {
         parameters: {
             query?: never;
             header?: never;
@@ -566,7 +590,7 @@ export interface paths {
          *     representation showing the last 4 characters (or None if not set).
          *     Tenant-scoped: reads only `current_user` data.
          */
-        get: operations["get_delivery_config_v1_users_me_delivery_config_get"];
+        get: operations["get_delivery_config_users_me_delivery_config_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -582,10 +606,10 @@ export interface paths {
          *     - Only provided fields are updated (partial PATCH semantics).
          *     - Returns the updated config with the bot token masked.
          */
-        patch: operations["patch_delivery_config_v1_users_me_delivery_config_patch"];
+        patch: operations["patch_delivery_config_users_me_delivery_config_patch"];
         trace?: never;
     };
-    "/v1/users/me/tenant": {
+    "/users/me/tenant": {
         parameters: {
             query?: never;
             header?: never;
@@ -596,7 +620,7 @@ export interface paths {
          * Read My Tenant
          * @description Protected example route (AC2): 401 without a token, tenant id with one.
          */
-        get: operations["read_my_tenant_v1_users_me_tenant_get"];
+        get: operations["read_my_tenant_users_me_tenant_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -605,7 +629,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/watchlists": {
+    "/watchlists": {
         parameters: {
             query?: never;
             header?: never;
@@ -618,20 +642,20 @@ export interface paths {
          *
          *     Accepts cookie/JWT (UI) or X-API-Key header (programmatic, TASK-028).
          */
-        get: operations["list_watchlists_v1_watchlists_get"];
+        get: operations["list_watchlists_watchlists_get"];
         put?: never;
         /**
          * Create Watchlist
          * @description Create one watchlist (single channel) for the caller -> 201 WatchlistRead.
          */
-        post: operations["create_watchlist_v1_watchlists_post"];
+        post: operations["create_watchlist_watchlists_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/v1/watchlists/{watchlist_id}": {
+    "/watchlists/{watchlist_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -642,21 +666,21 @@ export interface paths {
          * Get Watchlist
          * @description Get one owned watchlist; missing / other tenant's id -> 404.
          */
-        get: operations["get_watchlist_v1_watchlists__watchlist_id__get"];
+        get: operations["get_watchlist_watchlists__watchlist_id__get"];
         put?: never;
         post?: never;
         /**
          * Delete Watchlist
          * @description Delete an owned watchlist; missing / other tenant's id -> 404.
          */
-        delete: operations["delete_watchlist_v1_watchlists__watchlist_id__delete"];
+        delete: operations["delete_watchlist_watchlists__watchlist_id__delete"];
         options?: never;
         head?: never;
         /**
          * Update Watchlist
          * @description Partial update of an owned watchlist; missing / other tenant's id -> 404.
          */
-        patch: operations["update_watchlist_v1_watchlists__watchlist_id__patch"];
+        patch: operations["update_watchlist_watchlists__watchlist_id__patch"];
         trace?: never;
     };
 }
@@ -784,8 +808,8 @@ export interface components {
          * @enum {string}
          */
         BillingPeriod: "month";
-        /** Body_auth_jwt_login_v1_auth_jwt_login_post */
-        Body_auth_jwt_login_v1_auth_jwt_login_post: {
+        /** Body_auth_jwt_login_auth_jwt_login_post */
+        Body_auth_jwt_login_auth_jwt_login_post: {
             /** Client Id */
             client_id?: string | null;
             /**
@@ -808,33 +832,54 @@ export interface components {
             /** Username */
             username: string;
         };
-        /** Body_reset_forgot_password_v1_auth_forgot_password_post */
-        Body_reset_forgot_password_v1_auth_forgot_password_post: {
+        /** Body_reset_forgot_password_auth_forgot_password_post */
+        Body_reset_forgot_password_auth_forgot_password_post: {
             /**
              * Email
              * Format: email
              */
             email: string;
         };
-        /** Body_reset_reset_password_v1_auth_reset_password_post */
-        Body_reset_reset_password_v1_auth_reset_password_post: {
+        /** Body_reset_reset_password_auth_reset_password_post */
+        Body_reset_reset_password_auth_reset_password_post: {
             /** Password */
             password: string;
             /** Token */
             token: string;
         };
-        /** Body_verify_request_token_v1_auth_request_verify_token_post */
-        Body_verify_request_token_v1_auth_request_verify_token_post: {
+        /** Body_verify_request_token_auth_request_verify_token_post */
+        Body_verify_request_token_auth_request_verify_token_post: {
             /**
              * Email
              * Format: email
              */
             email: string;
         };
-        /** Body_verify_verify_v1_auth_verify_post */
-        Body_verify_verify_v1_auth_verify_post: {
+        /** Body_verify_verify_auth_verify_post */
+        Body_verify_verify_auth_verify_post: {
             /** Token */
             token: string;
+        };
+        /**
+         * BusinessMetricsResponse
+         * @description Aggregate business metrics response (no per-user data, extra='forbid').
+         *
+         *     All fields are global aggregates; no `email`, `user_id`, or other PII.
+         *     `extra='forbid'` means an accidental per-user field would raise at response
+         *     validation time, making the invariant structurally enforced.
+         */
+        BusinessMetricsResponse: {
+            /** Active Subscriptions By Plan */
+            active_subscriptions_by_plan: {
+                [key: string]: number;
+            };
+            /** Avg Check 30D */
+            avg_check_30d: string;
+            funnel_last_30d: components["schemas"]["FunnelSummary"];
+            /** Mrr */
+            mrr: string;
+            /** Repeat Payment Rate */
+            repeat_payment_rate: number | null;
         };
         /**
          * CaseItem
@@ -931,6 +976,41 @@ export interface components {
             detail: string | {
                 [key: string]: string;
             };
+        };
+        /**
+         * FunnelDayRow
+         * @description One UTC calendar day's funnel counters (from business_metrics_daily).
+         */
+        FunnelDayRow: {
+            /** Active Paid */
+            active_paid: number;
+            /** Churned */
+            churned: number;
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** First Alerts Delivered */
+            first_alerts_delivered: number;
+            /** First Feedback */
+            first_feedback: number;
+            /** New Paid */
+            new_paid: number;
+            /** Packs Attached */
+            packs_attached: number;
+            /** Registrations */
+            registrations: number;
+        };
+        /**
+         * FunnelSummary
+         * @description 30-day funnel window with daily rows + summary conversion rate.
+         */
+        FunnelSummary: {
+            /** Conversion Free To Paid */
+            conversion_free_to_paid: number;
+            /** Daily */
+            daily: components["schemas"]["FunnelDayRow"][];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1271,47 +1351,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    health_health_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HealthResponse"];
-                };
-            };
-        };
-    };
-    ready_ready_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-        };
-    };
-    delete_account_v1_account_delete: {
+    delete_account_account_delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -1329,7 +1369,7 @@ export interface operations {
             };
         };
     };
-    list_alerts_v1_alerts_get: {
+    list_alerts_alerts_get: {
         parameters: {
             query?: {
                 /** @description Maximum number of alerts to return (server silently clamps to max). */
@@ -1365,7 +1405,7 @@ export interface operations {
             };
         };
     };
-    get_alert_v1_alerts__alert_id__get: {
+    get_alert_alerts__alert_id__get: {
         parameters: {
             query?: never;
             header?: {
@@ -1398,7 +1438,7 @@ export interface operations {
             };
         };
     };
-    list_api_keys_v1_api_keys_get: {
+    list_api_keys_api_keys_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -1418,7 +1458,7 @@ export interface operations {
             };
         };
     };
-    create_api_key_v1_api_keys_post: {
+    create_api_key_api_keys_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1451,7 +1491,7 @@ export interface operations {
             };
         };
     };
-    revoke_api_key_v1_api_keys__key_id__delete: {
+    revoke_api_key_api_keys__key_id__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -1480,7 +1520,7 @@ export interface operations {
             };
         };
     };
-    reset_forgot_password_v1_auth_forgot_password_post: {
+    reset_forgot_password_auth_forgot_password_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1489,7 +1529,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Body_reset_forgot_password_v1_auth_forgot_password_post"];
+                "application/json": components["schemas"]["Body_reset_forgot_password_auth_forgot_password_post"];
             };
         };
         responses: {
@@ -1513,7 +1553,7 @@ export interface operations {
             };
         };
     };
-    oauth_google_jwt_authorize_v1_auth_google_authorize_get: {
+    oauth_google_jwt_authorize_auth_google_authorize_get: {
         parameters: {
             query?: {
                 scopes?: string[];
@@ -1544,7 +1584,7 @@ export interface operations {
             };
         };
     };
-    oauth_google_jwt_callback_v1_auth_google_callback_get: {
+    oauth_google_jwt_callback_auth_google_callback_get: {
         parameters: {
             query?: {
                 code?: string | null;
@@ -1587,7 +1627,7 @@ export interface operations {
             };
         };
     };
-    auth_jwt_login_v1_auth_jwt_login_post: {
+    auth_jwt_login_auth_jwt_login_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1596,7 +1636,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/x-www-form-urlencoded": components["schemas"]["Body_auth_jwt_login_v1_auth_jwt_login_post"];
+                "application/x-www-form-urlencoded": components["schemas"]["Body_auth_jwt_login_auth_jwt_login_post"];
             };
         };
         responses: {
@@ -1636,7 +1676,7 @@ export interface operations {
             };
         };
     };
-    auth_jwt_logout_v1_auth_jwt_logout_post: {
+    auth_jwt_logout_auth_jwt_logout_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1670,7 +1710,7 @@ export interface operations {
             };
         };
     };
-    register_register_v1_auth_register_post: {
+    register_register_auth_register_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1712,7 +1752,7 @@ export interface operations {
             };
         };
     };
-    verify_request_token_v1_auth_request_verify_token_post: {
+    verify_request_token_auth_request_verify_token_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1721,7 +1761,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Body_verify_request_token_v1_auth_request_verify_token_post"];
+                "application/json": components["schemas"]["Body_verify_request_token_auth_request_verify_token_post"];
             };
         };
         responses: {
@@ -1745,7 +1785,7 @@ export interface operations {
             };
         };
     };
-    reset_reset_password_v1_auth_reset_password_post: {
+    reset_reset_password_auth_reset_password_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1754,7 +1794,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Body_reset_reset_password_v1_auth_reset_password_post"];
+                "application/json": components["schemas"]["Body_reset_reset_password_auth_reset_password_post"];
             };
         };
         responses: {
@@ -1787,7 +1827,7 @@ export interface operations {
             };
         };
     };
-    verify_verify_v1_auth_verify_post: {
+    verify_verify_auth_verify_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1796,7 +1836,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Body_verify_verify_v1_auth_verify_post"];
+                "application/json": components["schemas"]["Body_verify_verify_auth_verify_post"];
             };
         };
         responses: {
@@ -1829,7 +1869,7 @@ export interface operations {
             };
         };
     };
-    create_invoice_v1_billing_invoice_post: {
+    create_invoice_billing_invoice_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1862,7 +1902,7 @@ export interface operations {
             };
         };
     };
-    receive_ipn_v1_billing_ipn_post: {
+    receive_ipn_billing_ipn_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1882,7 +1922,7 @@ export interface operations {
             };
         };
     };
-    get_cases_v1_cases_get: {
+    get_cases_cases_get: {
         parameters: {
             query?: {
                 /** @description Max number of cases to return. Defaults to settings.cases_top_n_max; max is settings.cases_top_n_max. Must be ≥ 1 (422 on non-positive). 422 if top_n exceeds the configured maximum. */
@@ -1914,7 +1954,7 @@ export interface operations {
             };
         };
     };
-    record_feedback_v1_feedback__token__get: {
+    record_feedback_feedback__token__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -1945,7 +1985,47 @@ export interface operations {
             };
         };
     };
-    get_packs_v1_packs_get: {
+    health_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
+    };
+    get_business_metrics_ops_business_metrics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessMetricsResponse"];
+                };
+            };
+        };
+    };
+    get_packs_packs_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -1965,7 +2045,7 @@ export interface operations {
             };
         };
     };
-    subscribe_pack_v1_packs__slug__subscribe_post: {
+    subscribe_pack_packs__slug__subscribe_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1996,7 +2076,7 @@ export interface operations {
             };
         };
     };
-    unsubscribe_pack_v1_packs__slug__subscribe_delete: {
+    unsubscribe_pack_packs__slug__subscribe_delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -2027,7 +2107,27 @@ export interface operations {
             };
         };
     };
-    get_referral_me_v1_referral_me_get: {
+    ready_ready_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_referral_me_referral_me_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -2047,7 +2147,7 @@ export interface operations {
             };
         };
     };
-    get_trending_v1_trending_get: {
+    get_trending_trending_get: {
         parameters: {
             query: {
                 /** @description Pack slug (e.g. 'crypto-ru'). Must be a known catalog slug. */
@@ -2081,7 +2181,7 @@ export interface operations {
             };
         };
     };
-    get_users_me_v1_users_me_get: {
+    get_users_me_users_me_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -2101,7 +2201,7 @@ export interface operations {
             };
         };
     };
-    get_delivery_config_v1_users_me_delivery_config_get: {
+    get_delivery_config_users_me_delivery_config_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -2121,7 +2221,7 @@ export interface operations {
             };
         };
     };
-    patch_delivery_config_v1_users_me_delivery_config_patch: {
+    patch_delivery_config_users_me_delivery_config_patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -2154,7 +2254,7 @@ export interface operations {
             };
         };
     };
-    read_my_tenant_v1_users_me_tenant_get: {
+    read_my_tenant_users_me_tenant_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -2174,7 +2274,7 @@ export interface operations {
             };
         };
     };
-    list_watchlists_v1_watchlists_get: {
+    list_watchlists_watchlists_get: {
         parameters: {
             query?: never;
             header?: {
@@ -2205,7 +2305,7 @@ export interface operations {
             };
         };
     };
-    create_watchlist_v1_watchlists_post: {
+    create_watchlist_watchlists_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -2238,7 +2338,7 @@ export interface operations {
             };
         };
     };
-    get_watchlist_v1_watchlists__watchlist_id__get: {
+    get_watchlist_watchlists__watchlist_id__get: {
         parameters: {
             query?: never;
             header?: {
@@ -2271,7 +2371,7 @@ export interface operations {
             };
         };
     };
-    delete_watchlist_v1_watchlists__watchlist_id__delete: {
+    delete_watchlist_watchlists__watchlist_id__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -2300,7 +2400,7 @@ export interface operations {
             };
         };
     };
-    update_watchlist_v1_watchlists__watchlist_id__patch: {
+    update_watchlist_watchlists__watchlist_id__patch: {
         parameters: {
             query?: never;
             header?: never;

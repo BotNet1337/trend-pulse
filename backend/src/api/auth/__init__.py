@@ -8,6 +8,7 @@ Google OAuth client builder, and the boundary schemas.
 from api.auth.backend import (
     auth_backend,
     build_jwt_strategy,
+    current_superuser,
     current_user,
     fastapi_users,
 )
@@ -23,6 +24,7 @@ __all__ = [
     "auth_backend",
     "build_google_oauth_client",
     "build_jwt_strategy",
+    "current_superuser",
     "current_user",
     "fastapi_users",
     "get_user_manager",

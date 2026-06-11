@@ -39,7 +39,7 @@ TF_DIR      := ops/terraform
         lint fmt typecheck test test-cov test-integration ci ci-fast \
         gen-openapi gen-types openapi-drift-check \
         backup backup-restore-check \
-        showcase-init case-mainstream referral-paid
+        showcase-init case-mainstream referral-paid superuser-grant
 
 # Default target: list everything.
 help:
@@ -81,6 +81,8 @@ help:
 	@echo "    case-mainstream  ID=<id> AT=<iso8601>  set mainstream_at on a showcase_cases row"
 	@echo "  Referral program (TASK-046):"
 	@echo "    referral-paid    ID=<reward_id>  mark a referral_rewards row as paid"
+	@echo "  Superuser ops (TASK-051):"
+	@echo "    superuser-grant  EMAIL=<email>   idempotently grant superuser flag to a user"
 
 # --- Stack ---
 up:
@@ -240,3 +242,11 @@ case-mainstream:
 # Requires: stack up (postgres accessible via api container).
 referral-paid:
 	$(COMPOSE) exec api uv run python scripts/referral_paid.py --id '$(ID)'
+
+# --- Superuser grant (TASK-051) ---
+# Idempotently set is_superuser=True for a user by email.
+# Usage: make superuser-grant EMAIL=<email>
+# Validates: user with given email must exist (exits non-zero with human error otherwise).
+# Requires: stack up (postgres accessible via api container).
+superuser-grant:
+	$(COMPOSE) exec api uv run python scripts/superuser_grant.py --email '$(EMAIL)'

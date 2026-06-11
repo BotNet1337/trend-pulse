@@ -1,11 +1,11 @@
 ---
 id: TASK-051
 title: Дашборд «деньги» — GET /ops/business-metrics (superuser): MRR, подписки, чек, воронка, retention
-status: planned             # planned → in-progress → review → done
+status: review              # planned → in-progress → review → done
 owner: backend
 created: 2026-06-11
-updated: 2026-06-11
-baseline_commit: "8bc0b462d1d6f0a2468b7b3dc1cf50b22c7dc15e"
+updated: 2026-06-11  # ship
+baseline_commit: "e2c0355"
 branch: "gsd/phase-e6-money-dashboard"
 tags: [epic-e6, backend, metrics, ops]
 ---
@@ -143,17 +143,17 @@ DoD = AC.
 
 ## Checkpoints
 
-current_step: 3
-baseline_commit: "8bc0b462d1d6f0a2468b7b3dc1cf50b22c7dc15e"
+current_step: 7
+baseline_commit: "e2c0355"
 branch: "gsd/phase-e6-money-dashboard"
-lock: ""
+lock: "loop-2026-06-11-launch-gaps"
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + runtime + real behavior)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (REQUIRED — привилегированный роут, PII, error-гигиена)
-- [ ] 6 ship (PR)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + runtime + real behavior)
+- [x] 5 review (auto, adversarial)
+- [x] 5.5 security (REQUIRED — привилегированный роут, PII, error-гигиена)
+- [x] 6 ship (PR)
 - [ ] 7 learnings (auto)
 debug_runs: []
 
@@ -163,3 +163,60 @@ debug_runs: []
 потребитель-владелец; UI = отдельная задача при необходимости. Зависимости: 050 (воронка),
 010 (payments), 049 (цены — числа в AC взяты по новой сетке). Задержка p50/p95 остаётся
 в логах (TASK-036) — не дублируется в JSON.)
+
+do (2026-06-11): RED→GREEN TDD complete.
+- analytics/money.py: compute_mrr, active_by_plan, avg_check, repeat_payment_rate,
+  funnel_window, monthly_value; constants _DEFAULT_WINDOW_DAYS=30, _REPEAT_MATURITY_DAYS=35.
+- api/auth/backend.py: current_superuser exported.
+- api/routes/ops_business.py: GET /ops/business-metrics, Depends(current_superuser),
+  BusinessMetricsResponse (extra="forbid"), read-only.
+- api/main.py: ops_business_router included.
+- scripts/superuser_grant.py: idempotent grant by email, non-zero exit on unknown email.
+- Makefile: superuser-grant EMAIL=... target.
+- Unit tests: 20 passing (test_money.py). Integration tests: 6 passing
+  (test_ops_business_metrics.py — auth matrix + seeded numbers + funnel AC3).
+- ruff check/format: clean. mypy: 156 files, 0 errors.
+- OpenAPI dump regenerated (new route added).
+
+review MEDIUM (двойной запрос) исправлен: добавлен `_fetch_active_plan_rows(session)` в money.py (единый SELECT), `mrr_and_active_by_plan(session)` деривирует MRR+counts за один round-trip; роут переключён на него; мёртвый `_get_session` удалён из ops_business.py.
+
+review (2026-06-11): adversarial review — PASS (no CRITICAL/HIGH). Scope clean (Touch ONLY
++ sanctioned glue: superuser_grant.py, auth/__init__ export, OpenAPI/gen.types regen).
+Invariants hold: route read-only, response aggregate-only + extra="forbid", /health /ready
+untouched, no derived-metric persistence. SQL bind-params only; div-by-zero guards; NULL
+expires_at excluded from MRR; unknown plan → log_event+skip; pending/expired excluded from
+avg_check; repeat_payment_rate → None (not 0) on empty cohort; named window constants;
+monthly_value period-aware. current_superuser = active+superuser, exported consistently.
+superuser_grant.py parameterized (no injection), idempotent, non-zero exit on unknown email,
+no secrets/PII echoed.
+Accepted findings (non-blocking):
+- MEDIUM: compute_mrr + active_by_plan each run an identical `SELECT plan WHERE expires_at>now`
+  query and the route invokes both → 2 redundant round-trips/request (plus fresh SessionLocal()
+  per call). Consolidatable; trivial for a single-owner ops route.
+- LOW: dead `_get_session` helper in ops_business.py (defined, never used; route uses inline
+  `with SessionLocal()`). Helper also subtly wrong (returns session after `with` exits) but unreferenced.
+- LOW: funnel_window typed `-> list[dict[str, Any]]`; a TypedDict would be cleaner (mypy passes;
+  not a bare `-> Any`, so not a hard-rule violation).
+- LOW: "processed" status string re-declared in money.py instead of reusing canonical
+  _STATUS_PROCESSED from billing/webhook.py → drift risk if status renamed.
+
+security 5.5 (2026-06-11): PASS (no CRITICAL/HIGH). OWASP + project-specific matrix clean.
+- AuthZ: GET /ops/business-metrics gated route-level via Depends(current_superuser); dep =
+  fastapi_users.current_user(active=True, superuser=True) (api/auth/backend.py:57) → 401
+  anon / 403 non-superuser / 200 superuser. No router-level assumption — explicit per-route.
+  No caching layer (Decision: no cache). API-key path (TASK-028) cannot reach: route binds
+  current_superuser strictly, never current_user_or_api_key; and current_superuser enforces
+  is_superuser server-side regardless of transport.
+- Priv-esc: get_users_router NOT mounted (grep: none) → no PATCH /users/{id} exposing
+  is_superuser. UserUpdate = bare BaseUserUpdate (no is_superuser field); is_superuser absent
+  from all request schemas. superuser_grant.py fully parameterized (ORM select/update,
+  no f-string SQL) — no injection via --email; HTTP-unreachable (CLI only); Makefile target
+  passes $(EMAIL) single-quoted, echoes no secrets. Idempotent, non-zero exit on unknown email.
+- Info disclosure: response strictly aggregate — fields {mrr, active_subscriptions_by_plan,
+  avg_check_30d, funnel_last_30d{daily[],conversion_free_to_paid}, repeat_payment_rate};
+  no email/user_id/payment/wallet (verified vs openapi.json diff). extra="forbid" on all
+  response models structurally bars per-user leakage. 401/403 = fastapi-users generic detail
+  (no route internals). OpenAPI dump exposes route shape only (acceptable); SWAGGER_ENABLE
+  gates prod exposure. log_event in money.py logs only plan name + static context (no PII).
+- DoS: queries bounded (small subscriptions/billing_payments/business_metrics_daily tables,
+  windowed by named constants); read-only; global slowapi rate-limit (120/min) applies.
