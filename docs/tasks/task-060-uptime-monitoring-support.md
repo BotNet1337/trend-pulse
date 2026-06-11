@@ -166,7 +166,7 @@ lock: ""
 - [x] 5 review (auto, adversarial)
 - [x] 5.5 security (skip подтверждён — нет auth/input/secret-кода; личный email только в tfvars)
 - [x] 6 ship (TF/витрины-часть)
-- [ ] 7 learnings (auto)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details
