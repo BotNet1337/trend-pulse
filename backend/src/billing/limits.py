@@ -13,9 +13,12 @@ if the subscription `expires_at` is in the past — expiry rollback, AC8), looks
 `None` (unlimited) always passes the quantitative check.
 """
 
+from datetime import timedelta
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from billing.constants import GRACE_PERIOD_SECONDS
 from billing.plans import FEATURE_RESOURCES, PLAN_LIMITS, Plan, Resource
 from storage.models.base import utcnow
 from storage.models.subscriptions import Subscription
@@ -41,10 +44,14 @@ class PlanLimitExceeded(Exception):
 
 
 def effective_plan(session: Session, user: User) -> Plan:
-    """Resolve the user's effective plan, downgrading to Free if expired (AC8).
+    """Resolve the user's effective plan, downgrading to Free if expired (AC8 + grace TASK-048).
 
-    The stored `user.plan` is authoritative, but an expired subscription
-    (`expires_at` in the past) rolls back to Free so limits apply immediately.
+    The stored `user.plan` is authoritative, but an expired subscription rolls
+    back to Free. Expiry is soft: the paid plan is fully retained for
+    `GRACE_PERIOD_SECONDS` (72h) past `expires_at`, then Free. This is the single
+    plan-gating point (ADR-003), so the grace automatically covers limits,
+    real-time alerts (scorer) and API-key access. A missing subscription row or
+    `expires_at IS NULL` never gets grace — Free as before.
     """
     try:
         stored = Plan(user.plan)
@@ -54,7 +61,9 @@ def effective_plan(session: Session, user: User) -> Plan:
         return Plan.FREE
 
     sub = session.scalars(select(Subscription).where(Subscription.user_id == user.id)).one_or_none()
-    if sub is None or sub.expires_at is None or sub.expires_at <= utcnow():
+    if sub is None or sub.expires_at is None:
+        return Plan.FREE
+    if sub.expires_at + timedelta(seconds=GRACE_PERIOD_SECONDS) <= utcnow():
         return Plan.FREE
     return stored
 

@@ -181,6 +181,77 @@ def test_partially_paid_no_activation(
     assert refreshed.plan == "free"
 
 
+def test_partially_paid_persists_status_and_notifies_once(
+    client: TestClient,
+    db_session_committing: Session,
+    user: User,
+    invoice: BillingPayment,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AC6 (TASK-048): partially_paid → 200, status saved in the DB, underpaid
+    notice sent exactly once with amount_due = invoice - actually_paid; the
+    replayed IPN sends no second email."""
+    from unittest.mock import MagicMock
+
+    notice = MagicMock()
+    monkeypatch.setattr("billing.webhook.send_underpaid_notice", notice)
+
+    body = _ipn_body("partially_paid")
+    body["actually_paid"] = "10"
+    raw, sig = _sign(body)
+
+    first = client.post("/v1/billing/ipn", content=raw, headers={_SIG_HEADER: sig})
+    assert first.status_code == 200, first.text
+
+    db_session_committing.expire_all()
+    stored = db_session_committing.scalars(
+        select(BillingPayment).where(BillingPayment.order_id == "order-int-1")
+    ).one()
+    assert stored.status == "partially_paid"
+    notice.assert_called_once()
+    assert notice.call_args.kwargs["amount_due"] == Decimal("9")  # 19 - 10
+
+    # Replay: NOWPayments re-sends the same IPN — no second email, still 200.
+    second = client.post("/v1/billing/ipn", content=raw, headers={_SIG_HEADER: sig})
+    assert second.status_code == 200
+    notice.assert_called_once()
+
+
+def test_partially_paid_then_finished_activates(
+    client: TestClient,
+    db_session_committing: Session,
+    user: User,
+    invoice: BillingPayment,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AC6 (TASK-048): a finished IPN AFTER partially_paid still activates the
+    plan (no processed_at in the partial branch)."""
+    from unittest.mock import MagicMock
+
+    monkeypatch.setattr("billing.webhook.send_underpaid_notice", MagicMock())
+
+    partial = _ipn_body("partially_paid")
+    partial["actually_paid"] = "10"
+    raw, sig = _sign(partial)
+    assert (
+        client.post("/v1/billing/ipn", content=raw, headers={_SIG_HEADER: sig}).status_code == 200
+    )
+
+    raw, sig = _sign(_ipn_body("finished"))
+    resp = client.post("/v1/billing/ipn", content=raw, headers={_SIG_HEADER: sig})
+    assert resp.status_code == 200, resp.text
+
+    db_session_committing.expire_all()
+    refreshed = db_session_committing.get(User, user.id)
+    assert refreshed is not None
+    assert refreshed.plan == "pro"
+    sub = db_session_committing.scalars(
+        select(Subscription).where(Subscription.user_id == user.id)
+    ).one()
+    assert sub.expires_at is not None
+    assert sub.expires_at > utcnow()
+
+
 def test_create_year_invoice_persists_year_payment(
     client: TestClient,
     db_session_committing: Session,
