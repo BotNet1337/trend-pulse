@@ -140,13 +140,10 @@ deploy-wait: ## Poll until all services converge and all jobs Complete (timeout)
 	while :; do \
 		not_ready=0; \
 		failed_job=""; \
-		while read -r name mode replicas; do \
+		while IFS='|' read -r name mode replicas; do \
 			[ -z "$$name" ] && continue; \
 			case "$$mode" in \
-				replicated) \
-					cur=$${replicas%%/*}; want=$${replicas##*/}; \
-					if [ "$$cur" != "$$want" ]; then not_ready=$$((not_ready+1)); fi ;; \
-				replicated-job) \
+				*job*) \
 					comp=$$(printf '%s' "$$replicas" | sed -nE 's/.*\(([0-9]+)\/([0-9]+) completed\).*/\1 \2/p'); \
 					done_n=$${comp%% *}; want_n=$${comp##* }; \
 					if [ -n "$$comp" ] && [ "$$done_n" = "$$want_n" ]; then \
@@ -156,8 +153,11 @@ deploy-wait: ## Poll until all services converge and all jobs Complete (timeout)
 					else \
 						not_ready=$$((not_ready+1)); \
 					fi ;; \
+				*) \
+					cur=$${replicas%%/*}; want=$${replicas##*/}; \
+					if [ "$$cur" != "$$want" ]; then not_ready=$$((not_ready+1)); fi ;; \
 			esac; \
-		done <<< "$$(docker stack services --format '{{.Name}} {{.Mode}} {{.Replicas}}' $(STACK) 2>/dev/null)"; \
+		done <<< "$$(docker stack services --format '{{.Name}}|{{.Mode}}|{{.Replicas}}' $(STACK) 2>/dev/null)"; \
 		if [ -n "$$failed_job" ]; then \
 			echo "$(RED)✗ provisioning job '$$failed_job' FAILED.$(NC)" >&2; \
 			docker stack ps --no-trunc $(STACK) >&2; \
