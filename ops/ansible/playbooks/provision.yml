@@ -1,12 +1,45 @@
 ---
 # Provision the VPS host (configure step, after Terraform created it): system
-# packages + Docker engine + compose plugin. Targets the `prod` group; a no-op
-# locally where Docker is already present. Idempotent.
-- name: Provision VPS host (Docker + system packages)
+# packages + Docker engine + compose plugin + Docker Swarm init + ufw firewall.
+# Targets the `prod` group. Idempotent.
+- name: Provision VPS host (Docker + Swarm + firewall)
   hosts: prod
   become: true
   gather_facts: true
+  vars:
+    # Preflight minimums (warning-only; a small VPS without swap is risky).
+    preflight_min_ram_mb: 3500
+    preflight_min_disk_gb: 15
   tasks:
+    # ------------------------------------------------------------------ preflight
+    - name: Preflight — assert enough RAM (warn, not hard-fail)
+      ansible.builtin.assert:
+        that:
+          - ansible_memtotal_mb | int >= preflight_min_ram_mb
+        success_msg: "RAM OK: {{ ansible_memtotal_mb }} MB"
+        fail_msg: >-
+          Low RAM: {{ ansible_memtotal_mb }} MB (< {{ preflight_min_ram_mb }} MB
+          recommended). The ML worker may OOM. Resize the VPS or add swap.
+      ignore_errors: true
+
+    - name: Preflight — compute root filesystem free space (GB)
+      ansible.builtin.set_fact:
+        root_free_gb: >-
+          {{ (ansible_mounts | selectattr('mount', 'equalto', '/')
+              | map(attribute='size_available') | first | default(0) | int
+              / (1024 * 1024 * 1024)) | round(1) }}
+
+    - name: Preflight — assert enough disk (warn, not hard-fail)
+      ansible.builtin.assert:
+        that:
+          - root_free_gb | float >= preflight_min_disk_gb
+        success_msg: "Disk OK: {{ root_free_gb }} GB free on /"
+        fail_msg: >-
+          Low disk: {{ root_free_gb }} GB free on / (< {{ preflight_min_disk_gb }} GB
+          recommended). Image builds + DB + backups need headroom.
+      ignore_errors: true
+
+    # ------------------------------------------------------------------ packages
     - name: Install base system packages
       ansible.builtin.package:
         name:
@@ -28,3 +61,51 @@
         name: docker
         state: started
         enabled: true
+
+    # ------------------------------------------------------------------ swarm init
+    # Idempotent: read the current swarm state via `docker info`; init ONLY when it
+    # is not already active. advertise-addr = the host's default IPv4.
+    - name: Check Docker Swarm state
+      ansible.builtin.command:
+        cmd: docker info --format '{{ "{{" }}.Swarm.LocalNodeState{{ "}}" }}'
+      register: swarm_state
+      changed_when: false
+
+    - name: Initialise Docker Swarm (single-node) when not already active
+      ansible.builtin.command:
+        cmd: "docker swarm init --advertise-addr {{ ansible_default_ipv4.address }}"
+      when: swarm_state.stdout | trim != "active"
+      register: swarm_init
+      changed_when: swarm_init.rc == 0
+
+    # ------------------------------------------------------------------ firewall
+    # docker-vs-ufw grapple: Docker writes its own iptables rules in the DOCKER /
+    # DOCKER-USER chains, BYPASSING ufw's filter table — ufw governs host-level
+    # (non-docker) traffic only. We keep the published surface minimal: nginx
+    # publishes 80/443 in `mode: host` (subject to the node firewall, unlike the
+    # ingress mesh) and SSH is 22. The default-deny-incoming policy below plus the
+    # 22/80/443 allow-list is sufficient for a single-node prod. Tightening the
+    # DOCKER-USER chain is a documented hardening follow-up, not required here.
+    - name: UFW — default deny incoming
+      community.general.ufw:
+        direction: incoming
+        policy: deny
+
+    - name: UFW — default allow outgoing
+      community.general.ufw:
+        direction: outgoing
+        policy: allow
+
+    - name: UFW — allow SSH/HTTP/HTTPS only (22/80/443)
+      community.general.ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop:
+        - "22"
+        - "80"
+        - "443"
+
+    - name: UFW — enable the firewall
+      community.general.ufw:
+        state: enabled

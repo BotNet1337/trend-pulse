@@ -1,0 +1,99 @@
+# Standalone one-shot services for Postgres backup + restore-check (TASK-034).
+#
+# NOT part of the swarm stack (not in the top docker-compose.yml include).
+# Invoked DIRECTLY by the release Makefile via `docker compose run`:
+#   make -C release backup-now      — pg_backup (dump) → backup_uploader (S3 upload)
+#   make -C release restore-check   — restore_fetch (S3 fetch) → restore_check
+#
+# Self-sufficient: defines the shared temp volumes and references the live swarm
+# overlay `trendpulse_postgres_net` as external (created by `docker stack deploy`
+# with the project-name prefix `trendpulse_`).
+#
+# Least-privilege env (mirrors development/compose/pg-backup.yml):
+#   pg_backup       — only PG credentials
+#   backup_uploader — only S3 credentials
+#   restore_fetch   — only S3 credentials
+#   restore_check   — no secrets (trust-auth local unix socket)
+services:
+  # Stage 1 — pg_dump -Fc → /tmp/pgdump/dump.tmp
+  pg_backup:
+    image: ${PGVECTOR_IMAGE}
+    restart: "no"
+    profiles: [backup]
+    environment:
+      STAGE: dump
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+    volumes:
+      - pgdump_tmp:/tmp/pgdump
+      - ../scripts/pg_backup.sh:/scripts/pg_backup.sh:ro
+    command: ["bash", "/scripts/pg_backup.sh"]
+    networks:
+      - postgres_net
+
+  # Stage 2 — upload dump.tmp → S3; removes temp file on success.
+  backup_uploader:
+    image: ${AWS_CLI_IMAGE}
+    restart: "no"
+    profiles: [backup]
+    environment:
+      STAGE: upload
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
+      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_REGION: ${S3_REGION}
+      S3_BUCKET: ${S3_BUCKET}
+    volumes:
+      - pgdump_tmp:/tmp/pgdump
+      - ../scripts/pg_backup.sh:/scripts/pg_backup.sh:ro
+    entrypoint: ["bash", "/scripts/pg_backup.sh"]
+    depends_on:
+      pg_backup:
+        condition: service_completed_successfully
+
+  # Restore-check: Stage 1 — fetch latest dump from S3 → shared temp volume.
+  restore_fetch:
+    image: ${AWS_CLI_IMAGE}
+    restart: "no"
+    profiles: [backup]
+    environment:
+      STAGE: fetch
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
+      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_REGION: ${S3_REGION}
+      S3_BUCKET: ${S3_BUCKET}
+    volumes:
+      - restore_tmp:/tmp/restore_check
+      - ../scripts/pg_restore_check.sh:/scripts/pg_restore_check.sh:ro
+    entrypoint: ["bash", "/scripts/pg_restore_check.sh"]
+
+  # Restore-check: Stage 2 — throwaway internal PG, pg_restore, smoke checks.
+  # Fully isolated — NOT on postgres_net, NO docker socket, no secrets.
+  restore_check:
+    image: ${PGVECTOR_IMAGE}
+    restart: "no"
+    profiles: [backup]
+    user: postgres
+    environment:
+      STAGE: check
+      RESTORE_CHECK_DB: restore_check
+    volumes:
+      - restore_tmp:/tmp/restore_check
+      - ../scripts/pg_restore_check.sh:/scripts/pg_restore_check.sh:ro
+    entrypoint: ["bash", "/scripts/pg_restore_check.sh"]
+    depends_on:
+      restore_fetch:
+        condition: service_completed_successfully
+
+volumes:
+  pgdump_tmp:
+  restore_tmp:
+
+networks:
+  # The live overlay created by the swarm stack (project-name prefix trendpulse_).
+  postgres_net:
+    name: trendpulse_postgres_net
+    external: true

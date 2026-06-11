@@ -1,0 +1,48 @@
+# PostgreSQL + pgvector (prod swarm). On postgres_net only; NO published host
+# ports. Named volume pgdata. placement node.role==manager pins the stateful
+# service to the manager node so data never migrates on a future multi-node swarm.
+services:
+  postgres:
+    image: ${PGVECTOR_IMAGE}
+    env_file:
+      - ../env/deploy.env
+      - ../env/sensitive.env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - postgres_net
+    healthcheck:
+      # pg_isready uses POSTGRES_USER/POSTGRES_DB from env_file.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    deploy:
+      replicas: 1
+      # Stateful: pin to the manager node so the named volume + data stay put.
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1024M
+      # Recreate (not rolling): a single stateful replica with a bound volume.
+      update_config:
+        order: stop-first
+        failure_action: rollback
+      rollback_config:
+        order: stop-first
+      restart_policy:
+        condition: any
+        delay: 5s
+
+volumes:
+  pgdata:
+
+networks:
+  postgres_net:
+    driver: overlay
+    attachable: true
+    internal: true

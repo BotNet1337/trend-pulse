@@ -56,7 +56,51 @@ flowchart LR
 
 `api`/`worker`/`beat` ждут `condition: service_completed_successfully` обоих провижинеров (ADR-005 §3).
 
-## 4. Дистрибуция через ORAS (БУДУЩЕЕ — учитываем при проектировании)
+## 4. `release/`-бандл + Docker Swarm (СЕЙЧАС — TASK-057)
+
+Прод деплоится **не** из `development/`, а из самодостаточного бандла
+[`apps/trendPulse/release/`](../../release/README.md) — структура зеркалит
+`development/` (top-compose с `include:` + `compose/*` + `provisioning/*` +
+`version.env` + `env/` + `scripts/`), но с операторским контрактом ironfist
+(`Makefile`/`validate`/`README`/`RELEASE.md`/`deployment.example/`) и оркестрацией
+**Docker Swarm** (single-node) вместо `compose up`.
+
+Чем отличается от dev-бандла: нет mailpit (прод-SMTP = Resend); образы тегируются
+`:${APP_VERSION}` (не `:dev`); у каждого сервиса swarm-блок `deploy:` (replicas,
+resources.limits, `update_config: order: start-first` + `failure_action: rollback`,
+`rollback_config`, restart_policy); nginx — 443/TLS + редирект 80→443 +
+security-headers (envsubst-шаблон, `${DOMAIN}`); сети `overlay`; провижинеры —
+swarm-джобы (`deploy.mode: replicated-job`); beat строго `replicas: 1`.
+
+**Рендер-пайплайн** (инкапсулирован в `release/Makefile` target `render`) — почему
+не `docker stack deploy -c docker-compose.yml` напрямую: `stack deploy` игнорирует
+`include:`/`env_file:`/`build:`/`depends_on.condition`. Поэтому деплой идёт ТОЛЬКО
+через `compose config`:
+
+```
+docker compose --project-name trendpulse \
+  --env-file version.env --env-file env/deploy.env --env-file env/sensitive.env \
+  -f docker-compose.yml config \
+| sed '/^name:/d'                          # убрать top-level name: (старые docker его отвергают)
+| docker stack deploy --compose-file -      # через stdin — секреты НИКОГДА не на диске
+    --detach=false --resolve-image never trendpulse
+```
+
+`compose config` разворачивает `include:`, инлайнит `env_file:` в `environment:`,
+интерполирует `${...}`. `--resolve-image never` обязателен (образы локальные;
+иначе swarm лезет в Hub). `--detach=false` ждёт сходимости и даёт ненулевой exit
+при фейле (гейт для ansible). После — `make deploy-wait` поллит
+`docker stack services` до «все replicated running + оба job Complete».
+
+Вход — один `make deploy` (обёртка `ansible-playbook site.yml -l prod`):
+provision (Docker + **swarm init** + ufw) → env-роль рендерит в `release/env/` →
+build образов с тегом `app_version` → `make -C release deploy` → `deploy-wait` →
+роль `tls` (certbot + renew-timer) → showcase-init → smoke (последняя таска,
+гейтит). **CD по тегу** (`.github/workflows/deploy-tag.yml`) вызывает ТОТ ЖЕ
+ansible-путь по push semver-тега `v*` — одна логика, два триггера; версия сквозная
+от тега до образов и Sentry `release`.
+
+## 5. Дистрибуция через ORAS (СЛЕДУЮЩИЙ ШАГ поверх бандла)
 
 Каждое приложение/бот (`trendPulse` и будущие боты в `botnet/apps/*`) собирается в **версионированный OCI-образ** и публикуется как **OCI-артефакт через ORAS** в репозиторий `botnet/release`. `release` агрегирует все боты как **зависимости** и собирает **один удобный VPS-деплой** (единый bundle: pinned-ссылки на артефакты + общий compose/манифест + сети + provisioning).
 
@@ -83,4 +127,8 @@ flowchart LR
 - **Сети/секреты — декларативно:** топология сетей (network-design) и секреты (Ansible/vault) описаны так, что `release`-бандл их переиспользует, а не переопределяет.
 - **Provisioning как артефакт:** `pg_vector_provisioner`/`migration_runner` — тоже образы/шаги, переносимые в бандл.
 
-> Реализация ORAS/`release` — **не в текущем скоупе**. Здесь зафиксирован вектор, чтобы task-001/012 и будущие боты не закладывали host-coupling. См. [ADR-006](./adr-006-packaging-and-release.md).
+> Реализация ORAS/`release`-агрегата — **следующий шаг поверх бандла `release/`**
+> (TASK-057 заложил структуру: single-node swarm = посадочная площадка, бандл
+> самодостаточен и версионирован). ORAS добавляет registry-дистрибуцию вместо
+> build-on-host и агрегацию нескольких бот-стеков на один swarm. См.
+> [ADR-006](./adr-006-packaging-and-release.md).

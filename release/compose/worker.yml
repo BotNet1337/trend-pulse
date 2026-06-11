@@ -1,0 +1,55 @@
+# Celery worker (prod swarm). Same Dockerfile as api but the ml-enabled image
+# (core + sentence-transformers/torch) for the embed pipeline. On
+# postgres_net + redis_net + egress; NOT in edge; NO published ports.
+# `egress` (non-internal) is the ONLY internet route — the Telegram collector
+# needs MTProto access; api/db/redis stay isolated.
+services:
+  worker:
+    image: ${APP_IMAGE_ML}
+    build:
+      context: ../../backend
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION}
+        UV_VERSION: ${UV_VERSION}
+        INSTALL_ML: "true"
+    # Consume default + batch + scorer queues (TASK-006 routing).
+    command: celery -A celery_app worker -Q celery,batch,score:global -l info
+    env_file:
+      - ../env/deploy.env
+      - ../env/sensitive.env
+    networks:
+      - postgres_net
+      - redis_net
+      - egress
+    # Long-running tasks (embed batches): give in-flight work time to drain
+    # before SIGKILL on rolling-update / scale-down.
+    stop_grace_period: 60s
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 3072M
+      update_config:
+        order: stop-first
+        failure_action: rollback
+        delay: 5s
+      rollback_config:
+        order: stop-first
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 0
+
+networks:
+  postgres_net:
+    driver: overlay
+    attachable: true
+    internal: true
+  redis_net:
+    driver: overlay
+    attachable: true
+    internal: true
+  egress:
+    driver: overlay
+    attachable: true

@@ -1,9 +1,12 @@
 ---
-# Deploy the TrendPulse stack onto the provisioned VPS (configure step): ship
-# the env files (rendered from group_vars + decrypted vault) to the host, then
-# bring the stack up. Targets the `prod` group. Same env contract as local
-# (ADR-005 §4 — one source of truth for local and prod).
-- name: Deploy TrendPulse stack
+# Deploy the TrendPulse release/ bundle onto the provisioned VPS as a Docker
+# Swarm stack. Targets the `prod` group. Same env contract as local (ADR-005 §4).
+#
+# Flow:
+#   checkout app_version → render env into release/env/ → build images tagged
+#   app_version → make -C release deploy (render | stack deploy) → deploy-wait
+#   (convergence + jobs Complete) → tls role → showcase-init → smoke (gates).
+- name: Deploy TrendPulse release bundle (Docker Swarm)
   hosts: prod
   become: true
   gather_facts: true
@@ -11,11 +14,13 @@
     - ../vault/sensitive.vault.yml
   vars:
     app_dir: /opt/trendpulse
-    env_dir: "/opt/trendpulse/development/env"
+    release_dir: "/opt/trendpulse/release"
+    # PROD env renders into the release bundle (NOT development) so the bundle is
+    # self-contained on the host (Invariant: operators work only from release/).
+    env_dir: "/opt/trendpulse/release/env"
   pre_tasks:
-    # Ship the application source (compose files, provisioning, version.env) to the
-    # host BEFORE rendering env + compose-up — on a fresh droplet the compose
-    # project does not exist otherwise. Pinned to app_version for reproducibility.
+    # Ship the application source (release bundle, backend/frontend build contexts,
+    # version.env) to the host. Pinned to app_version for a reproducible deploy.
     - name: Check out the application source on the host
       ansible.builtin.git:
         repo: "{{ app_repo_url }}"
@@ -24,24 +29,73 @@
         single_branch: true
         depth: 1
   roles:
-    # Renders deploy.env + sensitive.env into {{ app_dir }}/development/env (env_dir),
-    # i.e. into the checked-out tree so the compose `env_file:` paths resolve.
+    # Renders deploy.env + sensitive.env into {{ env_dir }} (= release/env) so the
+    # compose `env_file:` paths resolve at `compose config` time.
     - role: env
-    # Installs the daily pg_backup cron job (TASK-034). S3_* credentials are already
-    # in sensitive.env (TASK-056 env role above) — no duplication here.
+    # Issues the Let's Encrypt cert on the host + installs the renew timer.
+    # Skipped when tls_enabled=false (bare-IP smoke run).
+    - role: tls
+    # Installs the daily pg_backup cron job (points at release/scripts).
     - role: backup
   tasks:
-    - name: Bring up the stack via compose
-      community.docker.docker_compose_v2:
-        project_src: "{{ app_dir }}/development"
-        files:
-          - docker-compose.yml
-        # version.env supplies image-tag interpolation (${PGVECTOR_IMAGE} etc.);
-        # deploy.env + sensitive.env (rendered by the env role above) supply
-        # interpolation-time values like the required ${FRONTEND_COOKIE_SECRET:?}
-        # in frontend.yml — mirroring the root Makefile's COMPOSE invocation.
-        env_files:
-          - "{{ app_dir }}/development/version.env"
-          - "{{ app_dir }}/development/env/deploy.env"
-          - "{{ app_dir }}/development/env/sensitive.env"
+    # APP_VERSION flows into version.env so built/deployed images carry the tag.
+    - name: Pin APP_VERSION in the release version.env
+      ansible.builtin.lineinfile:
+        path: "{{ release_dir }}/version.env"
+        regexp: '^APP_VERSION='
+        line: "APP_VERSION={{ app_version }}"
         state: present
+
+    - name: Build the application images tagged {{ app_version }}
+      ansible.builtin.command:
+        cmd: >-
+          docker compose
+          --env-file version.env
+          --env-file env/deploy.env
+          --env-file env/sensitive.env
+          -f docker-compose.yml build
+        chdir: "{{ release_dir }}"
+      register: build_result
+      changed_when: build_result.rc == 0
+
+    - name: Deploy the swarm stack (render | stack deploy)
+      ansible.builtin.command:
+        cmd: make deploy
+        chdir: "{{ release_dir }}"
+      register: deploy_result
+      changed_when: deploy_result.rc == 0
+
+    - name: Wait for stack convergence (services running + jobs Complete)
+      ansible.builtin.command:
+        cmd: make deploy-wait
+        chdir: "{{ release_dir }}"
+      register: deploy_wait_result
+      changed_when: false
+
+    # showcase-init (TASK-039) — idempotent. swarm-aware container lookup: find a
+    # running api task container on this node and exec the trending bootstrap.
+    - name: Find a running api container (swarm task on this node)
+      ansible.builtin.shell:
+        cmd: >-
+          docker ps --filter "label=com.docker.swarm.service.name=trendpulse_api"
+          --filter "status=running" --format '{{ "{{" }}.ID{{ "}}" }}' | head -n1
+      register: api_container
+      changed_when: false
+
+    - name: Showcase-init (subscribe system showcase user to catalog packs)
+      ansible.builtin.command:
+        cmd: "docker exec {{ api_container.stdout }} python -m api.trending"
+      when: api_container.stdout | length > 0
+      register: showcase_init
+      changed_when: showcase_init.rc == 0
+
+    # Smoke is the LAST task: a non-zero exit fails the deploy (AC4). Swarm has
+    # already auto-rolled-back any unhealthy rolling update by this point.
+    - name: Smoke test (register → login → watchlist → /ready → /trending)
+      ansible.builtin.command:
+        cmd: "bash scripts/smoke.sh"
+        chdir: "{{ release_dir }}"
+      environment:
+        HOST: "{{ 'https://' + prod_domain if (tls_enabled | default(true)) else 'http://' + ansible_default_ipv4.address }}"
+      register: smoke_result
+      changed_when: false

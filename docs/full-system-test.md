@@ -280,14 +280,29 @@ make tf-validate          # terraform validate (офлайн, без кред)
 make ansible-lint         # ansible-lint ops/ansible
 make ansible-check        # ansible-playbook --syntax-check / --check
 ```
-Полный live-деплой (вне CI — нужен реальный DigitalOcean-токен + домен + VPS):
+Офлайн-валидация прод-бандла (TASK-057, без VPS):
 ```sh
-# terraform: настроить ops/terraform/terraform.tfvars (из *.example), TF_VAR_* / -backend-config с кредами
-terraform -chdir=ops/terraform init && terraform -chdir=ops/terraform plan   # затем apply вручную
-# ansible: реальный inventory prod-хоста + vault с реальными секретами
-ansible-playbook ops/ansible/site.yml          # provision + deploy (clone source + version.env + compose up)
+make -C release validate          # env-файлы есть, docker жив, swarm active (падает с подсказкой)
+make -C release render | docker compose -f - config -q   # рендер парсится (метод валидации; --dry-run у stack deploy нет)
+make deploy                       # без inventory/prod.yml → падает с «скопируй prod.example.yml»
 ```
-Firewall: только 443 (+80 redirect) + SSH-allowlist. `group_vars/prod.yml` ставит `auth_cookie_secure=true`.
+Полный live-деплой (вне CI — нужен реальный VPS + домен + заполненный vault):
+```sh
+# 1. terraform создаёт VPS (ops/terraform/environments/prod), отдаёт server_ip
+# 2. впиши IP/домен/ssh-ключ в inventory:
+cp ops/ansible/inventory/prod.example.yml ops/ansible/inventory/prod.yml   # → отредактировать
+# 3. одна команда: provision (Docker + swarm init + ufw) → release-бандл через
+#    docker stack deploy → миграции (swarm jobs) → TLS (certbot) → showcase-init → smoke
+make deploy                       # = ansible-playbook site.yml -l prod -i inventory/prod.yml
+# CD: то же самое по git-тегу — git tag vX.Y.Z && git push origin vX.Y.Z → deploy-tag.yml
+```
+Прод = swarm-стек `trendpulse`: `docker stack services trendpulse` (replicated running
++ jobs Complete), `docker stack ps trendpulse` (образы `:vX.Y.Z`). Повторный
+`make deploy` идемпотентен (декларативная сходимость, не re-up); rolling-update с
+автооткатом (`update_config: order: start-first` / `failure_action: rollback`).
+Firewall: только 22/80/443 (ufw). `group_vars/prod.yml` ставит `auth_cookie_secure=true`,
+`swagger_enable=false`. Smoke: `make smoke HOST=https://foresignal.biz` (или последняя
+таска playbook — фейл = фейл деплоя).
 
 ---
 

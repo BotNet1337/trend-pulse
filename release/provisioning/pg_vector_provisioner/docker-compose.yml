@@ -1,0 +1,34 @@
+# One-shot swarm JOB: enable the pgvector extension once postgres is reachable,
+# before migrations run. Idempotent (IF NOT EXISTS) → re-runs exit 0.
+# postgres_net only.
+#
+# deploy.mode: replicated-job — swarm runs it to Complete (not a long-lived
+# service). restart_policy.condition: none → a one-shot job (re-run on each
+# `stack deploy`; make deploy-wait detects Failed jobs).
+services:
+  pg_vector_provisioner:
+    image: ${PGVECTOR_IMAGE}
+    env_file:
+      - ../../env/deploy.env
+      - ../../env/sensitive.env
+    command:
+      - sh
+      - -c
+      - >-
+        PGPASSWORD=$${POSTGRES_PASSWORD}
+        psql -h postgres -U $${POSTGRES_USER} -d $${POSTGRES_DB}
+        -v ON_ERROR_STOP=1
+        -c "CREATE EXTENSION IF NOT EXISTS vector;"
+    networks:
+      - postgres_net
+    deploy:
+      mode: replicated-job
+      replicas: 1
+      restart_policy:
+        condition: none
+
+networks:
+  postgres_net:
+    driver: overlay
+    attachable: true
+    internal: true

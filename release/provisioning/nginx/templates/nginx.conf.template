@@ -1,0 +1,159 @@
+# PRODUCTION edge reverse-proxy config (envsubst template).
+#
+# The official nginx image runs `envsubst` over this file at container start,
+# substituting ${DOMAIN} (and ONLY ${DOMAIN} — see NGINX_ENVSUBST_FILTER in
+# compose/nginx.yml) and writing the result to /etc/nginx/nginx.conf.
+# nginx runtime variables ($host, $remote_addr, $scheme, …) are left untouched.
+#
+# Differs from the dev nginx.conf:
+#   - listen 443 ssl with Let's Encrypt certs (bind-mounted /etc/letsencrypt)
+#   - a port-80 server that redirects everything to https:// (+ ACME webroot)
+#   - HSTS enabled (only meaningful over TLS)
+#
+# Per-route rate-limit zones (TASK-032) are identical to dev — keyed on binary
+# client IP; all breaches return 429.
+
+user  nginx;
+worker_processes  auto;
+
+events {
+    worker_connections  1024;
+}
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    sendfile        on;
+    keepalive_timeout  65;
+
+    # Don't leak the nginx version in responses/error pages.
+    server_tokens off;
+
+    # Request body cap — guards against oversized uploads (10 MB).
+    client_max_body_size 10m;
+
+    # Upstream timeouts (seconds) — fail fast rather than hang on a stuck api.
+    proxy_connect_timeout 5s;
+    proxy_send_timeout    30s;
+    proxy_read_timeout    30s;
+
+    # --- TASK-032 per-route rate-limit zones (keyed on binary client IP) ---
+    limit_req_zone $binary_remote_addr zone=auth_login:10m   rate=10r/m;
+    limit_req_zone $binary_remote_addr zone=auth_signup:10m  rate=5r/m;
+    limit_req_zone $binary_remote_addr zone=auth_forgot:10m  rate=5r/m;
+    limit_req_zone $binary_remote_addr zone=billing_inv:10m  rate=5r/m;
+    limit_req_zone $binary_remote_addr zone=api_keys:10m     rate=5r/m;
+    limit_req_status 429;
+
+    upstream trendpulse_api {
+        server api:8000;
+    }
+    upstream frontend_spa {
+        server frontend:4000;
+    }
+
+    # --- Modern TLS defaults (security 5.5): TLS 1.2/1.3 only, strong ciphers ---
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache   shared:SSL:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    # ------------------------------------------------------------------------
+    # Port 80 — ACME http-01 challenge passthrough + permanent redirect to HTTPS.
+    # ------------------------------------------------------------------------
+    server {
+        listen 80;
+        server_name ${DOMAIN};
+
+        # Certbot webroot challenge (renewals): served from the bind-mounted
+        # /etc/letsencrypt webroot path. Everything else → 301 https.
+        location /.well-known/acme-challenge/ {
+            root /etc/letsencrypt/webroot;
+        }
+
+        location / {
+            return 301 https://$host$request_uri;
+        }
+    }
+
+    # ------------------------------------------------------------------------
+    # Port 443 — TLS termination + proxy.
+    # ------------------------------------------------------------------------
+    server {
+        listen 443 ssl;
+        http2 on;
+        server_name ${DOMAIN};
+
+        ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+
+        # Security headers (network-design §Безопасность). HSTS only over TLS.
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Referrer-Policy "no-referrer" always;
+
+        # --- TASK-032 sensitive routes (exact-match wins over prefix /api/) ---
+        location = /api/v1/auth/jwt/login {
+            limit_req zone=auth_login burst=5 nodelay;
+            proxy_pass http://trendpulse_api/v1/auth/jwt/login;
+            proxy_set_header Host              $host;
+            proxy_set_header X-Real-IP         $remote_addr;
+            proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+        location = /api/v1/auth/register {
+            limit_req zone=auth_signup burst=3 nodelay;
+            proxy_pass http://trendpulse_api/v1/auth/register;
+            proxy_set_header Host              $host;
+            proxy_set_header X-Real-IP         $remote_addr;
+            proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+        location = /api/v1/auth/forgot-password {
+            limit_req zone=auth_forgot burst=3 nodelay;
+            proxy_pass http://trendpulse_api/v1/auth/forgot-password;
+            proxy_set_header Host              $host;
+            proxy_set_header X-Real-IP         $remote_addr;
+            proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+        location = /api/v1/billing/invoice {
+            limit_req zone=billing_inv burst=3 nodelay;
+            proxy_pass http://trendpulse_api/v1/billing/invoice;
+            proxy_set_header Host              $host;
+            proxy_set_header X-Real-IP         $remote_addr;
+            proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+        location /api/v1/api-keys {
+            limit_req zone=api_keys burst=3 nodelay;
+            proxy_pass http://trendpulse_api/v1/api-keys;
+            proxy_set_header Host              $host;
+            proxy_set_header X-Real-IP         $remote_addr;
+            proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # /api/* → backend (trailing slash strips the /api prefix).
+        location /api/ {
+            proxy_pass http://trendpulse_api/;
+            proxy_set_header Host              $host;
+            proxy_set_header X-Real-IP         $remote_addr;
+            proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # / → frontend SPA (SSR server).
+        location / {
+            proxy_pass http://frontend_spa;
+            proxy_set_header Host              $host;
+            proxy_set_header X-Real-IP         $remote_addr;
+            proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+    }
+}

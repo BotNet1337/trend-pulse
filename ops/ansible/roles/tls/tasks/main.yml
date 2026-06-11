@@ -1,0 +1,100 @@
+---
+# Role: tls — issue a Let's Encrypt certificate on the host and install a systemd
+# renew timer whose deploy-hook force-restarts the nginx swarm service.
+#
+# Runs in deploy.yml BEFORE the stack is (re-)deployed, so on the first deploy
+# port 80 is free and certbot can use the `standalone` authenticator. Renewals
+# (timer) use `webroot` so they don't need to take nginx down.
+#
+# The whole role is a no-op when tls_enabled is false (bare-IP smoke run).
+
+- name: TLS disabled — skip cert issuance (bare-IP / smoke run)
+  ansible.builtin.debug:
+    msg: "tls_enabled=false → serving plain HTTP, no certificate issued."
+  when: not (tls_enabled | bool)
+
+- name: TLS issuance + renew timer
+  when: tls_enabled | bool
+  block:
+    - name: Assert domain + email are set when TLS is enabled
+      ansible.builtin.assert:
+        that:
+          - tls_domain | length > 0
+          - tls_email | length > 0
+        fail_msg: >-
+          tls_enabled=true requires prod_domain and letsencrypt_email in the
+          inventory. Set them or set tls_enabled=false for a bare-IP smoke run.
+
+    - name: Install certbot
+      ansible.builtin.package:
+        name: certbot
+        state: present
+
+    - name: Ensure the ACME webroot exists (also inside the nginx bind-mount)
+      ansible.builtin.file:
+        path: "{{ tls_webroot }}"
+        state: directory
+        mode: "0755"
+
+    # Idempotent: --keep-until-expiring + --non-interactive means a re-run with a
+    # still-valid cert is a no-op (certbot exits 0 without re-issuing).
+    # `standalone` binds :80 directly — safe on the first deploy (stack not up yet)
+    # and on re-runs where the cert already exists (certbot skips the challenge).
+    - name: Issue / renew the Let's Encrypt certificate (standalone)
+      ansible.builtin.command:
+        cmd: >-
+          certbot certonly --standalone --non-interactive --agree-tos
+          --keep-until-expiring
+          --email {{ tls_email }}
+          -d {{ tls_domain }}
+        creates: "/etc/letsencrypt/live/{{ tls_domain }}/fullchain.pem"
+      register: tls_certbot_issue
+      changed_when: "'Certificate not yet due for renewal' not in (tls_certbot_issue.stdout | default(''))"
+
+    # Renewals use webroot (nginx stays up) + a deploy-hook that forces a rolling
+    # restart of the nginx service so it re-reads the renewed cert.
+    - name: Install the certbot renew deploy-hook (force nginx service restart)
+      ansible.builtin.copy:
+        dest: "/etc/letsencrypt/renewal-hooks/deploy/restart-nginx.sh"
+        mode: "0755"
+        content: |
+          #!/usr/bin/env bash
+          # Managed by Ansible (role: tls). On cert renewal, force a rolling
+          # restart of the nginx swarm service so it picks up the new cert.
+          set -euo pipefail
+          docker service update --force {{ tls_nginx_service }}
+
+    - name: Install the systemd renew timer (override certbot to use webroot)
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/certbot-renew.service"
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Certbot renewal (TrendPulse, webroot + nginx deploy-hook)
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/bin/certbot renew --webroot --webroot-path {{ tls_webroot }} --quiet
+
+    - name: Install the systemd renew timer unit
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/certbot-renew.timer"
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Run certbot-renew twice daily (TrendPulse)
+
+          [Timer]
+          OnCalendar=*-*-* 00,12:00:00
+          RandomizedDelaySec=3600
+          Persistent=true
+
+          [Install]
+          WantedBy=timers.target
+
+    - name: Enable + start the certbot renew timer
+      ansible.builtin.systemd:
+        name: certbot-renew.timer
+        enabled: true
+        state: started
+        daemon_reload: true

@@ -1,0 +1,49 @@
+# Celery beat scheduler (prod swarm). Same app image as api (differs only by
+# command). On postgres_net + redis_net; NOT in edge; NO published ports.
+#
+# INVARIANT: replicas MUST be exactly 1. A second beat = a duplicated scheduler =
+# every periodic task enqueued twice (double batches). Never scale this service.
+services:
+  beat:
+    image: ${APP_IMAGE}
+    build:
+      context: ../../backend
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION}
+        UV_VERSION: ${UV_VERSION}
+    command: celery -A celery_app beat -l info
+    env_file:
+      - ../env/deploy.env
+      - ../env/sensitive.env
+    networks:
+      - postgres_net
+      - redis_net
+    deploy:
+      # Strictly 1 — see invariant above. Single scheduler only.
+      replicas: 1
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 384M
+      # stop-first guarantees there is never momentarily 2 beat tasks during an
+      # update (start-first would briefly run two schedulers → double-enqueue).
+      update_config:
+        order: stop-first
+        failure_action: rollback
+        delay: 5s
+      rollback_config:
+        order: stop-first
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 0
+
+networks:
+  postgres_net:
+    driver: overlay
+    attachable: true
+    internal: true
+  redis_net:
+    driver: overlay
+    attachable: true
+    internal: true

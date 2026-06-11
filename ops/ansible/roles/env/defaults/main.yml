@@ -1,6 +1,11 @@
 ---
 # Where the rendered env files land. Overridden per play:
-#   - unpack-env.yml (localhost): repo development/env/
-#   - deploy.yml (prod): /opt/trendpulse/development/env/
+#   - unpack-env.yml (localhost): repo development/env/  (DEFAULT — keeps the
+#     local `make ansible-unpack` dev contract intact; do NOT change this default)
+#   - deploy.yml (prod): /opt/trendpulse/release/env/    (prod bundle, via -e/vars)
 env_dir: "{{ playbook_dir }}/../../../development/env"
 env_sensitive_mode: "0600"
+# NOTE: the template deploy.env.j2 reads `prod_domain` (set from the inventory on
+# prod; defaults to '' via the Jinja `| default('')` filter for local dev). It is
+# intentionally NOT declared as an env_-prefixed role default here — it is a
+# play/inventory-level var shared with the tls role, not a role-private knob.

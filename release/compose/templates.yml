@@ -1,0 +1,50 @@
+# Templates service (prod swarm) — Node/Fastify + react-email. Renders HTML
+# emails via POST /render/<template>. Internal-only (not in edge), port 3100 not
+# published — reachable only within `internal` by api/worker via DNS "templates".
+services:
+  templates:
+    image: ${TEMPLATES_IMAGE}
+    build:
+      context: ../../templates
+      args:
+        NODE_VERSION: ${NODE_VERSION}
+    environment:
+      NODE_ENV: production
+      SCHEMA_PATH: /app/dist/templates.json
+      PORT: "3100"
+      FRONTEND_DOMAIN: ${FRONTEND_DOMAIN:-app.trendpulse.local}
+      BASE_URL: ${BASE_URL:-https://app.trendpulse.local}
+      VERIFY_EMAIL_PATH: ${VERIFY_EMAIL_PATH:-/auth/email/confirm}
+    networks:
+      - internal
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          wget -qO- http://127.0.0.1:3100/health || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+      update_config:
+        order: start-first
+        failure_action: rollback
+        delay: 5s
+      rollback_config:
+        order: start-first
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 0
+
+networks:
+  internal:
+    driver: overlay
+    attachable: true
+    internal: true

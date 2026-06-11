@@ -1,0 +1,54 @@
+# Frontend SSR service (prod swarm) — React + Vite + Fastify node-SSR on :4000
+# (internal only — no published host ports). Traffic reaches it via edge-nginx.
+# COOKIE_SECRET: required by @fastify/cookie; injected from sensitive env
+# (interpolated by compose config from --env-file env/sensitive.env).
+services:
+  frontend:
+    image: ${FRONTEND_IMAGE}
+    build:
+      context: ../../frontend
+      args:
+        NODE_VERSION: ${NODE_VERSION}
+        VITE_BRAND_NAME: ${VITE_BRAND_NAME:-TrendPulse}
+        VITE_HELP_URL: ${VITE_HELP_URL:-https://trendpulse.app/docs}
+    networks:
+      - internal
+    environment:
+      # Internal backend URL — non-secret; used for SSR prefetch cookie-forward.
+      API_URL: http://api:8000
+      # Cookie signing secret — ≥16 chars; from sensitive env. The SSR config
+      # Zod validation crashes the container on startup if absent.
+      COOKIE_SECRET: ${FRONTEND_COOKIE_SECRET:?FRONTEND_COOKIE_SECRET is required}
+      NODE_ENV: production
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          wget -qO- http://127.0.0.1:4000/healthz || exit 1
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+      update_config:
+        order: start-first
+        failure_action: rollback
+        delay: 5s
+        monitor: 30s
+      rollback_config:
+        order: start-first
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 0
+
+networks:
+  internal:
+    driver: overlay
+    attachable: true
+    internal: true
