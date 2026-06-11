@@ -1,6 +1,20 @@
 import axios, { type AxiosInstance } from 'axios';
 
-const baseURL = process.env.API_URL;
+// Backend mounts ALL routes under the /v1 version prefix (TASK-030 / ADR-007).
+// The browser client gets the prefix via `baseURL: '/api/v1'` (nginx strips
+// /api/ → backend sees /v1/...), but SSR prefetch talks to the api service
+// DIRECTLY (API_URL=http://api:8000, no nginx in between), so the /v1 prefix
+// must be appended here. Without it GET /users/me and /watchlists 404 and the
+// prefetch runner silently drops hydration → __INITIAL_STATE__.user is null
+// even for authenticated requests (e2e ssr.spec.ts AC3).
+//
+// NOTE: API_URL itself must stay WITHOUT /v1 — server.factory.ts reuses it as
+// the upstream for the /api and /socket.io proxies, where the version prefix
+// arrives in the browser-supplied path.
+export const versionedApiBaseUrl = (apiUrl: string | undefined): string | undefined =>
+  apiUrl ? `${apiUrl.replace(/\/+$/, '')}/v1` : undefined;
+
+const baseURL = versionedApiBaseUrl(process.env.API_URL);
 
 /**
  * Build an axios instance scoped to a single SSR request.
