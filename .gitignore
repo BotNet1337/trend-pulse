@@ -12,6 +12,7 @@ __pycache__/
 coverage.xml
 htmlcov/
 prod.yml
+.claire
 
 # Node (landing/ + frontend/, populated in epics B/C)
 node_modules/
