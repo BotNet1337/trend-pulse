@@ -230,8 +230,9 @@ lock: ""
 - [x] 4 verify (G2 — tests + runtime + real behavior)
 - [x] 5 review (auto, adversarial) — PASS, 0 blocking; 1 LOW (match="free" → "no price") исправлен
 - [x] 5.5 security (if touches auth/input/secrets/OAuth) — PASS (billing): суммы только серверные, Pydantic-валидация периода, IPN dual-verify/anti-spoof/идемпотентность не тронуты, секретов в diff нет
-- [x] 6 ship (confirm plan done → PR(s))
-- [ ] 7 learnings (auto)
+- [x] 6 ship (confirm plan done → PR(s)) — PR #94
+- [x] 7 learnings (auto) — переданы оркестратору текстом; docs/learnings.md в этой
+      ветке намеренно не тронут (параллельные PR конфликтуют на append-only файле)
 debug_runs: []
 
 ## Details
