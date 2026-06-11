@@ -46,6 +46,68 @@ jobs:
         run: make test-cov
 
   # --------------------------------------------------------------------------
+  # integration-smoke: contract-smoke subset of the integration suite against
+  # live postgres + redis service containers (TASK-062). Catches route/contract
+  # drift (e.g. /v1 prefix) BEFORE merge — the full `-m integration` suite still
+  # runs only on push to main (main-integration.yml).
+  # --------------------------------------------------------------------------
+  integration-smoke:
+    name: Backend integration smoke (route contracts)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: trendpulse
+          POSTGRES_PASSWORD: trendpulse
+          POSTGRES_DB: trendpulse_test
+        options: >-
+          --health-cmd "pg_isready -U trendpulse -d trendpulse_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 6379:6379
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: trendpulse
+      POSTGRES_PASSWORD: trendpulse
+      POSTGRES_DB: trendpulse_test
+      REDIS_URL: redis://localhost:6379/0
+      JWT_SECRET: ci
+      OAUTH_STATE_SECRET: ci
+      GOOGLE_CLIENT_ID: ci
+      GOOGLE_CLIENT_SECRET: ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        run: uv sync --directory backend
+
+      - name: Run integration smoke (route contract tests)
+        run: make test-integration-smoke
+
+  # --------------------------------------------------------------------------
   # openapi-contract: drift check between committed schema and generated types
   # Requires BOTH Python (gen-openapi) and Node (gen-types) toolchains.
   # --------------------------------------------------------------------------
