@@ -30,7 +30,7 @@ API="${HOST}/api"
 
 # Unique-enough throwaway identity (timestamp keeps re-runs from colliding hard;
 # a duplicate email just yields a 400 which we tolerate on register).
-SMOKE_EMAIL="smoke+$(date -u +%Y%m%d%H%M%S)@trendpulse.local"
+SMOKE_EMAIL="smoke-$(date -u +%Y%m%d%H%M%S)@example.com"
 SMOKE_PASS="smoke-Passw0rd-$(date -u +%s)"
 
 JAR="$(mktemp)"
