@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Link } from '@tanstack/react-router';
 import { Badge } from '@/shared/components/badge';
 import { Button } from '@/shared/components/button';
 import { Check } from 'lucide-react';
@@ -169,6 +170,13 @@ export function PricingPage() {
             ) : null}
             <p className="text-sm text-muted-foreground">{paymentNote}</p>
             <p className="text-sm text-muted-foreground mt-1">
+              7-day money-back on your first payment — see our{' '}
+              <Link to="/refund-policy" className="text-primary hover:underline">
+                Refund Policy
+              </Link>
+              .
+            </p>
+            <p className="text-sm text-muted-foreground mt-1">
               Raw Telegram content is never stored beyond 48 hours. Only public channels are monitored.
             </p>
           </div>
@@ -194,7 +202,11 @@ export function PricingPage() {
             <div>
               <h3 className="mb-2">Do you offer refunds?</h3>
               <p className="text-sm text-muted-foreground">
-                Please review our Terms of Service. EU consumers have a 14-day statutory withdrawal right.
+                Yes — your first payment is covered by a 7-day money-back guarantee. See our{' '}
+                <Link to="/refund-policy" className="text-primary hover:underline">
+                  Refund Policy
+                </Link>{' '}
+                for the full procedure. EU consumers also have a 14-day statutory withdrawal right.
               </p>
             </div>
             <div>

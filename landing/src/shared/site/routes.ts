@@ -5,6 +5,7 @@ export const SITE_ROUTES = [
   '/contact',
   '/privacy-policy',
   '/terms-of-service',
+  '/refund-policy',
   '/cookie-policy',
   '/acceptable-use-policy',
   '/accessibility-statement',

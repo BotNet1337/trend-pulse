@@ -11,6 +11,7 @@ import { AboutPage } from '@/pages/about';
 import { ContactPage } from '@/pages/contact';
 import { PrivacyPolicyPage } from '@/pages/legal/privacy-policy';
 import { TermsOfServicePage } from '@/pages/legal/terms-of-service';
+import { RefundPolicyPage } from '@/pages/legal/refund-policy';
 import { CookiePolicyPage } from '@/pages/legal/cookie-policy';
 import { AcceptableUsePolicyPage } from '@/pages/legal/acceptable-use-policy';
 import { AccessibilityStatementPage } from '@/pages/legal/accessibility-statement';
@@ -59,6 +60,12 @@ const termsOfServiceRoute = createRoute({
   component: TermsOfServicePage,
 });
 
+const refundPolicyRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/refund-policy',
+  component: RefundPolicyPage,
+});
+
 const cookiePolicyRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/cookie-policy',
@@ -102,6 +109,7 @@ const routeTree = rootRoute.addChildren([
   contactRoute,
   privacyPolicyRoute,
   termsOfServiceRoute,
+  refundPolicyRoute,
   cookiePolicyRoute,
   acceptableUsePolicyRoute,
   accessibilityRoute,

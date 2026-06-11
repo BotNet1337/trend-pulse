@@ -215,6 +215,7 @@ export function RootLayout() {
               <ul className="space-y-2">
                 <li><Link to="/privacy-policy" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Privacy Policy</Link></li>
                 <li><Link to="/terms-of-service" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Terms of Service</Link></li>
+                <li><Link to="/refund-policy" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Refund Policy</Link></li>
                 <li><Link to="/cookie-policy" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Cookie Policy</Link></li>
                 <li><Link to="/acceptable-use-policy" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Acceptable Use</Link></li>
                 <li><Link to="/do-not-sell-or-share" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Do Not Sell/Share</Link></li>
