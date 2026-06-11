@@ -217,9 +217,11 @@
         "type": "object"
       },
       "BillingPeriod": {
-        "description": "Billing period for an invoice. Crypto has no native subscriptions, so the\nonly supported period is a calendar month; the duration lives in `PERIOD_DAYS`.",
+        "description": "Billing period for an invoice. Crypto has no native subscriptions — every\nperiod is a single prepaid invoice; durations live in `PERIOD_DAYS`.\n\nTASK-047: `QUARTER` (-10%) and `YEAR` (-20%) extend the grid; prices are\nexplicit constants in `PLAN_PERIOD_PRICES_USD`, never runtime discount math.",
         "enum": [
-          "month"
+          "month",
+          "quarter",
+          "year"
         ],
         "title": "BillingPeriod",
         "type": "string"

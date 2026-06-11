@@ -22,7 +22,17 @@ import {
   PLAN_TIERS,
   PLAN_DISPLAY_NAME,
   isPlanAtLeast,
+  BILLING_PERIODS,
+  PERIOD_MONTH,
+  PERIOD_QUARTER,
+  PERIOD_YEAR,
+  PLAN_PERIOD_PRICE_USD,
+  BILLING_PERIOD_LABEL,
+  BILLING_PERIOD_PRICE_SUFFIX,
+  BILLING_PERIOD_SAVINGS_NOTE,
+  BILLING_PERIOD_BILLED_NOTE,
 } from '../../../src/entities/plan/constants';
+import { planCardPricing } from '../../../src/features/billing/ui/plan-card-pricing';
 
 describe('plan constants', () => {
   describe('PLAN_TIERS', () => {
@@ -106,6 +116,72 @@ describe('plan constants', () => {
 
     it('team displays as "Trader" (TASK-049: display-only rename; enum value stays "team")', () => {
       expect(PLAN_DISPLAY_NAME[PLAN_TEAM]).toBe('Trader');
+    });
+  });
+
+  describe('billing periods (TASK-047)', () => {
+    it('exposes exactly month/quarter/year in order', () => {
+      expect(BILLING_PERIODS).toEqual([PERIOD_MONTH, PERIOD_QUARTER, PERIOD_YEAR]);
+    });
+
+    it('PLAN_PERIOD_PRICE_USD matches the backend grid (Pro 29/78/278, Trader 99/267/950)', () => {
+      expect(PLAN_PERIOD_PRICE_USD[PLAN_PRO]).toEqual({ month: 29, quarter: 78, year: 278 });
+      expect(PLAN_PERIOD_PRICE_USD[PLAN_TEAM]).toEqual({ month: 99, quarter: 267, year: 950 });
+    });
+
+    it('free has no paid periods (always 0)', () => {
+      for (const period of BILLING_PERIODS) {
+        expect(PLAN_PERIOD_PRICE_USD[PLAN_FREE][period]).toBe(0);
+      }
+    });
+
+    it('month column equals the PLAN_PRICE_USD monthly anchor', () => {
+      for (const tier of PLAN_TIERS) {
+        expect(PLAN_PERIOD_PRICE_USD[tier][PERIOD_MONTH]).toBe(PLAN_PRICE_USD[tier]);
+      }
+    });
+
+    it('labels every period', () => {
+      expect(BILLING_PERIOD_LABEL[PERIOD_MONTH]).toBe('Monthly');
+      expect(BILLING_PERIOD_LABEL[PERIOD_QUARTER]).toBe('Quarterly');
+      expect(BILLING_PERIOD_LABEL[PERIOD_YEAR]).toBe('Yearly');
+    });
+
+    it('savings note: none for month, ~10% quarter, ~20% year', () => {
+      expect(BILLING_PERIOD_SAVINGS_NOTE[PERIOD_MONTH]).toBeNull();
+      expect(BILLING_PERIOD_SAVINGS_NOTE[PERIOD_QUARTER]).toContain('10%');
+      expect(BILLING_PERIOD_SAVINGS_NOTE[PERIOD_YEAR]).toContain('20%');
+    });
+
+    it('billed note: quarter every 3 months, year yearly', () => {
+      expect(BILLING_PERIOD_BILLED_NOTE[PERIOD_MONTH]).toBeNull();
+      expect(BILLING_PERIOD_BILLED_NOTE[PERIOD_QUARTER]).toBe('Billed every 3 months');
+      expect(BILLING_PERIOD_BILLED_NOTE[PERIOD_YEAR]).toBe('Billed yearly');
+    });
+  });
+
+  describe('planCardPricing (PlanComparison toggle, TASK-047)', () => {
+    it('card amount equals the period constant for every paid plan/period', () => {
+      for (const plan of [PLAN_PRO, PLAN_TEAM] as const) {
+        for (const period of BILLING_PERIODS) {
+          const pricing = planCardPricing(plan, period);
+          expect(pricing.amountUsd).toBe(PLAN_PERIOD_PRICE_USD[plan][period]);
+          expect(pricing.suffix).toBe(BILLING_PERIOD_PRICE_SUFFIX[period]);
+        }
+      }
+    });
+
+    it('year pricing carries the ~20% savings note and billed-yearly copy', () => {
+      const pricing = planCardPricing(PLAN_PRO, PERIOD_YEAR);
+      expect(pricing.amountUsd).toBe(278);
+      expect(pricing.savingsNote).toContain('20%');
+      expect(pricing.billedNote).toBe('Billed yearly');
+    });
+
+    it('month pricing has no savings/billed notes', () => {
+      const pricing = planCardPricing(PLAN_PRO, PERIOD_MONTH);
+      expect(pricing.savingsNote).toBeNull();
+      expect(pricing.billedNote).toBeNull();
     });
   });
 

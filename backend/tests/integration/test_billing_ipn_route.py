@@ -22,8 +22,9 @@ from sqlalchemy import select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from api.deps import current_user
 from api.main import app
-from billing.deps import get_db_session, get_ipn_gateway
+from billing.deps import get_db_session, get_gateway, get_ipn_gateway
 from billing.gateway.nowpayments import NowPaymentsGateway
 from storage.models.base import utcnow
 from storage.models.subscriptions import BillingPayment, Subscription
@@ -178,6 +179,92 @@ def test_partially_paid_no_activation(
     refreshed = db_session_committing.get(User, user.id)
     assert refreshed is not None
     assert refreshed.plan == "free"
+
+
+def test_create_year_invoice_persists_year_payment(
+    client: TestClient,
+    db_session_committing: Session,
+    user: User,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AC2 (TASK-047): POST /billing/invoice {period:'year'} → amount '278' and a
+    pending billing_payments row with period='year' (real gateway pricing path,
+    only the outbound HTTP call is stubbed)."""
+
+    def _post(url: str, **kwargs: object) -> object:
+        class _Resp:
+            @staticmethod
+            def raise_for_status() -> None:
+                return None
+
+            @staticmethod
+            def json() -> dict[str, object]:
+                return {"invoice_url": "https://nowpayments.io/payment/?iid=year"}
+
+        return _Resp()
+
+    monkeypatch.setattr("billing.gateway.nowpayments.httpx.post", _post)
+    invoice_gateway = NowPaymentsGateway(api_key="k", ipn_secret=_IPN_SECRET, base_url="http://np")
+    app.dependency_overrides[current_user] = lambda: user
+    app.dependency_overrides[get_gateway] = lambda: invoice_gateway
+    try:
+        resp = client.post("/v1/billing/invoice", json={"plan": "pro", "period": "year"})
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+        app.dependency_overrides.pop(get_gateway, None)
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["amount"] == "278"
+    assert body["currency"] == "usd"
+
+    db_session_committing.expire_all()
+    payment = db_session_committing.scalars(
+        select(BillingPayment).where(BillingPayment.order_id == body["order_id"])
+    ).one()
+    assert payment.period == "year"
+    assert payment.amount == Decimal("278")
+    assert payment.status == "pending"
+
+
+def test_finished_year_ipn_extends_365_days(
+    client: TestClient, db_session_committing: Session, user: User
+) -> None:
+    """AC3 (TASK-047): a finished IPN on a year invoice sets expires_at ≈ now+365d."""
+    from datetime import timedelta
+
+    year_invoice = BillingPayment(
+        user_id=user.id,
+        order_id="order-year-1",
+        payment_id=None,
+        plan="pro",
+        period="year",
+        amount=Decimal("278"),
+        currency="usd",
+        status="pending",
+    )
+    db_session_committing.add(year_invoice)
+    db_session_committing.flush()
+
+    ipn_body = {
+        "payment_id": "np-pay-year-1",
+        "order_id": "order-year-1",
+        "payment_status": "finished",
+        "price_amount": "278",
+        "price_currency": "usd",
+    }
+    before = utcnow()
+    raw, sig = _sign(ipn_body)
+    resp = client.post("/v1/billing/ipn", content=raw, headers={_SIG_HEADER: sig})
+    assert resp.status_code == 200, resp.text
+
+    db_session_committing.expire_all()
+    sub = db_session_committing.scalars(
+        select(Subscription).where(Subscription.user_id == user.id)
+    ).one()
+    assert sub.expires_at is not None
+    assert sub.expires_at >= before + timedelta(days=365)
+    assert sub.expires_at <= utcnow() + timedelta(days=365)
 
 
 def test_old_price_invoice_activates_after_price_bump(

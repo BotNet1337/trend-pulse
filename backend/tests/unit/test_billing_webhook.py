@@ -18,15 +18,20 @@ from storage.models.subscriptions import BillingPayment
 
 
 def _payment(
-    *, payment_id: str | None = None, processed_at: datetime | None = None, status: str = "pending"
+    *,
+    payment_id: str | None = None,
+    processed_at: datetime | None = None,
+    status: str = "pending",
+    period: str = "month",
+    amount: Decimal = Decimal("19"),
 ) -> BillingPayment:
     payment = BillingPayment(
         user_id=1,
         order_id="order-1",
         payment_id=payment_id,
         plan="pro",
-        period="month",
-        amount=Decimal("19"),
+        period=period,
+        amount=amount,
         currency="usd",
         status=status,
     )
@@ -88,6 +93,36 @@ def test_finished_activates(monkeypatch: pytest.MonkeyPatch) -> None:
     assert called["plan"] is Plan.PRO
     assert payment.payment_id == "pay-1"
     assert payment.processed_at is not None
+
+
+def test_finished_year_invoice_activates_with_year_period(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AC3 (TASK-047): a finished IPN for a period='year' invoice restores
+    BillingPeriod.YEAR from the stored row and activates with it."""
+    from billing.plans import BillingPeriod
+
+    payment = _payment(period="year", amount=Decimal("278"))
+    session = _session(payment)
+    called: dict[str, object] = {}
+
+    def _activate(sess: object, *, user: object, plan: Plan, period: object) -> object:
+        called["period"] = period
+        return MagicMock()
+
+    monkeypatch.setattr("billing.webhook.activate_or_extend", _activate)
+
+    event = IpnEvent(
+        payment_id="pay-year-1",
+        order_id="order-1",
+        status="finished",
+        amount=Decimal("278"),
+        currency="usd",
+    )
+    result = process_ipn(session, headers={}, raw_body=b"{}", gateway=_gateway(event))
+
+    assert result.activated is True
+    assert called["period"] is BillingPeriod.YEAR
 
 
 def test_replay_same_payment_id_is_noop() -> None:

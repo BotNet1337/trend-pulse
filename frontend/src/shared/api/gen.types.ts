@@ -806,11 +806,14 @@ export interface components {
         };
         /**
          * BillingPeriod
-         * @description Billing period for an invoice. Crypto has no native subscriptions, so the
-         *     only supported period is a calendar month; the duration lives in `PERIOD_DAYS`.
+         * @description Billing period for an invoice. Crypto has no native subscriptions — every
+         *     period is a single prepaid invoice; durations live in `PERIOD_DAYS`.
+         *
+         *     TASK-047: `QUARTER` (-10%) and `YEAR` (-20%) extend the grid; prices are
+         *     explicit constants in `PLAN_PERIOD_PRICES_USD`, never runtime discount math.
          * @enum {string}
          */
-        BillingPeriod: "month";
+        BillingPeriod: "month" | "quarter" | "year";
         /** Body_auth_jwt_login_v1_auth_jwt_login_post */
         Body_auth_jwt_login_v1_auth_jwt_login_post: {
             /** Client Id */

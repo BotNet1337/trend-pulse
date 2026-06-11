@@ -75,7 +75,7 @@ class NowPaymentsGateway:
         self, *, plan: Plan, period: BillingPeriod, user: User, order_id: str
     ) -> Invoice:
         """Create a NOWPayments invoice and map the response to our `Invoice`."""
-        amount = price_for(plan)
+        amount = price_for(plan, period)
         request_body = {
             "price_amount": str(amount),
             "price_currency": PRICE_CURRENCY,

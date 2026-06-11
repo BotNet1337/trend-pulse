@@ -7,6 +7,9 @@ type PricingPlan = {
   id: string;
   name: string;
   price: number;
+  /** Optional prepaid-period prices (TASK-047). Absent field = line not rendered. */
+  quarterlyPrice?: number;
+  yearlyPrice?: number;
   period: string;
   channels: number;
   topics: number;
@@ -19,10 +22,14 @@ type PricingPlan = {
 };
 
 export function PricingPage() {
-  const siteAny = SITE as unknown as { pricing?: { plans?: PricingPlan[]; paymentNote?: string }; signupUrl?: string };
+  const siteAny = SITE as unknown as {
+    pricing?: { plans?: PricingPlan[]; paymentNote?: string; annualNote?: string };
+    signupUrl?: string;
+  };
   const plans: PricingPlan[] = siteAny.pricing?.plans ?? [];
   const paymentNote: string =
     siteAny.pricing?.paymentNote ?? 'Payments accepted via cryptocurrency (NOWPayments). No credit card required.';
+  const annualNote = siteAny.pricing?.annualNote;
   const signupUrl = siteAny.signupUrl ?? '/sign-up';
 
   return (
@@ -46,6 +53,11 @@ export function PricingPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
             {plans.map((plan) => {
               const isPopular = plan.id === 'pro';
+              // TASK-047: prepaid-period line — render only the fields present in config.
+              const periodPrices = [
+                plan.quarterlyPrice != null ? `$${plan.quarterlyPrice}/quarter` : null,
+                plan.yearlyPrice != null ? `$${plan.yearlyPrice}/year` : null,
+              ].filter((line): line is string => line !== null);
               return (
                 <div
                   key={plan.id}
@@ -72,6 +84,11 @@ export function PricingPage() {
                         </>
                       )}
                     </div>
+                    {periodPrices.length > 0 ? (
+                      <p className="text-xs text-muted-foreground mb-2">
+                        or {periodPrices.join(' · ')}
+                      </p>
+                    ) : null}
                     <p className="text-sm text-muted-foreground">{plan.description}</p>
                   </div>
 
@@ -137,6 +154,9 @@ export function PricingPage() {
           </div>
 
           <div className="bg-muted/50 border border-border rounded-lg p-6 mb-8 text-center">
+            {annualNote ? (
+              <p className="text-sm font-medium text-foreground mb-1">{annualNote}</p>
+            ) : null}
             <p className="text-sm text-muted-foreground">{paymentNote}</p>
             <p className="text-sm text-muted-foreground mt-1">
               Raw Telegram content is never stored beyond 48 hours. Only public channels are monitored.

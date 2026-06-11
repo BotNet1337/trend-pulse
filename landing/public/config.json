@@ -37,6 +37,8 @@
         "id": "pro",
         "name": "Pro",
         "price": 29,
+        "quarterlyPrice": 78,
+        "yearlyPrice": 278,
         "currency": "USD",
         "period": "month",
         "channels": 100,
@@ -52,6 +54,8 @@
         "id": "team",
         "name": "Trader",
         "price": 99,
+        "quarterlyPrice": 267,
+        "yearlyPrice": 950,
         "currency": "USD",
         "period": "month",
         "channels": 500,
@@ -65,7 +69,8 @@
       }
     ],
     "paymentNote": "Payments accepted via cryptocurrency (NOWPayments). No credit card required.",
-    "paymentProcessor": "NOWPayments"
+    "paymentProcessor": "NOWPayments",
+    "annualNote": "Save 20% with annual billing"
   },
   "legal": {
     "entityName": "Sole Proprietor (FOP) Kharchenko Yaroslav Oleksandrovych",

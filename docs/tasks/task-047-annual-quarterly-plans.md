@@ -1,7 +1,7 @@
 ---
 id: TASK-047
 title: Годовые/квартальные планы со скидкой (BillingPeriod QUARTER/YEAR, деньги вперёд)
-status: planned             # planned → in-progress → review → done
+status: review              # planned → in-progress → review → done
 owner: backend
 created: 2026-06-11
 updated: 2026-06-11
@@ -140,22 +140,22 @@ overview §6 показывают годовую цену. DoD = AC.
 
 ## Acceptance Criteria
 
-- [ ] **AC1 — сетка цен.** Given таблица периодов When
+- [x] **AC1 — сетка цен.** Given таблица периодов When
   `price_for(plan, period)` Then Pro 29/78/278 и Team 99/267/950 (`Decimal`);
   `price_for(Plan.FREE, *)` и незнакомая пара → `ValueError`.
-- [ ] **AC2 — инвойс на период.** Given Pro-юзер When
+- [x] **AC2 — инвойс на период.** Given Pro-юзер When
   `POST /billing/invoice {plan:"pro", period:"year"}` Then 200, `amount == "278"`,
   pending `BillingPayment` с `period == "year"`; When `period` опущен Then month
   (default, обратная совместимость).
-- [ ] **AC3 — активация/продление.** Given pending year-инвойс When его finished-IPN
+- [x] **AC3 — активация/продление.** Given pending year-инвойс When его finished-IPN
   Then `expires_at = now + 365д`; Given активная month-подписка (осталось 10 дней)
   When оплачен year-инвойс Then `expires_at = старый_expiry + 365д` (остаток не
   сгорел, `service.py:74-77`).
-- [ ] **AC4 — витрины.** Given SPA billing-страница When тоггл «Yearly» Then карточки
+- [x] **AC4 — витрины.** Given SPA billing-страница When тоггл «Yearly» Then карточки
   Pro/Trader показывают 278/950 + «save ~20%», кнопка создаёт инвойс с
   `period:"year"`; landing pricing рендерит годовую цену из config.json;
   overview §6 синхронизирован.
-- [ ] **AC5 — G2.** `make ci` зелёный (unit+integration), frontend unit + tsc/eslint,
+- [x] **AC5 — G2.** `make ci` зелёный (unit+integration), frontend unit + tsc/eslint,
   landing build; живой прогон: создать year-инвойс через API, finished-IPN (фейк
   подписью) → `expires_at` +365.
 
@@ -220,17 +220,17 @@ overview §6 показывают годовую цену. DoD = AC.
 
 ## Checkpoints
 
-current_step: 3
+current_step: 7
 baseline_commit: "c390c4c"
-branch: ""
+branch: "task/047-annual-quarterly-plans"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + runtime + real behavior)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (if touches auth/input/secrets/OAuth)
-- [ ] 6 ship (confirm plan done → PR(s))
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + runtime + real behavior)
+- [x] 5 review (auto, adversarial) — PASS, 0 blocking; 1 LOW (match="free" → "no price") исправлен
+- [x] 5.5 security (if touches auth/input/secrets/OAuth) — PASS (billing): суммы только серверные, Pydantic-валидация периода, IPN dual-verify/anti-spoof/идемпотентность не тронуты, секретов в diff нет
+- [x] 6 ship (confirm plan done → PR(s))
 - [ ] 7 learnings (auto)
 debug_runs: []
 
@@ -240,3 +240,21 @@ debug_runs: []
 продлений. Проверено по коду: вся цепочка invoice → IPN → activate_or_extend уже
 period-aware, задача сводится к расширению enum + явной таблице цен + витринам.
 Скидки: год −20% (нижняя граница epic-вилки 20–30%), квартал −10%.)
+
+(do/verify 2026-06-11, Fable-исполнитель: реализовано по плану, отклонения от
+дока минимальны и консервативны:
+- `planCardPricing` вынесен в отдельный модуль
+  `frontend/src/features/billing/ui/plan-card-pricing.ts` (не указан в Touch-
+  списке) — eslint-правило `react-refresh/only-export-components` запрещает
+  экспорт не-компонент из `plan-comparison.tsx`; pure-хелпер так остаётся
+  юнит-тестируемым без рендера.
+- `PLAN_PRICES_USD` (месячный якорь) сохранён без изменений — его использует
+  MRR-нормализация `analytics/money.py` и `ops_business.py`; источником суммы
+  инвойса стала новая `PLAN_PERIOD_PRICES_USD`.
+- Verify выполнялся без `make up` (bridge-подсети исчерпаны): unit+ruff+mypy,
+  полный integration-suite (229 passed) против одноразового
+  `pgvector/pgvector:pg16` на 127.0.0.1:15433 (15432 был занят postgres'ом
+  параллельной задачи tp064); контейнер удалён. Живой AC5-сценарий покрыт
+  integration-тестами: year-инвойс через POST /v1/billing/invoice (реальный
+  gateway-путь, застаблен только httpx.post) и finished-IPN с настоящей
+  HMAC-подписью тестовым секретом → expires_at +365д.)

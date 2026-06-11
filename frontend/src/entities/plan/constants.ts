@@ -26,6 +26,65 @@ export const PLAN_PRICE_USD: Readonly<Record<PlanId, number>> = {
   [PLAN_TEAM]: 99,
 };
 
+/** Billing period values — match the backend `BillingPeriod` enum (TASK-047). */
+export const PERIOD_MONTH = 'month' as const;
+export const PERIOD_QUARTER = 'quarter' as const;
+export const PERIOD_YEAR = 'year' as const;
+
+export type BillingPeriodId =
+  | typeof PERIOD_MONTH
+  | typeof PERIOD_QUARTER
+  | typeof PERIOD_YEAR;
+
+/** Ordered billing periods for the period toggle (shortest → longest). */
+export const BILLING_PERIODS: ReadonlyArray<BillingPeriodId> = [
+  PERIOD_MONTH,
+  PERIOD_QUARTER,
+  PERIOD_YEAR,
+];
+
+/**
+ * Per-period prices in USD (TASK-047) — display only; the authoritative charge
+ * amount is the backend InvoiceResponse. Mirrors backend PLAN_PERIOD_PRICES_USD
+ * (quarter ~ -10%, year ~ -20%, rounded down to a whole dollar). Free is 0 — it
+ * has no invoice at all (the period toggle only affects paid cards).
+ */
+export const PLAN_PERIOD_PRICE_USD: Readonly<
+  Record<PlanId, Readonly<Record<BillingPeriodId, number>>>
+> = {
+  [PLAN_FREE]: { [PERIOD_MONTH]: 0, [PERIOD_QUARTER]: 0, [PERIOD_YEAR]: 0 },
+  [PLAN_PRO]: { [PERIOD_MONTH]: 29, [PERIOD_QUARTER]: 78, [PERIOD_YEAR]: 278 },
+  [PLAN_TEAM]: { [PERIOD_MONTH]: 99, [PERIOD_QUARTER]: 267, [PERIOD_YEAR]: 950 },
+};
+
+/** Toggle button labels per billing period. */
+export const BILLING_PERIOD_LABEL: Readonly<Record<BillingPeriodId, string>> = {
+  [PERIOD_MONTH]: 'Monthly',
+  [PERIOD_QUARTER]: 'Quarterly',
+  [PERIOD_YEAR]: 'Yearly',
+};
+
+/** Price suffix shown next to the amount (e.g. "$278/year"). */
+export const BILLING_PERIOD_PRICE_SUFFIX: Readonly<Record<BillingPeriodId, string>> = {
+  [PERIOD_MONTH]: '/month',
+  [PERIOD_QUARTER]: '/quarter',
+  [PERIOD_YEAR]: '/year',
+};
+
+/** Savings copy per period (null = no note). Mirrors the backend discount grid. */
+export const BILLING_PERIOD_SAVINGS_NOTE: Readonly<Record<BillingPeriodId, string | null>> = {
+  [PERIOD_MONTH]: null,
+  [PERIOD_QUARTER]: 'Save ~10%',
+  [PERIOD_YEAR]: 'Save ~20%',
+};
+
+/** Billing cadence copy per period (null = no note). */
+export const BILLING_PERIOD_BILLED_NOTE: Readonly<Record<BillingPeriodId, string | null>> = {
+  [PERIOD_MONTH]: null,
+  [PERIOD_QUARTER]: 'Billed every 3 months',
+  [PERIOD_YEAR]: 'Billed yearly',
+};
+
 /**
  * Max own channels (watchlists) per plan — synced to backend CHANNELS limits (TASK-049).
  * Free=0: own channels are blocked; Free value prop is curated packs + delayed alerts.
