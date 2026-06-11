@@ -18,19 +18,26 @@ export type PlanId = typeof PLAN_FREE | typeof PLAN_PRO | typeof PLAN_TEAM;
 /**
  * Monthly prices in USD — for plan comparison display only. The authoritative
  * charge amount comes from the backend InvoiceResponse (POST /billing/invoice);
- * these mirror overview §6 / backend billing/plans.py (Pro $19, Team $79).
+ * these mirror overview §6 / backend billing/plans.py (TASK-049: Pro $29, Trader/Team $99).
  */
 export const PLAN_PRICE_USD: Readonly<Record<PlanId, number>> = {
   [PLAN_FREE]: 0,
-  [PLAN_PRO]: 19,
-  [PLAN_TEAM]: 79,
+  [PLAN_PRO]: 29,
+  [PLAN_TEAM]: 99,
 };
 
-/** Max watchlists per plan. */
-export const PLAN_MAX_WATCHLISTS: Readonly<Record<PlanId, number | null>> = {
-  [PLAN_FREE]: 3,
-  [PLAN_PRO]: 25,
-  [PLAN_TEAM]: null, // unlimited
+/**
+ * Max own channels (watchlists) per plan — synced to backend CHANNELS limits (TASK-049).
+ * Free=0: own channels are blocked; Free value prop is curated packs + delayed alerts.
+ * Pro=100, Trader/Team=500.
+ *
+ * Note: variable name kept as PLAN_MAX_WATCHLISTS (not renamed to PLAN_MAX_CHANNELS)
+ * because there are only 2 src call-sites — renaming would be pure churn (TASK-049 scope).
+ */
+export const PLAN_MAX_WATCHLISTS: Readonly<Record<PlanId, number>> = {
+  [PLAN_FREE]: 0,
+  [PLAN_PRO]: 100,
+  [PLAN_TEAM]: 500,
 };
 
 /** Alert history window in days (null = none). 0 = no history. */
@@ -47,11 +54,14 @@ export const PLAN_WEBHOOK_DELIVERY: Readonly<Record<PlanId, boolean>> = {
   [PLAN_TEAM]: true,
 };
 
-/** Human-readable plan display names. */
+/**
+ * Human-readable plan display names.
+ * TASK-049: team tier displays as "Trader" (enum value "team" and DB column unchanged).
+ */
 export const PLAN_DISPLAY_NAME: Readonly<Record<PlanId, string>> = {
   [PLAN_FREE]: 'Free',
   [PLAN_PRO]: 'Pro',
-  [PLAN_TEAM]: 'Team',
+  [PLAN_TEAM]: 'Trader',
 };
 
 /** Ordered list of plan tiers (lowest → highest). */

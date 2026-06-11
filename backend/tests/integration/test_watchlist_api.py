@@ -7,11 +7,15 @@ is exercised over HTTP via `TestClient`.
 
 User decision (overrides task doc): ONE DB row = ONE watchlist
 `(user_id, channel_id, topic)` + alert-config. A watchlist carries a SINGLE
-channel and is addressed by its numeric row id. The plan limit (AC5) is the max
-number of WATCHLISTS per user (Free: 5); creating the 6th -> 402.
+channel and is addressed by its numeric row id.
+
+TASK-049: Free CHANNELS=0 (Free = воронка). CRUD tests use Pro plan user so that
+watchlist creation is not blocked by the new Free channel limit. The plan-limit
+test (AC5) now verifies that a Free user cannot create even ONE own channel (→ 402).
 """
 
 from collections.abc import Iterator
+from datetime import timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -22,15 +26,33 @@ from api.auth.api_key import current_user_or_api_key
 from api.deps import current_user
 from api.main import app
 from api.watchlist.deps import get_db_session
+from storage.models.base import utcnow
+from storage.models.subscriptions import Subscription
 from storage.models.users import User
 
 pytestmark = pytest.mark.integration
 
 
-def _make_user(session: Session, email: str) -> User:
-    user = User(email=email, hashed_password="x" * 16)
+def _make_user(session: Session, email: str, plan: str = "pro") -> User:
+    """Create a test user with an active subscription for paid plans.
+
+    TASK-049: Free CHANNELS=0 — CRUD tests need plan=pro + active subscription.
+    `effective_plan` in billing/limits.py resolves pro→Free if there is no active
+    subscription row in the DB, so we create one here for paid-plan users.
+
+    Pass plan="free" explicitly for Free-user limit-enforcement tests.
+    """
+    user = User(email=email, hashed_password="x" * 16, plan=plan)
     session.add(user)
     session.flush()
+    if plan != "free":
+        sub = Subscription(
+            user_id=user.id,
+            plan=plan,
+            expires_at=utcnow() + timedelta(days=30),
+        )
+        session.add(sub)
+        session.flush()
     return user
 
 
@@ -172,13 +194,36 @@ def test_bad_handle_returns_422(client: TestClient) -> None:
     assert resp.status_code == 422, resp.text
 
 
-def test_over_limit_returns_402(client: TestClient) -> None:
-    """AC5: creating beyond the default plan max watchlists -> 402."""
-    for i in range(5):
-        ok = client.post("/watchlists", json=_payload(handle=f"@chan_num_{i}", topic=f"t{i}"))
-        assert ok.status_code == 201, ok.text
-    over = client.post("/watchlists", json=_payload(handle="@chan_num_six", topic="t6"))
-    assert over.status_code == 402, over.text
+def test_over_limit_returns_402(db_session_committing: Session) -> None:
+    """AC5 / AC2 (TASK-049): Free user cannot create ANY own channel (CHANNELS=0 → 402).
+
+    The fixture `client` uses a Pro user (so CRUD tests work). Here we create a fresh
+    Free user to verify the new Free CHANNELS=0 limit enforcement directly.
+    """
+    from collections.abc import Iterator as IteratorType
+
+    from api.auth.api_key import current_user_or_api_key
+    from api.deps import current_user
+    from api.watchlist.deps import get_db_session
+
+    free_user = _make_user(db_session_committing, "freelimit@example.com", plan="free")
+    db_session_committing.flush()
+
+    def _session_override() -> IteratorType[Session]:
+        yield db_session_committing
+
+    app.dependency_overrides[current_user] = lambda: free_user
+    app.dependency_overrides[current_user_or_api_key] = lambda: free_user
+    app.dependency_overrides[get_db_session] = _session_override
+    try:
+        with TestClient(app) as free_client:
+            # Free CHANNELS=0 → first own channel create → 402
+            resp = free_client.post("/watchlists", json=_payload(handle="@chan_free_1", topic="t1"))
+            assert resp.status_code == 402, resp.text
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+        app.dependency_overrides.pop(current_user_or_api_key, None)
+        app.dependency_overrides.pop(get_db_session, None)
 
 
 def test_default_kind_is_telegram(client: TestClient) -> None:

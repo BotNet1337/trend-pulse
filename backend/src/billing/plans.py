@@ -51,7 +51,8 @@ PERIOD_DAYS: dict[BillingPeriod, int] = {
 
 # --- Per-plan limits (overview §6). `None` = unlimited for countable resources. ---
 # Countable caps.
-_FREE_CHANNELS = 5
+# Free = воронка: паки + задержка (TASK-049). Собственные каналы — только Pro/Trader.
+_FREE_CHANNELS = 0
 _PRO_CHANNELS = 100
 _TEAM_CHANNELS = 500
 _FREE_TOPICS = 1
@@ -114,8 +115,9 @@ PLAN_LIMITS: dict[Plan, dict[Resource, PlanLimit]] = {
 }
 
 # --- Prices (overview §6). Monthly amount per paid plan, in USD. ---
-_PRO_PRICE_USD = Decimal("19")
-_TEAM_PRICE_USD = Decimal("79")
+# TASK-049: new price grid — Pro $29, Trader/Team $99 (start at lower bound; raise after PMF).
+_PRO_PRICE_USD = Decimal("29")
+_TEAM_PRICE_USD = Decimal("99")
 PRICE_CURRENCY = "usd"
 
 PLAN_PRICES_USD: dict[Plan, Decimal] = {

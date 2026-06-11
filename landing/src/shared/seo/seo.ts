@@ -25,7 +25,7 @@ function routeMeta(pathname: string): { title: string; description: string } {
       return {
         title: `${baseTitle} — Pricing`,
         description:
-          'Free, Pro ($19/mo), and Team ($79/mo) plans. Crypto payments only. Start tracking viral Telegram trends for free.',
+          'Free (curated packs), Pro ($29/mo), and Trader ($99/mo) plans. Crypto payments only. Start tracking viral Telegram trends for free.',
       };
     case '/about':
       return {

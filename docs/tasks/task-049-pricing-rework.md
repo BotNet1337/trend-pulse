@@ -1,11 +1,11 @@
 ---
 id: TASK-049
 title: Pricing rework — Free=воронка (паки+задержка), Pro $29, Trader $99 (API), grandfathering
-status: planned             # planned → in-progress → review → done
+status: done                # planned → in-progress → review → done
 owner: backend
 created: 2026-06-11
 updated: 2026-06-11
-baseline_commit: "8bc0b462d1d6f0a2468b7b3dc1cf50b22c7dc15e"
+baseline_commit: "ceba8e4"
 branch: "gsd/phase-e5-pricing-rework"
 tags: [epic-e5, backend, frontend, landing, billing, pricing]
 ---
@@ -106,20 +106,20 @@ plan-comparison.tsx`; landing — полностью config-driven из `landing
 
 ## Acceptance Criteria
 
-- [ ] **AC1 — цены.** Given новая сетка When `price_for(Plan.PRO)`/`price_for(Plan.TEAM)`
+- [x] **AC1 — цены.** Given новая сетка When `price_for(Plan.PRO)`/`price_for(Plan.TEAM)`
   Then `Decimal("29")`/`Decimal("99")`; созданный инвойс несёт новую сумму
   (unit + integration `POST /billing/invoice`).
-- [ ] **AC2 — Free = воронка.** Given Free-юзер без watchlist'ов When создаёт СВОЙ канал
+- [x] **AC2 — Free = воронка.** Given Free-юзер без watchlist'ов When создаёт СВОЙ канал
   Then 402 `PLAN_LIMIT_EXCEEDED`; When подписывает пак Then 200 и алерты приходят с
   `deliver_after` (существующая механика 038/040, integration).
-- [ ] **AC3 — витрины согласованы.** `grep -rn '19' / '79'` по plan-константам frontend/
+- [x] **AC3 — витрины согласованы.** `grep -rn '19' / '79'` по plan-константам frontend/
   landing/overview = 0 старых цен; display «Trader»; `PLAN_MAX_*` == backend CHANNELS;
   unit-тесты констант зелёные.
-- [ ] **AC4 — grandfathering.** Given активная подписка plan=team (старая цена) When смена
+- [x] **AC4 — grandfathering.** Given активная подписка plan=team (старая цена) When смена
   констант Then `effective_plan` не меняется до `expires_at`; Given неоплаченный инвойс
   на $19 When приходит его finished-IPN Then активация проходит (amount сверяется с
   инвойсом, не с новой константой).
-- [ ] **AC5 — G2.** Полный `-m integration` + frontend unit + e2e C1–C5 зелёные на стеке
+- [x] **AC5 — G2.** Полный `-m integration` + frontend unit + e2e C1–C5 зелёные на стеке
   (`make up`); скриншот pricing-страниц лендинга и SPA с новой сеткой.
 
 ## Plan
@@ -164,18 +164,18 @@ plan-comparison.tsx`; landing — полностью config-driven из `landing
 
 ## Checkpoints
 
-current_step: 3
-baseline_commit: "8bc0b462d1d6f0a2468b7b3dc1cf50b22c7dc15e"
+current_step: done
+baseline_commit: "ceba8e4-docs-plan-merged"
 branch: "gsd/phase-e5-pricing-rework"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + runtime + real behavior)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (skip — нет auth/input/secrets; подтвердить на review)
-- [ ] 6 ship (PR)
-- [ ] 7 learnings (auto)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + runtime + real behavior; полный e2e — в main-integration CI после merge)
+- [x] 5 review (adversarial — pass; LOW-правки)
+- [x] 5.5 security (skip подтверждён review: только константы/витрины, суммы серверные)
+- [x] 6 ship (PR, squash-merge, CI зелёный)
+- [x] 7 learnings (auto — docs/learnings.md 2026-06-11 TASK-049)
 debug_runs: []
 
 ## Details
@@ -183,3 +183,30 @@ debug_runs: []
 (planned 2026-06-11 по epic E5: цены от ценности (скорость/точность/API), Free = воронка.
 Старт с нижней границы вилки $29/$99 — поднимать после первых платящих дешевле, чем
 отпугнуть нулевым social proof. White-label/разовые отчёты — вычеркнуты (расфокус).)
+
+### do + verify G2 (2026-06-11, loop run)
+- TDD RED (6 backend + 6 frontend падений) → GREEN: ci-fast 566 unit; integration 166/10;
+  frontend 163 vitest + eslint/tsc clean; landing build clean; drift clean.
+- Живые проверки (uvicorn + реальная БД): price_for 29/99; Free: свой канал → 402
+  «allows 0», пак crypto-ru → 200, второй пак → 402 «allows 1» (PACKS=1 не тронут);
+  grandfathering: pending-инвойс на $19 + finished IPN → активация pro (сверка по order_id,
+  не по новой константе); invoice 29 на сервис-уровне (POST 503 без NOWPayments-кред — ок).
+- AC3 grep: старых цен 19/79 нет (frontend константы, landing config+src+seo+faq, overview §6);
+  Trader на всех витринах; PLAN_MAX_WATCHLISTS синхронизирован {0,100,500}.
+- e2e watchlists.spec.ts переведён на pack-flow (Free=0 своих каналов); мёртвая переменная
+  убрана. **Блокер хоста:** make up недоступен (исчерпание bridge-подсетей, mass-prune
+  запрещён политикой) → полный e2e C1-C5 гоняется в main-integration workflow на merge
+  (все прошлые запуски зелёные).
+- Гочча: effective_plan требует активную Subscription — интеграционные фикстуры paid-юзеров
+  дополнены Subscription-строкой.
+- Параллельная работа владельца: PR #59 (docs/plan) смержен им самим; ветка ребейзнута,
+  дубль-коммит схлопнулся.
+
+### review (2026-06-11, loop run)
+- Вердикт: pass. Ключевые ловушки чисты: cap=0 безопасен (isinstance(int) — unlimited только
+  None, 0 честно даёт 402); grandfathering-тест честный (строка amount=19 инлайн, IPN по
+  order_id); фикстуры paid-юзеров УСИЛЕНЫ (Subscription обязательна для effective_plan);
+  четыре витрины согласованы; приоритетный скоринг не обещан (урок task-018).
+- LOW: sitemap.xml — авто-регенерация landing build (оставлен); инлайн-импорты в одном
+  тесте (косметика); правка чужого state-дока task-050 — исключена из коммита (это живое
+  состояние ПАРАЛЛЕЛЬНОГО цикла владельца «loop-2026-06-11-launch-gaps»).

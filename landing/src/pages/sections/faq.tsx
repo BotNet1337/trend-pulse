@@ -26,7 +26,7 @@ export function FaqSection() {
     {
       question: 'How does pricing work?',
       answer:
-        `${brand} offers three plans: Free ($0 — 5 channels, 1 topic, 5 alerts/day), Pro ($19/mo — 100 channels, 5 topics, unlimited alerts, 30-day history, webhook), and Team ($79/mo — 500 channels, unlimited topics, unlimited alerts, 90-day history, API access). All payments are via cryptocurrency (NOWPayments) — no credit card required.`,
+        `${brand} offers three plans: Free ($0 — curated packs + delayed alerts), Pro ($29/mo — 100 channels, 5 topics, unlimited alerts, 30-day history, webhook), and Trader ($99/mo — 500 channels, unlimited topics, unlimited alerts, 90-day history, API access). All payments are via cryptocurrency (NOWPayments) — no credit card required.`,
     },
     {
       question: 'Is my data secure and private?',
@@ -36,12 +36,12 @@ export function FaqSection() {
     {
       question: 'Can I connect the alerts to my own systems?',
       answer:
-        'Yes. Pro plans include webhook delivery. Team plans include full REST API access so you can pipe viral signals directly into your workflow, dashboard, or automation.',
+        'Yes. Pro plans include webhook delivery. Trader plans include full REST API access so you can pipe viral signals directly into your workflow, dashboard, or automation.',
     },
     {
       question: `Can I use ${brand} for my business?`,
       answer:
-        "Yes. The Team plan covers business-scale tracking. If you need a custom channel quota or a custom agreement, contact us and we'll work out the right setup.",
+        "Yes. The Trader plan covers business-scale tracking. If you need a custom channel quota or a custom agreement, contact us and we'll work out the right setup.",
     },
     {
       question: 'Do you offer refunds?',

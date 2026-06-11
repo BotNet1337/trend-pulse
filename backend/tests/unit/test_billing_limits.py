@@ -1,11 +1,14 @@
 """AC7/AC8 — plan-limit enforcement (DB-free; mocked usage + subscription).
 
-Covers: channel cap per plan (Free 5 / Pro 100 / Team 500), boolean feature gating
-(webhook_delivery / api_access → 403), unlimited (`None`) always passes, and the
-expiry rollback (an expired Pro subscription → effective Free).
+Covers: channel cap per plan (Free 0 / Pro 100 / Team 500, TASK-049), boolean
+feature gating (webhook_delivery / api_access → 403), unlimited (`None`) always
+passes, and the expiry rollback (an expired Pro subscription → effective Free).
 
 TASK-038 additions: _channel_usage excludes pack rows (pack_slug IS NOT NULL),
 _packs_usage counts DISTINCT pack_slug, assert_within_limit(PACKS) raises at Free cap.
+
+TASK-049: Free CHANNELS cap changed 5→0 (Free = воронка, паки + задержка).
+         PACKS cap for Free remains 1 — pack subscribe still works.
 
 The single entry under test is `billing.assert_within_limit`; `effective_plan`
 resolves the rollback. The session is mocked so these stay unit tests.
@@ -56,14 +59,20 @@ def _expired_sub(plan: Plan) -> Subscription:
 
 # --- AC7: channel cap per plan ---
 
+# TASK-049: Free CHANNELS=0 (Free = воронка). The very first own channel → 402.
 
-def test_free_channels_under_cap_passes() -> None:
-    session = _session_with(usage=4)
-    assert_within_limit(session, _user("free"), Resource.CHANNELS)  # 5th allowed
+
+def test_free_channels_first_own_raises_402() -> None:
+    """AC2 (TASK-049): Free plan CHANNELS=0 → even usage=0 triggers 402 on create."""
+    session = _session_with(usage=0)  # zero existing own channels
+    with pytest.raises(PlanLimitExceeded) as exc:
+        assert_within_limit(session, _user("free"), Resource.CHANNELS)
+    assert exc.value.code == 402
 
 
 def test_free_channels_at_cap_raises_402() -> None:
-    session = _session_with(usage=5)  # 6th would breach Free cap 5
+    """AC2 (TASK-049): Free cap is 0 — any usage (even 1) still raises on further create."""
+    session = _session_with(usage=1)  # already has 1 (grandfathered) — next is still blocked
     with pytest.raises(PlanLimitExceeded) as exc:
         assert_within_limit(session, _user("free"), Resource.CHANNELS)
     assert exc.value.code == 402
@@ -135,9 +144,9 @@ def test_active_pro_stays_pro() -> None:
 
 
 def test_expired_pro_blocks_channels_over_free_cap() -> None:
-    # Expired Pro → effective Free; usage 5 (already over Free cap when adding one).
+    # TASK-049: Expired Pro → effective Free; Free CHANNELS=0 → any create blocked (usage=0).
     session = MagicMock()
-    session.scalar.return_value = 5
+    session.scalar.return_value = 0
     scalars_result = MagicMock()
     scalars_result.one_or_none.return_value = _expired_sub(Plan.PRO)
     session.scalars.return_value = scalars_result
@@ -200,6 +209,18 @@ def test_free_packs_under_cap_passes() -> None:
     """assert_within_limit(PACKS) passes when Free user has 0 packs (cap=1)."""
     session = _session_with(usage=0)
     assert_within_limit(session, _user("free"), Resource.PACKS)  # should not raise
+
+
+def test_free_packs_subscribe_ok_while_channels_zero() -> None:
+    """AC2 (TASK-049): CHANNELS=0 does NOT block pack subscribe (PACKS cap unchanged at 1).
+
+    Free is funnel: own channels blocked but curated packs still work.
+    Verifies that Free CHANNELS=0 (TASK-049) and Free PACKS=1 are independent resources.
+    """
+    # CHANNELS are at cap (0 allowed) — but we test PACKS here, not CHANNELS.
+    session_packs = _session_with(usage=0)
+    # Must not raise: Free user with 0 packs is within PACKS cap=1.
+    assert_within_limit(session_packs, _user("free"), Resource.PACKS)  # pack subscribe OK
 
 
 def test_pro_packs_at_cap_raises_402() -> None:

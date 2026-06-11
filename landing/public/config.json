@@ -22,19 +22,19 @@
         "price": 0,
         "currency": "USD",
         "period": "forever",
-        "channels": 5,
+        "channels": 0,
         "topics": 1,
         "alertsPerDay": 5,
         "historyDays": 0,
         "delivery": ["telegram"],
         "webhook": false,
         "apiAccess": false,
-        "description": "Start tracking viral trends at no cost"
+        "description": "Curated packs + alerts delayed 30 min"
       },
       {
         "id": "pro",
         "name": "Pro",
-        "price": 19,
+        "price": 29,
         "currency": "USD",
         "period": "month",
         "channels": 100,
@@ -44,12 +44,12 @@
         "delivery": ["telegram", "webhook"],
         "webhook": true,
         "apiAccess": false,
-        "description": "For power users who need more coverage"
+        "description": "Own channels + real-time alerts + webhook"
       },
       {
         "id": "team",
-        "name": "Team",
-        "price": 79,
+        "name": "Trader",
+        "price": 99,
         "currency": "USD",
         "period": "month",
         "channels": 500,
@@ -59,7 +59,7 @@
         "delivery": ["telegram", "webhook", "api"],
         "webhook": true,
         "apiAccess": true,
-        "description": "For teams tracking viral signals at scale"
+        "description": "API keys + real-time + webhook + 90d history + 500 channels"
       }
     ],
     "paymentNote": "Payments accepted via cryptocurrency (NOWPayments). No credit card required.",

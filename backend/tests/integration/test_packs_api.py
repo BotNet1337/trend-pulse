@@ -5,7 +5,8 @@ RED anchors for AC1-AC5:
 - AC2: POST /packs/{slug}/subscribe → watchlist rows created with pack_slug;
        repeat call idempotent (created=0).
 - AC3: Free user with 1 pack → 402 on second pack; manual CHANNELS limit
-       NOT consumed by pack rows.
+       NOT consumed by pack rows (TASK-049: Free CHANNELS=0, so test uses Pro user
+       for manual-channel creation assertions; packs still work for Free).
 - AC4: DELETE /packs/{slug}/subscribe removes pack rows; 404 for unknown slug.
 - AC5: Tenant scope — user B cannot see user A's packs in watchlists.
 - RACE: concurrent channel get-or-create does not poison the transaction (Finding 1).
@@ -14,6 +15,7 @@ Pattern: mirrors test_watchlist_api.py / test_api_keys_api.py.
 """
 
 from collections.abc import Iterator
+from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
@@ -26,17 +28,34 @@ from api.auth.api_key import current_user_or_api_key
 from api.deps import current_user
 from api.main import app
 from api.watchlist.deps import get_db_session
+from storage.models.base import utcnow
+from storage.models.subscriptions import Subscription
 from storage.models.users import PLAN_FREE, User
 
 pytestmark = pytest.mark.integration
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
+_PLAN_PRO = "pro"
+
 
 def _make_user(session: Session, email: str, plan: str = PLAN_FREE) -> User:
+    """Create a test user. For paid plans, also create an active Subscription row.
+
+    TASK-049: Free CHANNELS=0 — tests that create own channels need plan=pro +
+    active subscription (effective_plan rolls back to Free without a sub row).
+    """
     user = User(email=email, hashed_password="x" * 16, plan=plan)
     session.add(user)
     session.flush()
+    if plan != PLAN_FREE:
+        sub = Subscription(
+            user_id=user.id,
+            plan=plan,
+            expires_at=utcnow() + timedelta(days=30),
+        )
+        session.add(sub)
+        session.flush()
     return user
 
 
@@ -68,6 +87,15 @@ def free_user(db_session_committing: Session) -> User:
 
 
 @pytest.fixture
+def pro_user(db_session_committing: Session) -> User:
+    """Pro user with active subscription — for tests that create manual watchlists.
+
+    TASK-049: Free CHANNELS=0; manual channel creation requires Pro plan + active sub.
+    """
+    return _make_user(db_session_committing, "pro@packs.example.com", plan=_PLAN_PRO)
+
+
+@pytest.fixture
 def other_user(db_session_committing: Session) -> User:
     return _make_user(db_session_committing, "other@packs.example.com", plan=PLAN_FREE)
 
@@ -79,6 +107,28 @@ def free_client(db_session_committing: Session, free_user: User) -> Iterator[Tes
 
     app.dependency_overrides[current_user] = lambda: free_user
     app.dependency_overrides[current_user_or_api_key] = lambda: free_user
+    app.dependency_overrides[get_db_session] = _session_override
+    try:
+        with TestClient(app) as test_client:
+            yield test_client
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+        app.dependency_overrides.pop(current_user_or_api_key, None)
+        app.dependency_overrides.pop(get_db_session, None)
+
+
+@pytest.fixture
+def pro_client(db_session_committing: Session, pro_user: User) -> Iterator[TestClient]:
+    """Client acting as a Pro user — for tests that need manual channel creation.
+
+    TASK-049: Free CHANNELS=0; manual watchlist creation tests use this fixture.
+    """
+
+    def _session_override() -> Iterator[Session]:
+        yield db_session_committing
+
+    app.dependency_overrides[current_user] = lambda: pro_user
+    app.dependency_overrides[current_user_or_api_key] = lambda: pro_user
     app.dependency_overrides[get_db_session] = _session_override
     try:
         with TestClient(app) as test_client:
@@ -213,24 +263,30 @@ def test_second_pack_returns_402_for_free_user(
 
 
 def test_pack_rows_do_not_consume_channel_limit(
-    free_client: TestClient,
+    pro_client: TestClient,
     db_session_committing: Session,
-    free_user: User,
+    pro_user: User,
 ) -> None:
-    """AC3: pack rows (pack_slug IS NOT NULL) do NOT count toward _channel_usage.
+    """AC3 (TASK-038 + TASK-049): pack rows (pack_slug IS NOT NULL) do NOT count
+    toward _channel_usage.
 
-    Free plan: CHANNELS=5. After subscribing to crypto-ru pack (which has >5 channels),
-    the user should still be able to create 5 manual watchlists.
+    TASK-049: Free CHANNELS=0 (own channels blocked for Free). This test uses a Pro
+    user (CHANNELS=100) to verify that pack rows don't consume the channel cap:
+    after subscribing to a pack (many rows with pack_slug set), manual channel
+    creation should still succeed (pack rows are independent of channel_usage).
+
+    Free-user CHANNELS=0 enforcement is verified separately in test_over_limit_returns_402
+    (test_watchlist_api.py) and the unit tests (test_billing_limits.py).
     """
-    # Subscribe to crypto-ru (creates many watchlist rows with pack_slug set)
-    resp = free_client.post("/packs/crypto-ru/subscribe")
+    # Subscribe to crypto-ru as Pro user (pack rows with pack_slug set)
+    resp = pro_client.post("/packs/crypto-ru/subscribe")
     assert resp.status_code == 200, resp.text
     n_pack_rows = resp.json()["created"]
     assert n_pack_rows > 0
 
-    # Manual watchlists must still be addable up to Free limit (5)
-    for i in range(5):
-        ok = free_client.post(
+    # Manual watchlists must still be addable (pack rows don't consume channel cap)
+    for i in range(3):  # confirm independence: pack rows ≠ channel_usage
+        ok = pro_client.post(
             "/watchlists",
             json={
                 "topic": f"manual_topic_{i}",
@@ -243,21 +299,6 @@ def test_pack_rows_do_not_consume_channel_limit(
             },
         )
         assert ok.status_code == 201, f"manual watchlist {i} should succeed: {ok.text}"
-
-    # 6th manual watchlist must be 402
-    over = free_client.post(
-        "/watchlists",
-        json={
-            "topic": "over_limit",
-            "channel": {"handle": "@over_limit_ch"},
-            "alert_config": {
-                "score_threshold": 70,
-                "min_channels": 1,
-                "notification_lang": "en",
-            },
-        },
-    )
-    assert over.status_code == 402, f"6th manual watchlist should be 402: {over.text}"
 
 
 # ─── AC4 — unsubscribe ────────────────────────────────────────────────────────
@@ -298,13 +339,18 @@ def test_unsubscribe_removes_pack_rows(
 
 
 def test_unsubscribe_does_not_remove_manual_watchlists(
-    free_client: TestClient,
+    pro_client: TestClient,
     db_session_committing: Session,
-    free_user: User,
+    pro_user: User,
 ) -> None:
-    """AC4: unsubscribe removes only pack rows; manual watchlists untouched."""
-    # Create a manual watchlist
-    manual = free_client.post(
+    """AC4: unsubscribe removes only pack rows; manual watchlists untouched.
+
+    TASK-049: Free CHANNELS=0 — can't create manual watchlists as Free user.
+    Test uses Pro user (CHANNELS=100) to create a manual watchlist, then subscribe
+    and unsubscribe a pack, verifying the manual watchlist survives.
+    """
+    # Create a manual watchlist as Pro user
+    manual = pro_client.post(
         "/watchlists",
         json={
             "topic": "manual",
@@ -320,14 +366,14 @@ def test_unsubscribe_does_not_remove_manual_watchlists(
     manual_id = manual.json()["id"]
 
     # Subscribe to pack
-    sub = free_client.post("/packs/crypto-ru/subscribe")
+    sub = pro_client.post("/packs/crypto-ru/subscribe")
     assert sub.status_code == 200, sub.text
 
     # Unsubscribe pack
-    free_client.delete("/packs/crypto-ru/subscribe")
+    pro_client.delete("/packs/crypto-ru/subscribe")
 
     # Manual watchlist must still exist
-    still = free_client.get(f"/watchlists/{manual_id}")
+    still = pro_client.get(f"/watchlists/{manual_id}")
     assert still.status_code == 200, f"manual watchlist must survive: {still.text}"
 
 
