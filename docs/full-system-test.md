@@ -271,6 +271,147 @@ for i in $(seq 1 130); do curl -s -o /dev/null -w "%{http_code} " http://localho
 # после превышения RATE_LIMIT_PER_MINUTE (120/min) → 429
 ```
 
+### B7. Showcase-канал — активация витрины и первый автопост (TASK-070)
+
+> **Предусловие: TASK-057 (живой прод — worker/beat в swarm).** Код автопостинга
+> (TASK-044) и proof-of-speed (TASK-045) уже в main; витрина выключена пустыми
+> `SHOWCASE_BOT_TOKEN`/`SHOWCASE_CHANNEL_CHAT_ID` (no-op + warn-once — это штатно).
+> Порядок шагов **канал → бот → vault** обязателен: vault до прав бота = мусорные
+> pending-ретраи (допустимо, но грязно). Шаги 1–3 и 6 — **[owner]**.
+> **Секрет-гигиена:** токен бота НИКОГДА не печатать (echo/printenv/логи) — vault-only.
+
+#### Шаг 1 [owner]. Создать публичный канал
+
+```
+1. Telegram → New Channel → Public.
+2. @username: @foresignal (дефолт); занят → @foresignal_pulse → @foresignal_signals
+   → @foresignal_trends (по убыванию предпочтения, Discussion TASK-070).
+3. Название: «Foresignal — early viral signals» (EN-only, бренд Foresignal).
+4. Описание (EN, со ссылкой на сайт), например:
+   "Early viral Telegram signals — detected up to 40 minutes before mainstream.
+    Live feed by https://foresignal.biz"
+5. Аватар бренда.
+Выбранный @username зафиксировать: он идёт в vault (шаг 3) и в landing config (шаг 6) —
+единственные два места.
+```
+
+#### Шаг 2 [owner]. Добавить бота админом
+
+```
+Бот = ops-бот (MVP-решение TASK-044: один бот, два чата; токен уже в vault как
+vault_ops_telegram_bot_token). Отдельный бот — опционально (BotFather, 2 мин).
+
+Канал → Administrators → Add Admin → выбрать бота → включить право «Post messages»
+(остальные права не нужны).
+```
+
+#### Шаг 3 [owner]. Заполнить vault и проверить рендер
+
+```sh
+ansible-vault edit ops/ansible/vault/sensitive.vault.yml   # пароль из ops/ansible/.vault-pass
+# Внутри (значения не печатать в логах):
+#   vault_showcase_bot_token: "<значение vault_ops_telegram_bot_token или токен нового бота>"
+#   vault_showcase_channel_chat_id: "@<username>"   # например "@foresignal"
+#
+# Альтернатива @username — численный id ("-100…"): переживает переименование канала,
+# но требует discovery (переслать пост канала боту @userinfobot или getChat API).
+# Для бренд-канала достаточно @username: переименование = осознанное событие
+# (одна правка vault + deploy + landing config — см. шаг 6).
+
+# Локальная проверка рендера (значения НЕ печатать):
+make ansible-unpack
+grep -c '^SHOWCASE_' development/env/sensitive.env
+# Ожидаем: 2 (SHOWCASE_BOT_TOKEN + SHOWCASE_CHANNEL_CHAT_ID)
+```
+
+#### Шаг 4. Деплой и проверка env
+
+```sh
+make deploy   # swarm: compose config инлайнит env_file → stack deploy обновит worker/beat
+              # без force-recreate (гочча M2 task-059 здесь не воспроизводится)
+
+# chat_id — публичный @username, НЕ секрет; токен НЕ печатать:
+ssh deploy@foresignal.biz "docker exec \$(docker ps -qf name=worker) printenv SHOWCASE_CHANNEL_CHAT_ID"
+# Ожидаем: @<username>
+
+# Warn-once «showcase_autopost disabled — missing …» в логах worker ИСЧЕЗ после рестарта:
+ssh deploy@foresignal.biz "docker logs --since=10m \$(docker ps -qf name=worker) 2>&1 | grep 'showcase_autopost disabled'"
+# Ожидаем: пусто
+```
+
+#### Шаг 5. Первый автопост (AC2) — часы, не минуты
+
+Beat тикает каждые 15 мин (`showcase_post_interval_seconds=900`), но пост требует
+кандидата: score ≥85, возраст ≥40 мин, внутри 24h-окна, ≤8 постов/день (UTC).
+При живом коллекторе это 0–8 постов/день — ждать до 24h это штатно.
+
+```sh
+# Лог-события тиков (log_event JSON): showcase_post_sent | showcase_autopost_skip | showcase_send_failed
+ssh deploy@foresignal.biz "docker logs --since=1h \$(docker ps -qf name=worker) 2>&1 | grep -E 'showcase_(post_sent|autopost_skip|send_failed)'"
+
+# Строка в БД (AC2): status=posted, posted_at заполнен
+ssh deploy@foresignal.biz "docker exec \$(docker ps -qf name=postgres) psql -U trendpulse -c \
+  \"SELECT id, cluster_id, status, posted_at, created_at FROM showcase_posts ORDER BY id DESC LIMIT 5;\""
+
+# В канале: пост «🔥 … · score N · обнаружено в HH:MM UTC» + CTA-ссылка содержит
+# utm_source=tg_showcase&utm_campaign=autopost (кликнуть и проверить URL).
+```
+
+Нет поста за 24h при `degraded=false` — смотреть кандидатов, НЕ алармить и НЕ снижать
+пороги (лестница ценности: delay 2400 > free 1800 — продуктовый инвариант TASK-044):
+```sh
+# 1) Здоровье пула коллектора (TASK-059): /api/ready + pool_health.
+# 2) Кандидаты showcase-тенанта за 24h:
+ssh deploy@foresignal.biz "docker exec \$(docker ps -qf name=postgres) psql -U trendpulse -c \
+  \"SELECT c.id, c.topic, s.viral_score, c.first_seen FROM clusters c \
+    JOIN scores s ON s.cluster_id=c.id AND s.user_id=c.user_id \
+    JOIN users u ON u.id=c.user_id AND u.email='showcase@internal' \
+    WHERE c.first_seen >= now() - interval '24 hours' \
+    ORDER BY s.viral_score DESC LIMIT 10;\""
+# Пусто/все <85 → тихий день или деградация пула — чинить сбор, не пороги.
+```
+
+Диагностика ошибок отправки (механика ретраев TASK-044: pending остаётся, следующий
+тик повторит сам — после фикса прав пост уйдёт без ручных действий):
+- Bot API 403 → бот не админ / нет права «Post messages» (шаг 2);
+- Bot API 400 «chat not found» → опечатка в `vault_showcase_channel_chat_id` →
+  правка vault + `make deploy`.
+
+#### Шаг 6 [owner]. Связать лендинг (AC5)
+
+```sh
+# Поле введено TASK-067; пустая строка = ссылки не рендерятся.
+# В landing/public/config.json вписать:
+#   "showcaseTelegramUrl": "https://t.me/<username>"
+# Коммит (значение публичное, не секрет) → make deploy (пересборка landing-образа).
+
+# Проверка: https://foresignal.biz — ссылка в hero («See live detections in Telegram»)
+# и в footer (Product → «Telegram showcase»); переход t.me/<username> открывает канал.
+```
+
+#### Шаг 7. 48h-наблюдение — анти-спам (AC3) и лестница ценности (AC4)
+
+```sh
+# AC3: ≤8 постов/день (UTC), ни один кластер дважды (UNIQUE(cluster_id) — гарантия кода):
+ssh deploy@foresignal.biz "docker exec \$(docker ps -qf name=postgres) psql -U trendpulse -c \
+  \"SELECT date_trunc('day', posted_at) AS day_utc, count(*) FROM showcase_posts \
+    WHERE status='posted' GROUP BY 1 ORDER BY 1 DESC;\""
+# Ожидаем: count ≤ 8 в каждом дне; интервал между постами ≥ ~15 мин (тик beat).
+
+# AC4: штамп «обнаружено в HH:MM» в посте = first_seen кластера; сам пост публикуется
+# на ≥40 мин позже (posted_at − first_seen ≥ 40 мин) — канал медленнее Free-плана.
+# Выборочно сверить 2–3 поста (lag + штамп в канале == first_seen из БД):
+ssh deploy@foresignal.biz "docker exec \$(docker ps -qf name=postgres) psql -U trendpulse -c \
+  \"SELECT sp.cluster_id, c.first_seen, sp.posted_at, sp.posted_at - c.first_seen AS lag \
+    FROM showcase_posts sp JOIN clusters c ON c.id=sp.cluster_id \
+    WHERE sp.status='posted' ORDER BY sp.posted_at DESC LIMIT 3;\""
+# Ожидаем: lag ≥ 40 минут у каждого.
+```
+
+**Откат:** очистить `vault_showcase_bot_token`/`vault_showcase_channel_chat_id`
+(`ansible-vault edit`) → `make deploy` → автопостинг = no-op (пустые креды валидны,
+AC4 TASK-044); ссылку на лендинге убрать пустой строкой в `showcaseTelegramUrl`.
+
 ---
 
 ## C. Прод-провижининг (Terraform/Ansible, нужен cloud-аккаунт)
@@ -450,6 +591,7 @@ ssh deploy@foresignal.biz "docker start \$(docker ps -aqf name=redis)"
 | ML pipeline | `pytest test_run_batch.py` (`--group ml`) | нет (качает модель) |
 | Billing live IPN | `/billing/invoice` + реальный IPN | NOWPAYMENTS_* |
 | Google OAuth live | браузер | GOOGLE_CLIENT_* |
+| Showcase-канал live | runbook §B7 (vault → deploy → наблюдение) | SHOWCASE_* (vault) |
 | Prod IaC | `tf-validate`/`ansible-*` (валидация); `apply` (деплой) | DO-токен, домен, VPS |
 
 Долг/ограничения для прода (см. `docs/learnings.md`): ротация засвеченного `api_hash`, пул тех-аккаунтов `POOL_MIN`→3, шифрование Telegram/OAuth токенов at-rest, отдельный rate-limit на `/billing` и `DELETE /account`, post↔cluster FK для точного per-cluster score, re-dispatch sweep для застрявших `pending` алертов, allowlist в лог-гигиене.
