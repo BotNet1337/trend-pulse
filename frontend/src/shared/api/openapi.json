@@ -224,7 +224,7 @@
         "title": "BillingPeriod",
         "type": "string"
       },
-      "Body_auth_jwt_login_auth_jwt_login_post": {
+      "Body_auth_jwt_login_v1_auth_jwt_login_post": {
         "properties": {
           "client_id": {
             "anyOf": [
@@ -280,10 +280,10 @@
           "username",
           "password"
         ],
-        "title": "Body_auth_jwt_login_auth_jwt_login_post",
+        "title": "Body_auth_jwt_login_v1_auth_jwt_login_post",
         "type": "object"
       },
-      "Body_reset_forgot_password_auth_forgot_password_post": {
+      "Body_reset_forgot_password_v1_auth_forgot_password_post": {
         "properties": {
           "email": {
             "format": "email",
@@ -294,10 +294,10 @@
         "required": [
           "email"
         ],
-        "title": "Body_reset_forgot_password_auth_forgot_password_post",
+        "title": "Body_reset_forgot_password_v1_auth_forgot_password_post",
         "type": "object"
       },
-      "Body_reset_reset_password_auth_reset_password_post": {
+      "Body_reset_reset_password_v1_auth_reset_password_post": {
         "properties": {
           "password": {
             "title": "Password",
@@ -312,10 +312,10 @@
           "token",
           "password"
         ],
-        "title": "Body_reset_reset_password_auth_reset_password_post",
+        "title": "Body_reset_reset_password_v1_auth_reset_password_post",
         "type": "object"
       },
-      "Body_verify_request_token_auth_request_verify_token_post": {
+      "Body_verify_request_token_v1_auth_request_verify_token_post": {
         "properties": {
           "email": {
             "format": "email",
@@ -326,10 +326,10 @@
         "required": [
           "email"
         ],
-        "title": "Body_verify_request_token_auth_request_verify_token_post",
+        "title": "Body_verify_request_token_v1_auth_request_verify_token_post",
         "type": "object"
       },
-      "Body_verify_verify_auth_verify_post": {
+      "Body_verify_verify_v1_auth_verify_post": {
         "properties": {
           "token": {
             "title": "Token",
@@ -339,7 +339,7 @@
         "required": [
           "token"
         ],
-        "title": "Body_verify_verify_auth_verify_post",
+        "title": "Body_verify_verify_v1_auth_verify_post",
         "type": "object"
       },
       "BusinessMetricsResponse": {
@@ -1303,10 +1303,49 @@
   },
   "openapi": "3.1.0",
   "paths": {
-    "/account": {
+    "/health": {
+      "get": {
+        "description": "Liveness probe — returns 200 without touching any backing service.\n\nIntentionally at root (no /v1 prefix): the compose/nginx healthcheck probes\n`http://localhost:8000/health` directly, bypassing nginx (ADR-007 §4).",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/ready": {
+      "get": {
+        "description": "Readiness: 200 when DB+Redis+Celery reachable, else 503 with per-dep markers.",
+        "operationId": "ready_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Ready",
+        "tags": [
+          "ops"
+        ]
+      }
+    },
+    "/v1/account": {
       "delete": {
         "description": "Delete the authenticated user and all their data (cascade) -> 204.",
-        "operationId": "delete_account_account_delete",
+        "operationId": "delete_account_v1_account_delete",
         "responses": {
           "204": {
             "description": "Successful Response"
@@ -1323,10 +1362,10 @@
         ]
       }
     },
-    "/alerts": {
+    "/v1/alerts": {
       "get": {
         "description": "List the caller's alerts with cursor pagination and plan-based history window.\n\nFree plan → returns empty list + history_unavailable=True (not 403).\nPro/Team → returns alerts within the plan's history window (30/90 days).\nAlways tenant-scoped: only the caller's alerts are returned.\nPass `cursor` from the previous response's `next_cursor` field to load the next page.\nInvalid cursor → 422.",
-        "operationId": "list_alerts_alerts_get",
+        "operationId": "list_alerts_v1_alerts_get",
         "parameters": [
           {
             "description": "Maximum number of alerts to return (server silently clamps to max).",
@@ -1409,10 +1448,10 @@
         ]
       }
     },
-    "/alerts/{alert_id}": {
+    "/v1/alerts/{alert_id}": {
       "get": {
         "description": "Get one alert detail. Foreign or missing alert → 404 (no existence leak).",
-        "operationId": "get_alert_alerts__alert_id__get",
+        "operationId": "get_alert_v1_alerts__alert_id__get",
         "parameters": [
           {
             "in": "path",
@@ -1473,10 +1512,10 @@
         ]
       }
     },
-    "/api-keys": {
+    "/v1/api-keys": {
       "get": {
         "description": "List all API keys for the caller (masked: prefix/name/timestamps, no key/key_hash).",
-        "operationId": "list_api_keys_api_keys_get",
+        "operationId": "list_api_keys_v1_api_keys_get",
         "responses": {
           "200": {
             "content": {
@@ -1485,7 +1524,7 @@
                   "items": {
                     "$ref": "#/components/schemas/ApiKeyRead"
                   },
-                  "title": "Response List Api Keys Api Keys Get",
+                  "title": "Response List Api Keys V1 Api Keys Get",
                   "type": "array"
                 }
               }
@@ -1505,7 +1544,7 @@
       },
       "post": {
         "description": "Issue a new API key for the caller (Team plan only).\n\nFree/Pro → PlanLimitExceeded → 403 (via api/main.py exception handler).\nPlaintext key is returned ONCE in the response body and never stored in DB.",
-        "operationId": "create_api_key_api_keys_post",
+        "operationId": "create_api_key_v1_api_keys_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1549,10 +1588,10 @@
         ]
       }
     },
-    "/api-keys/{key_id}": {
+    "/v1/api-keys/{key_id}": {
       "delete": {
         "description": "Soft-revoke an API key owned by the caller.\n\nUnknown id or another tenant's id → 404 (no existence leak, ADR-002).\nThe key_hash row is kept for audit; revoked_at marks it inactive.",
-        "operationId": "revoke_api_key_api_keys__key_id__delete",
+        "operationId": "revoke_api_key_v1_api_keys__key_id__delete",
         "parameters": [
           {
             "in": "path",
@@ -1590,14 +1629,14 @@
         ]
       }
     },
-    "/auth/forgot-password": {
+    "/v1/auth/forgot-password": {
       "post": {
-        "operationId": "reset_forgot_password_auth_forgot_password_post",
+        "operationId": "reset_forgot_password_v1_auth_forgot_password_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Body_reset_forgot_password_auth_forgot_password_post"
+                "$ref": "#/components/schemas/Body_reset_forgot_password_v1_auth_forgot_password_post"
               }
             }
           },
@@ -1629,9 +1668,9 @@
         ]
       }
     },
-    "/auth/google/authorize": {
+    "/v1/auth/google/authorize": {
       "get": {
-        "operationId": "oauth_google_jwt_authorize_auth_google_authorize_get",
+        "operationId": "oauth_google_jwt_authorize_v1_auth_google_authorize_get",
         "parameters": [
           {
             "in": "query",
@@ -1674,10 +1713,10 @@
         ]
       }
     },
-    "/auth/google/callback": {
+    "/v1/auth/google/callback": {
       "get": {
         "description": "The response varies based on the authentication backend used.",
-        "operationId": "oauth_google_jwt_callback_auth_google_callback_get",
+        "operationId": "oauth_google_jwt_callback_v1_auth_google_callback_get",
         "parameters": [
           {
             "in": "query",
@@ -1803,14 +1842,14 @@
         ]
       }
     },
-    "/auth/jwt/login": {
+    "/v1/auth/jwt/login": {
       "post": {
-        "operationId": "auth_jwt_login_auth_jwt_login_post",
+        "operationId": "auth_jwt_login_v1_auth_jwt_login_post",
         "requestBody": {
           "content": {
             "application/x-www-form-urlencoded": {
               "schema": {
-                "$ref": "#/components/schemas/Body_auth_jwt_login_auth_jwt_login_post"
+                "$ref": "#/components/schemas/Body_auth_jwt_login_v1_auth_jwt_login_post"
               }
             }
           },
@@ -1869,9 +1908,9 @@
         ]
       }
     },
-    "/auth/jwt/logout": {
+    "/v1/auth/jwt/logout": {
       "post": {
-        "operationId": "auth_jwt_logout_auth_jwt_logout_post",
+        "operationId": "auth_jwt_logout_v1_auth_jwt_logout_post",
         "responses": {
           "200": {
             "content": {
@@ -1899,9 +1938,9 @@
         ]
       }
     },
-    "/auth/register": {
+    "/v1/auth/register": {
       "post": {
-        "operationId": "register_register_auth_register_post",
+        "operationId": "register_register_v1_auth_register_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1967,14 +2006,14 @@
         ]
       }
     },
-    "/auth/request-verify-token": {
+    "/v1/auth/request-verify-token": {
       "post": {
-        "operationId": "verify_request_token_auth_request_verify_token_post",
+        "operationId": "verify_request_token_v1_auth_request_verify_token_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Body_verify_request_token_auth_request_verify_token_post"
+                "$ref": "#/components/schemas/Body_verify_request_token_v1_auth_request_verify_token_post"
               }
             }
           },
@@ -2006,14 +2045,14 @@
         ]
       }
     },
-    "/auth/reset-password": {
+    "/v1/auth/reset-password": {
       "post": {
-        "operationId": "reset_reset_password_auth_reset_password_post",
+        "operationId": "reset_reset_password_v1_auth_reset_password_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Body_reset_reset_password_auth_reset_password_post"
+                "$ref": "#/components/schemas/Body_reset_reset_password_v1_auth_reset_password_post"
               }
             }
           },
@@ -2072,14 +2111,14 @@
         ]
       }
     },
-    "/auth/verify": {
+    "/v1/auth/verify": {
       "post": {
-        "operationId": "verify_verify_auth_verify_post",
+        "operationId": "verify_verify_v1_auth_verify_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Body_verify_verify_auth_verify_post"
+                "$ref": "#/components/schemas/Body_verify_verify_v1_auth_verify_post"
               }
             }
           },
@@ -2137,10 +2176,10 @@
         ]
       }
     },
-    "/billing/invoice": {
+    "/v1/billing/invoice": {
       "post": {
         "description": "Create a NOWPayments invoice for the caller's chosen plan/period.",
-        "operationId": "create_invoice_billing_invoice_post",
+        "operationId": "create_invoice_v1_billing_invoice_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2184,10 +2223,10 @@
         ]
       }
     },
-    "/billing/ipn": {
+    "/v1/billing/ipn": {
       "post": {
         "description": "Receive a NOWPayments IPN: verify HMAC over the RAW body, then apply.",
-        "operationId": "receive_ipn_billing_ipn_post",
+        "operationId": "receive_ipn_v1_billing_ipn_post",
         "responses": {
           "200": {
             "content": {
@@ -2206,10 +2245,10 @@
         ]
       }
     },
-    "/cases": {
+    "/v1/cases": {
       "get": {
         "description": "Return top proof-of-speed cases sorted by lead-time DESC.\n\nPublic endpoint: no authentication required.\n\nOnly cases where the operator has set ``mainstream_at`` are returned\n— cases without a mainstream timestamp are not yet proof-points.\n\nQuery params:\n    top_n: Max items to return.  Defaults to settings.cases_top_n_max.\n           422 if top_n exceeds settings.cases_top_n_max.\n\nResponse sorted by ``lead_time_seconds`` (= mainstream_at - first_seen) DESC.",
-        "operationId": "get_cases_cases_get",
+        "operationId": "get_cases_v1_cases_get",
         "parameters": [
           {
             "description": "Max number of cases to return. Defaults to settings.cases_top_n_max; max is settings.cases_top_n_max. Must be ≥ 1 (422 on non-positive). 422 if top_n exceeds the configured maximum.",
@@ -2259,10 +2298,10 @@
         ]
       }
     },
-    "/feedback/{token}": {
+    "/v1/feedback/{token}": {
       "get": {
         "description": "Verify signed token, UPSERT alert_feedback, return HTML 'спасибо'.\n\nRate-limited at ``feedback_rate_limit_per_minute`` (default 30/min,\nper-IP via ``rate_limit_key``).\n\nReturns:\n    200: Feedback recorded (or idempotent re-tap).\n    400: Invalid/tampered/expired token (uniform — no oracle).\n    404: Alert not found (FK gone — likely deleted by retention).\n    410: Same as 404 but signals the resource is intentionally gone.",
-        "operationId": "record_feedback_feedback__token__get",
+        "operationId": "record_feedback_v1_feedback__token__get",
         "parameters": [
           {
             "in": "path",
@@ -2302,29 +2341,10 @@
         ]
       }
     },
-    "/health": {
-      "get": {
-        "description": "Liveness probe — returns 200 without touching any backing service.",
-        "operationId": "health_health_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HealthResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Health"
-      }
-    },
-    "/ops/business-metrics": {
+    "/v1/ops/business-metrics": {
       "get": {
         "description": "Return an aggregate business metrics snapshot.\n\nAuth:\n- 401 if no valid session cookie.\n- 403 if authenticated but not a superuser.\n- 200 with JSON body for a superuser.\n\nAll values are global aggregates; no per-user identifiers are included.",
-        "operationId": "get_business_metrics_ops_business_metrics_get",
+        "operationId": "get_business_metrics_v1_ops_business_metrics_get",
         "responses": {
           "200": {
             "content": {
@@ -2348,10 +2368,10 @@
         ]
       }
     },
-    "/packs": {
+    "/v1/packs": {
       "get": {
         "description": "Return the full curated pack catalog (auth required — AC1).\n\nNo DB query: the catalog is a static in-memory structure. Auth is required\nso unauthenticated crawlers cannot enumerate the catalog.",
-        "operationId": "get_packs_packs_get",
+        "operationId": "get_packs_v1_packs_get",
         "responses": {
           "200": {
             "content": {
@@ -2360,7 +2380,7 @@
                   "items": {
                     "$ref": "#/components/schemas/PackRead"
                   },
-                  "title": "Response Get Packs Packs Get",
+                  "title": "Response Get Packs V1 Packs Get",
                   "type": "array"
                 }
               }
@@ -2379,10 +2399,10 @@
         ]
       }
     },
-    "/packs/{slug}/subscribe": {
+    "/v1/packs/{slug}/subscribe": {
       "delete": {
         "description": "Unsubscribe from a pack — deletes all watchlist rows with this pack_slug.\n\n- 404 if slug not in catalog (unknown pack — not just \"not subscribed\").\n- 200 with deleted=0 if the slug is valid but the user is not subscribed.\n- Manual watchlists (pack_slug IS NULL) are NEVER touched.",
-        "operationId": "unsubscribe_pack_packs__slug__subscribe_delete",
+        "operationId": "unsubscribe_pack_v1_packs__slug__subscribe_delete",
         "parameters": [
           {
             "in": "path",
@@ -2428,7 +2448,7 @@
       },
       "post": {
         "description": "Subscribe to a curated pack — creates watchlist rows with pack_slug marker.\n\n- 404 if slug not in catalog.\n- 402 if the user has reached their PACKS plan limit (handled globally).\n- Idempotent: re-subscribing the same pack returns created=0, not an error.\n- Skip-conflicts (channel already watched manually) are counted in `skipped`.",
-        "operationId": "subscribe_pack_packs__slug__subscribe_post",
+        "operationId": "subscribe_pack_v1_packs__slug__subscribe_post",
         "parameters": [
           {
             "in": "path",
@@ -2473,30 +2493,10 @@
         ]
       }
     },
-    "/ready": {
-      "get": {
-        "description": "Readiness: 200 when DB+Redis+Celery reachable, else 503 with per-dep markers.",
-        "operationId": "ready_ready_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Ready",
-        "tags": [
-          "ops"
-        ]
-      }
-    },
-    "/referral/me": {
+    "/v1/referral/me": {
       "get": {
         "description": "Return the authenticated user's referral code, share link, and earned rewards.\n\nThe ref_code is generated lazily on first call and cached on the user row.\nOnly rewards where referrer_id == current_user.id are returned.",
-        "operationId": "get_referral_me_referral_me_get",
+        "operationId": "get_referral_me_v1_referral_me_get",
         "responses": {
           "200": {
             "content": {
@@ -2520,10 +2520,10 @@
         ]
       }
     },
-    "/trending": {
+    "/v1/trending": {
       "get": {
         "description": "Return the top trending clusters for a pack (showcase tenant, 24h window).\n\nNo plan gate: Free users see /trending after registration (Decision §Discussion).\nThis is showcase data (our own), not the user's personal history.\n\npack:  Required. Pack slug from the catalog. 404 if unknown.\nlimit: Optional. Must be ≤ settings.trending_top_k_max (422 otherwise).\n       Defaults to settings.trending_top_k_default.\n\nResponse includes warming_up=true when the showcase tenant is not yet warmed up\n(fresh deploy); the frontend should display «собираем сигналы…» in that case.",
-        "operationId": "get_trending_trending_get",
+        "operationId": "get_trending_v1_trending_get",
         "parameters": [
           {
             "description": "Pack slug (e.g. 'crypto-ru'). Must be a known catalog slug.",
@@ -2582,10 +2582,10 @@
         ]
       }
     },
-    "/users/me": {
+    "/v1/users/me": {
       "get": {
         "description": "Return the authenticated user's profile.\n\nBehind `current_user` dependency: returns 401 without a valid auth cookie.\nTenant-scoped: only reads data belonging to the requesting user.",
-        "operationId": "get_users_me_users_me_get",
+        "operationId": "get_users_me_v1_users_me_get",
         "responses": {
           "200": {
             "content": {
@@ -2609,10 +2609,10 @@
         ]
       }
     },
-    "/users/me/delivery-config": {
+    "/v1/users/me/delivery-config": {
       "get": {
         "description": "Return the authenticated user's delivery configuration (token masked).\n\n`telegram_bot_token` is never returned as the full value — only a masked\nrepresentation showing the last 4 characters (or None if not set).\nTenant-scoped: reads only `current_user` data.",
-        "operationId": "get_delivery_config_users_me_delivery_config_get",
+        "operationId": "get_delivery_config_v1_users_me_delivery_config_get",
         "responses": {
           "200": {
             "content": {
@@ -2637,7 +2637,7 @@
       },
       "patch": {
         "description": "Partial-update the authenticated user's delivery configuration.\n\n- `webhook_url`: requires Pro+ plan (feature-gate → 403 on Free);\n  SSRF-validated via task-009 guard (private/localhost/non-https → 422).\n- `telegram_bot_token`/`telegram_chat_id`: available on all plans.\n- Only provided fields are updated (partial PATCH semantics).\n- Returns the updated config with the bot token masked.",
-        "operationId": "patch_delivery_config_users_me_delivery_config_patch",
+        "operationId": "patch_delivery_config_v1_users_me_delivery_config_patch",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2681,10 +2681,10 @@
         ]
       }
     },
-    "/users/me/tenant": {
+    "/v1/users/me/tenant": {
       "get": {
         "description": "Protected example route (AC2): 401 without a token, tenant id with one.",
-        "operationId": "read_my_tenant_users_me_tenant_get",
+        "operationId": "read_my_tenant_v1_users_me_tenant_get",
         "responses": {
           "200": {
             "content": {
@@ -2705,10 +2705,10 @@
         "summary": "Read My Tenant"
       }
     },
-    "/watchlists": {
+    "/v1/watchlists": {
       "get": {
         "description": "List only the caller's watchlists (tenant-scoped).\n\nAccepts cookie/JWT (UI) or X-API-Key header (programmatic, TASK-028).",
-        "operationId": "list_watchlists_watchlists_get",
+        "operationId": "list_watchlists_v1_watchlists_get",
         "parameters": [
           {
             "in": "header",
@@ -2735,7 +2735,7 @@
                   "items": {
                     "$ref": "#/components/schemas/WatchlistRead"
                   },
-                  "title": "Response List Watchlists Watchlists Get",
+                  "title": "Response List Watchlists V1 Watchlists Get",
                   "type": "array"
                 }
               }
@@ -2765,7 +2765,7 @@
       },
       "post": {
         "description": "Create one watchlist (single channel) for the caller -> 201 WatchlistRead.",
-        "operationId": "create_watchlist_watchlists_post",
+        "operationId": "create_watchlist_v1_watchlists_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2809,10 +2809,10 @@
         ]
       }
     },
-    "/watchlists/{watchlist_id}": {
+    "/v1/watchlists/{watchlist_id}": {
       "delete": {
         "description": "Delete an owned watchlist; missing / other tenant's id -> 404.",
-        "operationId": "delete_watchlist_watchlists__watchlist_id__delete",
+        "operationId": "delete_watchlist_v1_watchlists__watchlist_id__delete",
         "parameters": [
           {
             "in": "path",
@@ -2851,7 +2851,7 @@
       },
       "get": {
         "description": "Get one owned watchlist; missing / other tenant's id -> 404.",
-        "operationId": "get_watchlist_watchlists__watchlist_id__get",
+        "operationId": "get_watchlist_v1_watchlists__watchlist_id__get",
         "parameters": [
           {
             "in": "path",
@@ -2913,7 +2913,7 @@
       },
       "patch": {
         "description": "Partial update of an owned watchlist; missing / other tenant's id -> 404.",
-        "operationId": "update_watchlist_watchlists__watchlist_id__patch",
+        "operationId": "update_watchlist_v1_watchlists__watchlist_id__patch",
         "parameters": [
           {
             "in": "path",
