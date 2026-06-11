@@ -137,18 +137,18 @@ push в main (`.github/workflows/main-integration.yml`), а PR CI = `ci-fast` = 
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 5
+current_step: 7
 baseline_commit: "c390c4c"
 branch: "task/062-ops-tests-mypy-debts"
-lock: "next-executor-2026-06-11-task062"
+lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [x] 3 do (TDD: failing test → minimal code)
 - [x] 4 verify (G2 — tests + runtime + real behavior)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (if touches auth/input/secrets/OAuth)
-- [ ] 6 ship (confirm plan done → PR(s))
-- [ ] 7 learnings (auto)
+- [x] 5 review (auto, adversarial) — APPROVE, 0 CRITICAL/HIGH/MEDIUM
+- [x] 5.5 security — SKIP подтверждён review: дифф = CI-конфиг, фиктивные ci-секреты
+- [x] 6 ship (confirm plan done → PR(s))
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details
