@@ -1,7 +1,7 @@
 ---
 id: TASK-032
 title: Security hardening — per-route rate-limit (nginx) + CSRF/Origin на мутациях + at-rest шифрование (или accepted-risk)
-status: review              # planned → in-progress → review → done
+status: done                # planned → in-progress → review → done
 owner: security
 created: 2026-06-09
 updated: 2026-06-11
