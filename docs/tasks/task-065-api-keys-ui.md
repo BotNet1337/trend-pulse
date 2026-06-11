@@ -199,18 +199,18 @@ Trader») → `/billing`. DoD = AC + vitest/e2e зелёные.
 
 ## Checkpoints
 
-current_step: 5
+current_step: 7
 baseline_commit: "c390c4c"
 branch: "task/065-api-keys-ui"
-lock: "fable-2026-06-11-task065"
+lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [x] 3 do (TDD: failing test → minimal code)
 - [x] 4 verify (G2 — vitest 220/220, eslint, tsc -b, vite build зелёные; e2e + живой цикл ключа — CI/owner, см. Details)
 - [x] 5 review (APPROVE — 0 CRITICAL/HIGH, 2 LOW-наблюдения без правок)
 - [x] 5.5 security (APPROVE — plaintext-инвариант подтверждён; LOW: retain-on-failure video/trace — нота для будущих paid-plan e2e добавлена в спеку)
-- [ ] 6 ship (confirm plan done → PR(s))
-- [ ] 7 learnings (auto)
+- [x] 6 ship (PR #90 → main, https://github.com/BotNet1337/trend-pulse/pull/90; merge — оркестратор)
+- [x] 7 learnings (auto — docs/learnings.md)
 debug_runs: []
 
 ## Details
