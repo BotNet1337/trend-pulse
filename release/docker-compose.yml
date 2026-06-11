@@ -52,7 +52,13 @@ networks:
     attachable: true
     internal: true
   # Egress for the Celery worker ONLY (collector → Telegram/MTProto needs the
-  # internet). NOT internal:true. api/postgres/redis stay isolated.
+  # internet). NOT internal:true. postgres/redis stay isolated.
   egress:
+    driver: overlay
+    attachable: true
+  # Egress for the api ONLY — fixed-provider outbound (Google OAuth token exchange,
+  # NOWPayments invoice API, Resend/SMTP, Sentry). Separate from the worker's egress
+  # so api and worker don't share an internet-capable network (least privilege).
+  api_egress:
     driver: overlay
     attachable: true

@@ -25,6 +25,10 @@ services:
       - internal
       - postgres_net
       - redis_net
+      # api makes outbound HTTPS to fixed providers (Google OAuth token exchange,
+      # NOWPayments invoice API, Resend/SMTP, Sentry). A dedicated egress net keeps
+      # that internet route OFF the worker's egress and OFF the internal nets.
+      - api_egress
     healthcheck:
       test:
         - CMD-SHELL
@@ -69,3 +73,8 @@ networks:
     driver: overlay
     attachable: true
     internal: true
+  # NOT internal:true — gives api an internet route for fixed-provider outbound
+  # (OAuth/NOWPayments/SMTP/Sentry). Dedicated to api; the worker keeps its own egress.
+  api_egress:
+    driver: overlay
+    attachable: true

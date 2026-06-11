@@ -9,9 +9,10 @@
   connection: local
   gather_facts: true
   vars_files:
-    # Non-secret defaults. Loaded explicitly because group_vars/ lives at the
-    # ansible root, not adjacent to this playbook in playbooks/.
-    - ../group_vars/all.yml
+    # Non-secret defaults. Loaded explicitly: group_vars/ lives at inventory/group_vars/
+    # (inventory-adjacent) so it auto-loads for `-i inventory/*` plays; this localhost
+    # play has no such inventory, hence the explicit path.
+    - ../inventory/group_vars/all.yml
     - ../vault/sensitive.vault.yml
   vars:
     # Repo root = three levels up from this playbook
