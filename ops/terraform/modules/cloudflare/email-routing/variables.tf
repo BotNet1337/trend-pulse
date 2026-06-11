@@ -51,8 +51,8 @@ variable "resend_dkim_value" {
     Name is always: resend._domainkey
     Get from: Resend → Domains → Add Domain → DNS Records
   EOT
-  type    = string
-  default = ""
+  type        = string
+  default     = ""
 }
 
 variable "resend_spf_subdomain" {
