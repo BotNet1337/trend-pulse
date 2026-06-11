@@ -19,3 +19,4 @@
     src: sensitive.env.j2
     dest: "{{ env_dir }}/sensitive.env"
     mode: "{{ env_sensitive_mode }}"
+  no_log: true

@@ -1,0 +1,39 @@
+---
+# ops/ansible/inventory/prod.example.yml — TEMPLATE for the production inventory.
+#
+# THE single owner entry point. Copy to inventory/prod.yml (gitignored), fill in
+# the real values, then deploy with the root `make deploy`:
+#
+#   cp ops/ansible/inventory/prod.example.yml ops/ansible/inventory/prod.yml
+#   # edit the values below, then:
+#   make deploy
+#
+# `make deploy` runs `ansible-playbook site.yml -l prod -i inventory/prod.yml`.
+# The VPS itself is created by Terraform (ops/terraform/environments/prod);
+# this file just points Ansible at its IP.
+all:
+  children:
+    prod:
+      hosts:
+        trendpulse-prod:
+          # Public IPv4 of the VPS (Terraform `server_ip` output).
+          ansible_host: 203.0.113.10
+          # Deploy user (created by Terraform/cloud-init; key-only SSH).
+          ansible_user: deploy
+          # Path to the SSH private key for `deploy` (the dedicated deploy key,
+          # NOT a personal key). CI uses ssh-agent instead of this file.
+          ansible_ssh_private_key_file: ~/.ssh/trendpulse_deploy_ed25519
+      vars:
+        # --- Release deploy vars (consumed by playbooks/deploy.yml + roles) ---
+        # The annotated semver tag to deploy (git ref checked out on the host,
+        # built image tag, Sentry RELEASE). Override per release via:
+        #   make deploy   (uses this)   OR   -e app_version=vX.Y.Z
+        app_version: "v0.1.0"
+        # Public domain — A-record MUST point at ansible_host before TLS issuance.
+        # Drives the prod nginx config (${DOMAIN}) and FRONTEND/PUBLIC base URLs.
+        prod_domain: "example.com"
+        # Email for Let's Encrypt registration + expiry notices.
+        letsencrypt_email: "admin@example.com"
+        # Set false to deploy over plain HTTP on the bare IP (smoke run before a
+        # domain resolves); default true (issue + serve TLS).
+        tls_enabled: true

@@ -1,0 +1,34 @@
+# One-shot swarm JOB: apply Alembic migrations (`alembic upgrade head`) — the
+# ONLY place migrations run. Uses the shared app image. Idempotent: re-runs
+# against an up-to-date DB exit 0. Runs after pgvector is enabled. postgres_net only.
+#
+# deploy.mode: replicated-job — swarm runs it to Complete. restart_policy.condition:
+# none → one-shot. Swarm ignores depends_on, so on the FIRST deploy this job and
+# pg_vector_provisioner may race; alembic fails fast and the job is marked Failed
+# → make deploy-wait reports it and a re-`stack deploy` re-runs both (both are
+# idempotent). In steady state pgvector already exists so ordering is moot.
+services:
+  migration_runner:
+    image: ${APP_IMAGE}
+    build:
+      context: ../../../backend
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION}
+        UV_VERSION: ${UV_VERSION}
+    command: alembic upgrade head
+    env_file:
+      - ../../env/deploy.env
+      - ../../env/sensitive.env
+    networks:
+      - postgres_net
+    deploy:
+      mode: replicated-job
+      replicas: 1
+      restart_policy:
+        condition: none
+
+networks:
+  postgres_net:
+    driver: overlay
+    attachable: true
+    internal: true

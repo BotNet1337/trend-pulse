@@ -1,0 +1,32 @@
+# Redis broker/result backend (prod swarm). On redis_net only; NO published ports.
+services:
+  redis:
+    image: redis:${REDIS_VERSION}
+    networks:
+      - redis_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+      update_config:
+        order: start-first
+        failure_action: rollback
+      rollback_config:
+        order: start-first
+      restart_policy:
+        condition: any
+        delay: 5s
+
+networks:
+  redis_net:
+    driver: overlay
+    attachable: true
+    internal: true
