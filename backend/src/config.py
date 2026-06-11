@@ -225,6 +225,22 @@ _DEFAULT_REFERRAL_REWARD_USDT: float = 10.0
 # Override via env BUSINESS_METRICS_INTERVAL_SECONDS (e.g. 60 for dev/testing).
 _DEFAULT_BUSINESS_METRICS_INTERVAL_SECONDS: int = 86_400  # 24 hours
 
+# Lifecycle emails (TASK-069). Named, non-secret defaults; time in SECONDS/DAYS.
+# `lifecycle_email_interval_seconds`: how often the Beat tick fires (default 24h).
+#   Due-selection inside the tick is driven by per-user `*_last_sent_at` state,
+#   so restarts / interval drift can never cause duplicates.
+# `winback_inactive_days`: surrogate inactivity threshold — MAX(alerts.delivered_at)
+#   older than this (or no alerts at all) with ≥1 watchlist → win-back candidate.
+# `digest_top_k`: number of top-score delivered alerts in the weekly digest.
+# `digest_period_days`: digest look-back window AND minimum days between digests.
+# `unsubscribe_rate_limit_per_minute`: per-key budget for the unauthenticated
+#   GET /email/unsubscribe endpoint (lower than the default auth'd API limit).
+_DEFAULT_LIFECYCLE_EMAIL_INTERVAL_SECONDS: int = 86_400  # 24 hours
+_DEFAULT_WINBACK_INACTIVE_DAYS: int = 14
+_DEFAULT_DIGEST_TOP_K: int = 5
+_DEFAULT_DIGEST_PERIOD_DAYS: int = 7
+_DEFAULT_UNSUBSCRIBE_RATE_LIMIT_PER_MINUTE: int = 30
+
 # CSRF/Origin allow-list (TASK-032). Named, non-secret default — the list of
 # scheme+host values that are accepted as the `Origin` (or Referer fallback)
 # header on cookie-auth mutations (POST/PUT/PATCH/DELETE).
@@ -506,6 +522,18 @@ class Settings(BaseSettings):
     # --- Business-metrics daily aggregate (TASK-050). Non-secret, settable; default above.
     # Beat interval (seconds) for the aggregate_business_metrics task. Default 24h. ---
     business_metrics_interval_seconds: int = _DEFAULT_BUSINESS_METRICS_INTERVAL_SECONDS
+
+    # --- Lifecycle emails (TASK-069). Non-secret, settable; defaults above. ---
+    # Beat interval (seconds) for the send_lifecycle_emails tick. Default 24h.
+    lifecycle_email_interval_seconds: int = _DEFAULT_LIFECYCLE_EMAIL_INTERVAL_SECONDS
+    # Inactivity surrogate threshold (days) before a win-back email is due.
+    winback_inactive_days: int = _DEFAULT_WINBACK_INACTIVE_DAYS
+    # Number of top-score delivered alerts included in the weekly digest.
+    digest_top_k: int = _DEFAULT_DIGEST_TOP_K
+    # Digest look-back window and minimum days between digests.
+    digest_period_days: int = _DEFAULT_DIGEST_PERIOD_DAYS
+    # Per-minute rate limit for the unauthenticated GET /email/unsubscribe endpoint.
+    unsubscribe_rate_limit_per_minute: int = _DEFAULT_UNSUBSCRIBE_RATE_LIMIT_PER_MINUTE
 
     # --- CSRF/Origin allow-list (TASK-032). Non-secret, settable; default above.
     # Comma-separated scheme+host values accepted in the Origin (or Referer fallback)

@@ -1,12 +1,12 @@
 ---
 id: TASK-069
 title: Lifecycle-письма — welcome после верификации, weekly digest, win-back (+ unsubscribe)
-status: planned        # planned → in-progress → review → done
+status: in-progress    # planned → in-progress → review → done
 owner: backend
 created: 2026-06-11
 updated: 2026-06-11
-baseline_commit: "c390c4c"
-branch: ""
+baseline_commit: "650663d"
+branch: "task/069-email-lifecycle"
 tags: [email, lifecycle, notifications, templates, beat, retention, migration]
 ---
 
@@ -251,14 +251,14 @@ unsubscribe-ссылку; неверифицированным и отписав
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
-baseline_commit: "c390c4c"
-branch: ""
-lock: ""
+current_step: 5
+baseline_commit: "650663d"
+branch: "task/069-email-lifecycle"
+lock: "fable-5-agent-acb9a47e 2026-06-11"
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + runtime + real behavior)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + runtime + real behavior)
 - [ ] 5 review (auto, adversarial)
 - [ ] 5.5 security (ОБЯЗАТЕЛЬНА: unauth unsubscribe-эндпоинт + user input)
 - [ ] 6 ship (confirm plan done → PR(s))
@@ -266,6 +266,26 @@ lock: ""
 debug_runs: []
 
 ## Details
+
+(do/verify 2026-06-11, Fable-5: миграция получила номер **0022** (head на момент do =
+0021 из TASK-048, не 0019 из плана). Решения do-стадии: welcome CTA → `/onboarding`
+(страница подключения паков SPA, выделенного `/packs` роута нет); win-back CTA →
+`/watchlists`; база unsubscribe-URL = `public_base_url or frontend_base_url` +
+`/api/v1/email/unsubscribe` (паттерн feedback-кнопок TASK-042; фронтовый базовый URL
+указывает на тот же nginx-edge, что проксирует `/api/`); семантика повторного win-back —
+консервативное **AND** (новый цикл = re-arm по `delivered_at > winback_last_sent_at`
+И прошло ≥30д cooldown; без новой активности юзер получает ровно одно win-back);
+welcome subject оставлен TrendPulse-брендом в тон существующему шаблону (ребренд —
+долг TASK-072), новые lifecycle-шаблоны — «Foresignal»; `unsubscribeUrl` добавлен
+опциональным prop в реестр welcome (обязательный — в двух новых шаблонах);
+дополнительный gate тика: `User.is_active IS TRUE` (отключённые аккаунты не получают
+lifecycle). Accepted risk: GET-unsubscribe может сработать от почтового префетчера —
+один таргетный идемпотентный side effect, компромисс one-click (см. Edge cases).
+Verify: unit 687 passed; integration 252 passed/10 skipped (skip = Redis/templates/ML
+недоступны локально — как на baseline) на одноразовом pgvector:pg16 (порт 15437);
+живой рендер всех 3 шаблонов через `npx tsx server/main.ts` + POST /render (subject,
+unsubscribe-ссылка, топики/score/pack в HTML; транзакционный verify-email рендерится
+без unsubscribe — не задет); mailpit-прогон на стенде — owner-шаг.)
 
 (planned 2026-06-11: инфраструктура писем полностью готова (TASK-025/026/027) —
 задача складывает из неё активационный контур. Шаблон `auth/welcome` найден готовым,

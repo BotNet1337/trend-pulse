@@ -16,6 +16,8 @@ void React;
 export interface EmailLayoutProps {
   previewText: string;
   tagline?: string;
+  /** Optional unsubscribe URL (TASK-069) — forwarded to the footer link. */
+  unsubscribeUrl?: string;
   children: ReactNode;
 }
 
@@ -44,6 +46,7 @@ const card = {
 export function EmailLayout({
   previewText,
   tagline,
+  unsubscribeUrl,
   children,
 }: EmailLayoutProps) {
   return (
@@ -55,7 +58,7 @@ export function EmailLayout({
           <Section style={card}>
             <BrandHeader tagline={tagline} />
             {children}
-            <EmailFooter />
+            <EmailFooter unsubscribeUrl={unsubscribeUrl} />
           </Section>
         </Container>
       </Body>

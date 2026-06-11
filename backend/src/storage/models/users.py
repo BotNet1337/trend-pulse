@@ -17,7 +17,7 @@ from fastapi_users_db_sqlalchemy import (
     SQLAlchemyBaseOAuthAccountTable,
     SQLAlchemyBaseUserTable,
 )
-from sqlalchemy import DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from storage.encryption import EncryptedString
@@ -112,4 +112,19 @@ class User(SQLAlchemyBaseUserTable[int], Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
         default=None,
+    )
+    # --- Lifecycle emails (TASK-069). All additive with defaults (migration 0022)
+    # so existing rows/readers are backward-compatible — pattern of migration 0004.
+    # `lifecycle_emails_opt_out`: GET /email/unsubscribe sets True idempotently;
+    #   blocks welcome/digest/win-back, NEVER transactional verify/reset/renewal.
+    # `digest_last_sent_at` / `winback_last_sent_at`: frequency-limit state —
+    #   set ONLY on successful send (idempotency via state, TASK-027 pattern). ---
+    lifecycle_emails_opt_out: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=false(), default=False
+    )
+    digest_last_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    winback_last_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
     )

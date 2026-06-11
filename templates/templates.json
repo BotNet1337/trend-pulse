@@ -45,13 +45,15 @@
       "type": "object",
       "properties": {
         "userName": { "type": "string" },
-        "dashboardUrl": { "type": "string" }
+        "dashboardUrl": { "type": "string" },
+        "unsubscribeUrl": { "type": "string" }
       },
       "required": ["userName", "dashboardUrl"]
     },
     "previewDefaults": {
       "userName": "Alex",
-      "dashboardUrl": "https://app.trendpulse.local/dashboard"
+      "dashboardUrl": "https://app.trendpulse.local/dashboard",
+      "unsubscribeUrl": "https://app.trendpulse.local/api/v1/email/unsubscribe?token=preview"
     }
   },
   {
@@ -111,6 +113,60 @@
       "planName": "pro",
       "daysLeft": 3,
       "renewUrl": "https://app.trendpulse.local/billing"
+    }
+  },
+  {
+    "eventName": "lifecycle.weekly_digest",
+    "templatePath": "lifecycle/weekly-digest",
+    "subject": "Your weekly Foresignal digest",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "userName": { "type": "string" },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "topic": { "type": "string" },
+              "score": { "type": "string" },
+              "packSlug": { "type": ["string", "null"] }
+            },
+            "required": ["topic", "score"]
+          }
+        },
+        "dashboardUrl": { "type": "string" },
+        "unsubscribeUrl": { "type": "string" }
+      },
+      "required": ["userName", "items", "dashboardUrl", "unsubscribeUrl"]
+    },
+    "previewDefaults": {
+      "userName": "Alex",
+      "items": [
+        { "topic": "AI model release roundup", "score": "97.4", "packSlug": "ai-tech" },
+        { "topic": "Crypto market swing", "score": "91.2", "packSlug": null }
+      ],
+      "dashboardUrl": "https://app.trendpulse.local/watchlists",
+      "unsubscribeUrl": "https://app.trendpulse.local/api/v1/email/unsubscribe?token=preview"
+    }
+  },
+  {
+    "eventName": "lifecycle.win_back",
+    "templatePath": "lifecycle/win-back",
+    "subject": "Your Foresignal packs have been quiet",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "userName": { "type": "string" },
+        "watchlistsUrl": { "type": "string" },
+        "unsubscribeUrl": { "type": "string" }
+      },
+      "required": ["userName", "watchlistsUrl", "unsubscribeUrl"]
+    },
+    "previewDefaults": {
+      "userName": "Alex",
+      "watchlistsUrl": "https://app.trendpulse.local/watchlists",
+      "unsubscribeUrl": "https://app.trendpulse.local/api/v1/email/unsubscribe?token=preview"
     }
   },
   {
