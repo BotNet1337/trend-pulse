@@ -58,6 +58,6 @@ Roadmap: [`../architecture/roadmap.md`](../architecture/roadmap.md). Epic A = Ba
 | [TASK-051](./task-051-money-dashboard.md) | Дашборд «деньги» — GET /ops/business-metrics (superuser): MRR/подписки/чек/воронка/retention | E6 | done | backend | 050, 049 | 2026-06-11 |
 | [TASK-056](./task-056-hetzner-object-storage-infra.md) | Hetzner Object Storage infra — terraform-порт с DO (minio-провайдер, бакет, lifecycle) + S3-env в Ansible | E0 | done | infra | 012 | 2026-06-09 |
 | [TASK-057](./task-057-prod-launch-vps.md) | Прод-запуск на VPS — make deploy (provision→TLS→stack→showcase-init→smoke) одной командой | — | planned | infra | 012, 034, 039 | 2026-06-10 |
-| [TASK-058](./task-058-billing-live-verification.md) | Боевая проверка платёжного пути — NOWPayments live IPN, raw-HMAC fallback, тестовый платёж | — | planned | backend | 010, 057, 049 | 2026-06-11 |
+| [TASK-058](./task-058-billing-live-verification.md) | Боевая проверка платёжного пути — NOWPayments live IPN, raw-HMAC fallback, тестовый платёж | — | in-progress (код merged, live blocked) | backend | 010, 057, 049 | 2026-06-11 |
 | [TASK-059](./task-059-tg-pool-scaleout.md) | TG-пул до ≥3 аккаунтов — сессии в vault, prod pool_min_healthy=3, операторский runbook (P1) | — | planned | infra | 035, 012 | 2026-06-11 |
 | [TASK-060](./task-060-uptime-monitoring-support.md) | Внешний uptime-мониторинг /api/ready + support@foresignal.biz (email-routing IaC, витрины) | — | planned | infra | 057 | 2026-06-11 |

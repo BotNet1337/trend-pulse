@@ -8,7 +8,15 @@ IPN signature (NOWPayments): **HMAC-SHA512** over the JSON of the body with keys
 sorted recursively and dumped compactly, keyed by the merchant IPN secret; the hex
 digest rides in the `x-nowpayments-sig` header. We compare with
 `hmac.compare_digest` (constant-time) and only parse the body after the signature
-verifies. The API key and IPN secret are NEVER logged.
+verifies.
+
+Dual-verify (TASK-058): canonical-primary (sorted-key JSON) → on mismatch try
+HMAC over the raw bytes as received. If raw matches: emit
+`billing.ipn_canonical_mismatch` log_event (aggregate-only: lengths + sha256
+prefixes, NO body content and NO secret) and accept. If neither matches: raise
+`IpnVerificationError`. Both comparisons use `hmac.compare_digest`.
+
+The API key and IPN secret are NEVER logged.
 """
 
 import hashlib
@@ -21,6 +29,7 @@ import httpx
 
 from billing.gateway.base import GatewayError, Invoice, IpnEvent, IpnVerificationError
 from billing.plans import PRICE_CURRENCY, BillingPeriod, Plan, price_for
+from observability.logging import log_event
 from storage.models.users import User
 
 _SIG_HEADER = "x-nowpayments-sig"
@@ -28,6 +37,15 @@ _API_KEY_HEADER = "x-api-key"
 _INVOICE_PATH = "/invoice"
 # Bounds a hung NOWPayments API call (seconds) — named, not a magic literal.
 _HTTP_TIMEOUT_SECONDS = 15
+
+# Log-event name for the canonical/raw mismatch diagnostic (TASK-058, AC1).
+# Exported so tests can import the constant without a magic string.
+IPN_CANONICAL_MISMATCH_EVENT: str = "billing.ipn_canonical_mismatch"
+
+# Number of hex chars of the SHA-256 digest to include in the mismatch log
+# (enough to correlate with the raw request in ops tooling, not enough to
+# reconstruct anything sensitive).
+_SHA256_PREFIX_HEX_CHARS: int = 16
 
 
 def _canonical_json(payload: dict[str, Any]) -> bytes:
@@ -87,7 +105,18 @@ class NowPaymentsGateway:
     def verify_ipn(self, *, headers: dict[str, str], raw_body: bytes) -> IpnEvent:
         """Verify the IPN HMAC-SHA512 signature (constant-time) → typed event.
 
-        The body is parsed ONLY after the signature verifies (no trust on invalid).
+        Strategy (TASK-058 dual-verify):
+        1. Parse body to recompute the canonical (sorted-key, compact) JSON that
+           NOWPayments documents.
+        2. Try HMAC over canonical bytes. If it matches → accepted silently.
+        3. On canonical mismatch: try HMAC over the RAW bytes as received
+           (guards against re-canonicalisation drift: float repr, ensure_ascii).
+           If raw matches → emit `billing.ipn_canonical_mismatch` diagnostic event
+           (aggregate-only: lengths + sha256 prefixes) and accept.
+        4. If neither matches → IpnVerificationError (→ 401).
+
+        Both comparisons use `hmac.compare_digest` (constant-time).
+        The body is parsed / trusted ONLY after a signature verifies.
         """
         provided = self._signature_header(headers)
         if provided is None:
@@ -102,13 +131,39 @@ class NowPaymentsGateway:
         if not isinstance(parsed, dict):
             raise IpnVerificationError("IPN body is not a JSON object")
 
-        expected = hmac.new(
-            self._ipn_secret.encode("utf-8"), _canonical_json(parsed), hashlib.sha512
-        ).hexdigest()
-        if not hmac.compare_digest(expected, provided):
-            raise IpnVerificationError("IPN signature mismatch")
+        secret_bytes = self._ipn_secret.encode("utf-8")
+        canonical_bytes = _canonical_json(parsed)
 
-        return self._to_event(parsed)
+        canonical_sig = hmac.new(secret_bytes, canonical_bytes, hashlib.sha512).hexdigest()
+        if hmac.compare_digest(canonical_sig, provided):
+            # Primary (canonical) path — accepted silently, no event.
+            return self._to_event(parsed)
+
+        # Canonical mismatch: try raw body as received (fallback path).
+        raw_sig = hmac.new(secret_bytes, raw_body, hashlib.sha512).hexdigest()
+        if hmac.compare_digest(raw_sig, provided):
+            # Raw body matches — accept but emit diagnostic so ops can investigate.
+            self._emit_canonical_mismatch(raw_body=raw_body, canonical_bytes=canonical_bytes)
+            return self._to_event(parsed)
+
+        raise IpnVerificationError("IPN signature mismatch")
+
+    @staticmethod
+    def _emit_canonical_mismatch(*, raw_body: bytes, canonical_bytes: bytes) -> None:
+        """Emit a structured diagnostic event when raw HMAC passes but canonical fails.
+
+        Fields are aggregate-only (lengths + sha256 prefixes) — NO body content
+        and NO secret ever appear in the log (TASK-058 security requirement).
+        """
+        raw_sha256 = hashlib.sha256(raw_body).hexdigest()
+        canonical_sha256 = hashlib.sha256(canonical_bytes).hexdigest()
+        log_event(
+            IPN_CANONICAL_MISMATCH_EVENT,
+            raw_len=len(raw_body),
+            canonical_len=len(canonical_bytes),
+            raw_sha256_prefix=raw_sha256[:_SHA256_PREFIX_HEX_CHARS],
+            canonical_sha256_prefix=canonical_sha256[:_SHA256_PREFIX_HEX_CHARS],
+        )
 
     @staticmethod
     def _signature_header(headers: dict[str, str]) -> str | None:
