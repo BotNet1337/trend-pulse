@@ -7,6 +7,7 @@ import { buildHeadTags } from '../../src/shared/seo/seo';
 export async function render(input: RenderFnInput): Promise<RenderPayload> {
   const t0 = Date.now();
   const request = new Request(`http://localhost${input.url}`);
+  const cases = input.cases ?? [];
 
   const handler = createRequestHandler({
     request,
@@ -23,7 +24,7 @@ export async function render(input: RenderFnInput): Promise<RenderPayload> {
       responseHeaders: params.responseHeaders,
       router: params.router,
       children: (
-        <AppShell>
+        <AppShell cases={cases}>
           <RouterServer router={params.router} />
         </AppShell>
       ),
@@ -86,7 +87,9 @@ export async function render(input: RenderFnInput): Promise<RenderPayload> {
   return {
     html,
     headTags,
-    initialState: {},
+    // Client hydration reads cases from window.__INITIAL_STATE__ (TASK-067) —
+    // markup must match SSR exactly, the client never refetches.
+    initialState: { cases },
     injectedScripts,
     statusCode: response.status,
   };

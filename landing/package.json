@@ -13,6 +13,7 @@
     "build:server": "vite build --outDir dist/server --ssr server/ssr/render.tsx",
     "start": "cross-env NODE_ENV=production tsx server/main.ts",
     "lint": "eslint .",
+    "test:unit": "tsx --test tests/unit/*.test.ts",
     "preview": "vite preview",
     "sitemap:gen": "cross-env NODE_ENV=production tsx scripts/generate-sitemap.ts",
     "seo:validate": "cross-env NODE_ENV=production tsx scripts/validate-seo.ts",

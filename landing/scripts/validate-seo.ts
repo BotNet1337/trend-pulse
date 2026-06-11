@@ -1,5 +1,34 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { SITE_ROUTES } from '../src/shared/site/routes';
 import { buildHeadTags } from '../src/shared/seo/seo';
+import { SITE } from '../src/shared/site/constants';
+
+const robotsTxtPath = fileURLToPath(new URL('../public/robots.txt', import.meta.url));
+
+/**
+ * TASK-067: robots.txt domain-drift guard. The template domain survived a
+ * rebranding once (ai-port.me) — pin the Sitemap line to SITE.siteUrl forever.
+ */
+function validateRobotsTxt(): boolean {
+  const expectedSitemapLine = `Sitemap: ${SITE.siteUrl}/sitemap.xml`;
+  const robotsTxt = readFileSync(robotsTxtPath, 'utf8');
+  if (!robotsTxt.includes(expectedSitemapLine)) {
+    console.error(
+      `[seo] robots.txt drift: expected "${expectedSitemapLine}" in ${robotsTxtPath}`,
+    );
+    return false;
+  }
+  const sitemapLines = robotsTxt
+    .split('\n')
+    .filter((line) => line.trim().toLowerCase().startsWith('sitemap:'));
+  const foreign = sitemapLines.filter((line) => !line.includes(`${SITE.siteUrl}/sitemap.xml`));
+  if (foreign.length > 0) {
+    console.error(`[seo] robots.txt contains foreign sitemap line(s): ${foreign.join(' | ')}`);
+    return false;
+  }
+  return true;
+}
 
 function extractMeta(nameOrProp: string, html: string): string | null {
   const re = new RegExp(
@@ -34,6 +63,9 @@ function main() {
   const dupTitles = [...dupTitle.entries()].filter(([, routes]) => routes.length > 1);
 
   console.log(`[seo] routes=${results.length}`);
+  if (!validateRobotsTxt()) {
+    process.exitCode = 1;
+  }
   if (missing.length > 0) {
     console.error(`[seo] missing title/description on: ${missing.map((m) => m.route).join(', ')}`);
     process.exitCode = 1;

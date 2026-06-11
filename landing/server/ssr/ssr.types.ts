@@ -10,6 +10,8 @@ export type RenderPayload = {
   };
 };
 
+import type { CaseItem } from '../../src/shared/cases/types';
+
 export interface RenderContext {
   requestId?: string;
 }
@@ -17,6 +19,8 @@ export interface RenderContext {
 export interface RenderFnInput {
   url: string;
   ctx: RenderContext;
+  /** TASK-067: proof-of-speed cases fetched server-side (empty = section hidden). */
+  cases?: CaseItem[];
 }
 
 export type RenderFn = (input: RenderFnInput) => Promise<RenderPayload>;

@@ -5,6 +5,8 @@ import { SITE } from '@/shared/site/constants';
 
 export function HeroSection() {
   const signupUrl = (SITE as { signupUrl?: string }).signupUrl ?? '/sign-up';
+  // TASK-067: rendered only when the showcase channel exists (owner fills after TASK-070).
+  const showcaseTelegramUrl = (SITE as { showcaseTelegramUrl?: string }).showcaseTelegramUrl ?? '';
 
   return (
     <section className="pt-32 pb-16 px-6 lg:px-20 snap-start scroll-mt-16">
@@ -32,6 +34,19 @@ export function HeroSection() {
             <a href="#how-it-works">See how it works</a>
           </Button>
         </div>
+
+        {showcaseTelegramUrl ? (
+          <p className="-mt-6 mb-10">
+            <a
+              href={showcaseTelegramUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-primary hover:underline"
+            >
+              See live detections in Telegram →
+            </a>
+          </p>
+        ) : null}
 
         <p className="text-sm text-muted-foreground">
           No credit card · Crypto payments · Public channels only · Raw content not stored &gt;48 h
