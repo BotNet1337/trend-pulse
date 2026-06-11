@@ -199,18 +199,18 @@ Trader») → `/billing`. DoD = AC + vitest/e2e зелёные.
 
 ## Checkpoints
 
-current_step: 3
+current_step: 7
 baseline_commit: "c390c4c"
-branch: ""
+branch: "task/065-api-keys-ui"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + runtime + real behavior)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (REQUIRED — plaintext-секрет в UI)
-- [ ] 6 ship (confirm plan done → PR(s))
-- [ ] 7 learnings (auto)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — vitest 220/220, eslint, tsc -b, vite build зелёные; e2e + живой цикл ключа — CI/owner, см. Details)
+- [x] 5 review (APPROVE — 0 CRITICAL/HIGH, 2 LOW-наблюдения без правок)
+- [x] 5.5 security (APPROVE — plaintext-инвариант подтверждён; LOW: retain-on-failure video/trace — нота для будущих paid-plan e2e добавлена в спеку)
+- [x] 6 ship (PR #90 → main, https://github.com/BotNet1337/trend-pulse/pull/90; merge — оркестратор)
+- [x] 7 learnings (auto — docs/learnings.md)
 debug_runs: []
 
 ## Details
@@ -219,3 +219,29 @@ debug_runs: []
 TASK-049). Backend-контракт TASK-028 заморожен и уже в типах; весь diff —
 изолированный feature-модуль + одна секция в settings. Plaintext-дисциплина —
 центральный инвариант ревью.)
+
+(do/verify 2026-06-11, ветка `task/065-api-keys-ui`):
+- @testing-library/react в проекте не установлен (паттерн: unit = чистые
+  функции, node env) → «рендер-тесты секции» из Test plan реализованы как
+  (а) unit на чистые хелперы (`lib.ts`: validateApiKeyName/isApiKeyRevoked,
+  error-message) + мок apiClient для api-слоя, (б) e2e `api-keys.spec.ts`
+  (CTA-ветка Free, серверный 403, изоляция 5xx). Консервативный дефолт —
+  без новых dev-зависимостей.
+- Plaintext-инвариант: `ApiKeyCreated` идёт из `mutateAsync` → локальный
+  state модалки, сразу после — `createMutation.reset()` (секрет не живёт в
+  mutation state); list-кэш — только `ApiKeyRead`.
+- e2e Trader-цикла (выпуск→copy→revoke) нет в автотестах: e2e-окружение
+  регистрирует только Free (нет paid-сидинга) — зафиксировано в спеке,
+  ручная G2-проверка на стеке = owner-шаг (psql UPDATE plan='team' +
+  активная Subscription, гочча TASK-049).
+- verify: vitest 220/220, eslint чисто, `tsc -b` чисто, `vite build` ок;
+  `make up`/локальный стек недоступны (bridge-подсети исчерпаны) → runtime
+  e2e уйдёт в CI на PR.
+
+(review/security 2026-06-11): оба APPROVE, 0 CRITICAL/HIGH. LOW-наблюдения:
+двойной клик revoke (микроокно до isPending, паттерн соседа — без правки);
+copied-индикатор не сбрасывается до закрытия модалки (сознательный UX);
+глобальный Playwright `video/trace: retain-on-failure` — канал утечки
+plaintext для БУДУЩИХ paid-plan e2e (текущие тесты модалку не открывают) →
+профилактическая нота `test.use({video:'off',…})` добавлена в шапку
+api-keys.spec.ts; тестовый литерал `tp_def67890_plaintext` — фиктивный.

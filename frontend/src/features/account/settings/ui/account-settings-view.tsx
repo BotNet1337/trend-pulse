@@ -7,6 +7,7 @@ import { Button } from "@/shared/components/button"
 import { BRAND_NAME, SUPPORT_EMAIL } from "@/shared/config"
 import { DeliveryConfigForm } from "@/features/delivery-config/ui/delivery-config-form"
 import { useDeliveryConfig, useUpdateDeliveryConfig } from "@/features/delivery-config/model"
+import { ApiKeysSection } from "@/features/api-keys"
 import { DeleteAccountDialog } from "../../delete/ui/delete-account-dialog"
 import { ChangePasswordDialog } from "../../password/ui/change-password-dialog"
 import { ChangeEmailDialog } from "../../email/ui/change-email-dialog"
@@ -154,6 +155,9 @@ export const AccountSettingsView: React.FC = () => {
           <div className="py-4 text-sm text-muted-foreground">Loading delivery settings…</div>
         )}
       </section>
+
+      {/* API keys — issue / copy-once / revoke (TASK-065; Trader/Team gate) */}
+      <ApiKeysSection currentPlan={currentPlan} />
 
       <section
         data-testid="account-support"
