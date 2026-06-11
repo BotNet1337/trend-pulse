@@ -173,7 +173,7 @@ lock: ""
 - [x] 5 review (auto, adversarial)
 - [x] 5.5 security (REQUIRED — платёжная поверхность)
 - [x] 6 ship (PR) (код-часть)
-- [ ] 7 learnings (auto)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details
@@ -184,6 +184,8 @@ debug_runs: []
 NOWPayments аккаунт (KYC при необходимости), payout-кошелёк, ключи в vault, сам платёж.)
 
 После merge: код-страховка в main; задача остаётся in-progress — AC2/AC3/AC4 (sandbox, боевой платёж, byte-fixture) blocked: NOWPayments-аккаунт владельца + прод TASK-057. lock снять.
+
+learnings записаны (2026-06-11, код-часть); resume-точка после owner-шагов: AC2 sandbox.
 
 ### do-run 2026-06-11: scope = code insurance + runbook
 
