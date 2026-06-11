@@ -1,5 +1,6 @@
 import { SITE } from '@/shared/site/constants';
 import { PLAUSIBLE_SCRIPT_URL } from '@/shared/analytics/track';
+import { BLOG_PATH, findArticleByPath } from '@/shared/blog/articles';
 
 function escapeHtml(s: string): string {
   return s
@@ -18,6 +19,19 @@ function routeMeta(pathname: string): { title: string; description: string } {
   const baseTitle = `${SITE.brandName}`;
   const baseDesc =
     `${SITE.brandName} detects viral content from public Telegram channels in real time. Get alerts before trending topics explode — free plan available.`;
+
+  // TASK-073: blog routes — meta lives in the article registry, not in this switch.
+  if (pathname === BLOG_PATH) {
+    return {
+      title: `${baseTitle} — Blog`,
+      description:
+        'Guides on detecting viral Telegram content early, honest comparisons with channel analytics tools, and paying for a subscription with crypto.',
+    };
+  }
+  const blogArticle = findArticleByPath(pathname);
+  if (blogArticle) {
+    return { title: blogArticle.seoTitle, description: blogArticle.seoDescription };
+  }
 
   switch (pathname) {
     case '/':
@@ -113,6 +127,18 @@ function buildJsonLd(pathname: string): string[] {
       description:
         'Real-time viral content detector for public Telegram channels. Get alerts when topics trend — free plan available.',
       url: SITE.siteUrl,
+    });
+  }
+
+  const blogArticle = findArticleByPath(pathname);
+  if (blogArticle) {
+    jsonlds.push({
+      '@context': 'https://schema.org',
+      '@type': 'BlogPosting',
+      headline: blogArticle.title,
+      datePublished: blogArticle.datePublished,
+      url: new URL(blogArticle.path, SITE.siteUrl).toString(),
+      publisher: { '@type': 'Organization', name: SITE.brandName, url: SITE.siteUrl },
     });
   }
 
