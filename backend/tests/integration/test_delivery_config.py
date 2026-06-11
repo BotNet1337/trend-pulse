@@ -94,10 +94,10 @@ def client(db_engine: Engine) -> Iterator[TestClient]:
 
 def _register_and_login(client: TestClient, email: str = _EMAIL) -> dict[str, Any]:
     """Register + login; returns the registered user body."""
-    reg = client.post("/auth/register", json={"email": email, "password": _PASSWORD})
+    reg = client.post("/v1/auth/register", json={"email": email, "password": _PASSWORD})
     assert reg.status_code == 201, reg.text
     login = client.post(
-        "/auth/jwt/login",
+        "/v1/auth/jwt/login",
         data={"username": email, "password": _PASSWORD},
     )
     assert login.status_code in (200, 204), login.text
@@ -126,14 +126,14 @@ def _set_user_plan_direct(db_engine: Engine, email: str, plan: str) -> None:
 
 def test_get_delivery_config_unauthenticated(client: TestClient) -> None:
     """GET /users/me/delivery-config without cookie → 401."""
-    resp = client.get("/users/me/delivery-config", cookies={})
+    resp = client.get("/v1/users/me/delivery-config", cookies={})
     assert resp.status_code == 401
 
 
 def test_patch_delivery_config_unauthenticated(client: TestClient) -> None:
     """PATCH /users/me/delivery-config without cookie → 401."""
     resp = client.patch(
-        "/users/me/delivery-config",
+        "/v1/users/me/delivery-config",
         json={"telegram_chat_id": "-100123"},
         cookies={},
     )
@@ -149,7 +149,7 @@ def test_get_delivery_config_defaults(client: TestClient) -> None:
     """GET delivery-config for fresh user → 200, all None (no config set yet)."""
     _register_and_login(client)
 
-    resp = client.get("/users/me/delivery-config")
+    resp = client.get("/v1/users/me/delivery-config")
     assert resp.status_code == 200, resp.text
 
     body = resp.json()
@@ -173,12 +173,12 @@ def test_get_delivery_config_token_masked(client: TestClient, db_engine: Engine)
 
     # PATCH with a valid (mocked) webhook URL is skipped; just set the token
     patch_resp = client.patch(
-        "/users/me/delivery-config",
+        "/v1/users/me/delivery-config",
         json={"telegram_bot_token": _BOT_TOKEN, "telegram_chat_id": _CHAT_ID},
     )
     assert patch_resp.status_code == 200, patch_resp.text
 
-    get_resp = client.get("/users/me/delivery-config")
+    get_resp = client.get("/v1/users/me/delivery-config")
     assert get_resp.status_code == 200, get_resp.text
     body = get_resp.json()
 
@@ -201,12 +201,12 @@ def test_patch_delivery_config_chat_id(client: TestClient) -> None:
     _register_and_login(client)
 
     patch_resp = client.patch(
-        "/users/me/delivery-config",
+        "/v1/users/me/delivery-config",
         json={"telegram_chat_id": _CHAT_ID},
     )
     assert patch_resp.status_code == 200, patch_resp.text
 
-    get_resp = client.get("/users/me/delivery-config")
+    get_resp = client.get("/v1/users/me/delivery-config")
     assert get_resp.status_code == 200
     assert get_resp.json()["telegram_chat_id"] == _CHAT_ID
 
@@ -234,7 +234,7 @@ def test_patch_webhook_ssrf_rejected(client: TestClient, bad_url: str) -> None:
     _register_and_login(client, email)
 
     resp = client.patch(
-        "/users/me/delivery-config",
+        "/v1/users/me/delivery-config",
         json={"webhook_url": bad_url},
     )
     # Must NOT return 200 (neither 200 OK nor any 2xx success)
@@ -258,7 +258,7 @@ def test_patch_webhook_url_free_plan_forbidden(client: TestClient) -> None:
     # Default plan is Free — do NOT upgrade
 
     resp = client.patch(
-        "/users/me/delivery-config",
+        "/v1/users/me/delivery-config",
         json={"webhook_url": "https://example.com/hook"},
     )
     assert resp.status_code == 403, (

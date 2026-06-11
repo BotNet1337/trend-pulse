@@ -76,10 +76,10 @@ def test_build_reply_markup_up_button() -> None:
 
     url = up_btn["url"]
     assert url.startswith(_BASE_URL)
-    assert "/api/feedback/" in url
+    assert "/api/v1/feedback/" in url
 
     # Extract token and verify it
-    token = url.split("/api/feedback/")[-1]
+    token = url.split("/api/v1/feedback/")[-1]
     payload = verify_feedback_token(token, jwt_secret=_JWT_SECRET)
     assert payload["alert_id"] == 55
     assert payload["verdict"] == "up"
@@ -100,7 +100,7 @@ def test_build_reply_markup_down_button() -> None:
     assert down_btn is not None
 
     url = down_btn["url"]
-    token = url.split("/api/feedback/")[-1]
+    token = url.split("/api/v1/feedback/")[-1]
     payload = verify_feedback_token(token, jwt_secret=_JWT_SECRET)
     assert payload["alert_id"] == 55
     assert payload["verdict"] == "down"

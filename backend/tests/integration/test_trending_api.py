@@ -132,7 +132,7 @@ def regular_client(db_session_committing: Session, regular_user: User) -> Iterat
 def test_trending_no_auth_returns_401(db_session_committing: Session) -> None:
     """GET /trending without auth → 401."""
     with TestClient(app) as anon:
-        resp = anon.get("/trending", params={"pack": "crypto-ru"})
+        resp = anon.get("/v1/trending", params={"pack": "crypto-ru"})
     assert resp.status_code == 401, resp.text
 
 
@@ -162,7 +162,7 @@ def test_trending_returns_top_k_sorted_desc(
     c3 = _make_cluster(db_session_committing, showcase_user, "crypto", first_seen=now)
     _make_score(db_session_committing, showcase_user, c3.id, viral_score=55.0, channels_count=2)
 
-    resp = regular_client.get("/trending", params={"pack": "crypto-ru"})
+    resp = regular_client.get("/v1/trending", params={"pack": "crypto-ru"})
     assert resp.status_code == 200, resp.text
 
     body = resp.json()
@@ -196,7 +196,7 @@ def test_trending_response_contains_aggregate_fields_only(
     c = _make_cluster(db_session_committing, showcase_user, "crypto", first_seen=now)
     _make_score(db_session_committing, showcase_user, c.id, viral_score=80.0)
 
-    resp = regular_client.get("/trending", params={"pack": "crypto-ru"})
+    resp = regular_client.get("/v1/trending", params={"pack": "crypto-ru"})
     assert resp.status_code == 200, resp.text
 
     items = resp.json()["items"]
@@ -239,7 +239,7 @@ def test_trending_excludes_clusters_older_than_24h(
     c_stale = _make_cluster(db_session_committing, showcase_user, "crypto", first_seen=stale_ts)
     _make_score(db_session_committing, showcase_user, c_stale.id, viral_score=88.0)
 
-    resp = regular_client.get("/trending", params={"pack": "crypto-ru"})
+    resp = regular_client.get("/v1/trending", params={"pack": "crypto-ru"})
     assert resp.status_code == 200, resp.text
 
     items = resp.json()["items"]
@@ -256,7 +256,7 @@ def test_trending_limit_over_max_returns_422(
     db_session_committing: Session,
 ) -> None:
     """AC2: limit > MAX_TRENDING_LIMIT → 422."""
-    resp = regular_client.get("/trending", params={"pack": "crypto-ru", "limit": 999})
+    resp = regular_client.get("/v1/trending", params={"pack": "crypto-ru", "limit": 999})
     assert resp.status_code == 422, resp.text
 
 
@@ -265,7 +265,7 @@ def test_trending_unknown_pack_returns_404(
     db_session_committing: Session,
 ) -> None:
     """AC2: unknown pack slug → 404."""
-    resp = regular_client.get("/trending", params={"pack": "totally-unknown-pack-xyz"})
+    resp = regular_client.get("/v1/trending", params={"pack": "totally-unknown-pack-xyz"})
     assert resp.status_code == 404, resp.text
 
 
@@ -326,7 +326,7 @@ def test_regular_user_watchlists_do_not_expose_showcase_data(
     # Bootstrap showcase (it gets watchlist rows from pack subscriptions)
     ensure_showcase_tenant(db_session_committing)
 
-    resp = regular_client.get("/watchlists")
+    resp = regular_client.get("/v1/watchlists")
     assert resp.status_code == 200, resp.text
     rows = resp.json()
     # All returned rows must belong to the regular_user
@@ -355,7 +355,7 @@ def test_trending_returns_only_showcase_data_not_caller_clusters(
     uc = _make_cluster(db_session_committing, regular_user.id, "crypto", first_seen=now)
     _make_score(db_session_committing, regular_user.id, uc.id, viral_score=99.0)
 
-    resp = regular_client.get("/trending", params={"pack": "crypto-ru"})
+    resp = regular_client.get("/v1/trending", params={"pack": "crypto-ru"})
     assert resp.status_code == 200, resp.text
 
     viral_scores = [item["viral_score"] for item in resp.json()["items"]]
@@ -394,7 +394,7 @@ def test_regular_user_alerts_do_not_expose_showcase_clusters(
     db_session_committing.flush()
 
     # regular user's GET /alerts must NOT include showcase user's alert
-    resp = regular_client.get("/alerts")
+    resp = regular_client.get("/v1/alerts")
     assert resp.status_code == 200, resp.text
     alert_ids = [a["id"] for a in resp.json()["items"]]
     assert showcase_alert.id not in alert_ids, (
@@ -411,7 +411,7 @@ def test_trending_warming_up_when_no_showcase_tenant(
 ) -> None:
     """Edge case: no showcase tenant in DB → warming_up=true, empty items, 200."""
     # Do NOT call ensure_showcase_tenant — showcase does not exist
-    resp = regular_client.get("/trending", params={"pack": "crypto-ru"})
+    resp = regular_client.get("/v1/trending", params={"pack": "crypto-ru"})
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["warming_up"] is True
@@ -428,7 +428,7 @@ def test_trending_warming_up_when_showcase_has_no_clusters(
     ensure_showcase_tenant(db_session_committing)
     # No clusters seeded for showcase
 
-    resp = regular_client.get("/trending", params={"pack": "crypto-ru"})
+    resp = regular_client.get("/v1/trending", params={"pack": "crypto-ru"})
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["warming_up"] is True
@@ -450,7 +450,7 @@ def test_trending_pack_with_no_24h_activity_returns_empty_not_warming_up(
     _make_score(db_session_committing, showcase_user, c.id, viral_score=70.0)
 
     # crypto-ru pack has topic='crypto' → no clusters → empty list, but showcase IS warmed
-    resp = regular_client.get("/trending", params={"pack": "crypto-ru"})
+    resp = regular_client.get("/v1/trending", params={"pack": "crypto-ru"})
     assert resp.status_code == 200, resp.text
     body = resp.json()
     # Showcase has clusters (tech topic), so it IS warmed → warming_up=false
@@ -477,17 +477,17 @@ def test_trending_limit_default_and_custom(
         _make_score(db_session_committing, showcase_user, c.id, viral_score=float(50 + i))
 
     # Default limit (10)
-    resp_default = regular_client.get("/trending", params={"pack": "crypto-ru"})
+    resp_default = regular_client.get("/v1/trending", params={"pack": "crypto-ru"})
     assert resp_default.status_code == 200
     assert len(resp_default.json()["items"]) == 10
 
     # Custom limit=5
-    resp_limited = regular_client.get("/trending", params={"pack": "crypto-ru", "limit": 5})
+    resp_limited = regular_client.get("/v1/trending", params={"pack": "crypto-ru", "limit": 5})
     assert resp_limited.status_code == 200
     assert len(resp_limited.json()["items"]) == 5
 
     # limit=20 (MAX allowed)
-    resp_max = regular_client.get("/trending", params={"pack": "crypto-ru", "limit": 20})
+    resp_max = regular_client.get("/v1/trending", params={"pack": "crypto-ru", "limit": 20})
     assert resp_max.status_code == 200
     assert len(resp_max.json()["items"]) == 15  # only 15 seeded
 
@@ -523,7 +523,7 @@ def test_trending_topic_label_sanitized_no_url_no_handle(
     c = _make_cluster(db_session_committing, showcase_user, "crypto", first_seen=now)
     _make_score(db_session_committing, showcase_user, c.id, viral_score=95.0)
 
-    resp = regular_client.get("/trending", params={"pack": "crypto-ru"})
+    resp = regular_client.get("/v1/trending", params={"pack": "crypto-ru"})
     assert resp.status_code == 200, resp.text
 
     items = resp.json()["items"]
@@ -568,7 +568,7 @@ def test_showcase_login_returns_4xx_not_500(
     # Use a real TestClient (no auth overrides) to exercise the full login path
     with TestClient(app, raise_server_exceptions=True) as client:
         resp = client.post(
-            "/auth/jwt/login",
+            "/v1/auth/jwt/login",
             data={"username": showcase_email, "password": "wrong-password-intentional"},
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )

@@ -42,7 +42,7 @@ def test_delete_user_issues_single_delete_on_users() -> None:
 
 
 def test_delete_account_requires_auth() -> None:
-    """Unauthenticated DELETE /account -> 401 (tenant-scoped, no anonymous erase)."""
+    """Unauthenticated DELETE /v1/account -> 401 (tenant-scoped, no anonymous erase)."""
     client = TestClient(app)
-    response = client.delete("/account")
+    response = client.delete("/v1/account")
     assert response.status_code == status.HTTP_401_UNAUTHORIZED

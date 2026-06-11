@@ -22,7 +22,10 @@ from config import get_settings
 
 _HTTP_OK = 200
 _HTTP_NOT_FOUND = 404
-_DOCS_PATHS = ("/docs", "/redoc", "/openapi.json")
+# TASK-030/ADR-007: docs endpoints are now under the /v1 version prefix.
+_DOCS_PATHS = ("/v1/docs", "/v1/redoc", "/v1/openapi.json")
+# Old root paths must always 404 regardless of SWAGGER_ENABLE.
+_OLD_DOCS_PATHS = ("/docs", "/redoc", "/openapi.json")
 
 
 def _app_with_swagger(monkeypatch: pytest.MonkeyPatch, *, enabled: bool) -> object:
@@ -46,7 +49,7 @@ def _restore_settings() -> object:
 
 
 def test_docs_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    """When SWAGGER_ENABLE=false all three docs paths must return 404."""
+    """When SWAGGER_ENABLE=false all versioned docs paths must return 404."""
     app = _app_with_swagger(monkeypatch, enabled=False)
     client = TestClient(app, raise_server_exceptions=True)
     for path in _DOCS_PATHS:
@@ -57,11 +60,22 @@ def test_docs_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_docs_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    """When SWAGGER_ENABLE=true all three docs paths must return 200."""
+    """When SWAGGER_ENABLE=true all versioned docs paths (/v1/) must return 200."""
     app = _app_with_swagger(monkeypatch, enabled=True)
     client = TestClient(app, raise_server_exceptions=True)
     for path in _DOCS_PATHS:
         resp = client.get(path, follow_redirects=False)
         assert resp.status_code == _HTTP_OK, (
             f"Expected 200 for {path} when SWAGGER_ENABLE=true, got {resp.status_code}"
+        )
+
+
+def test_old_root_docs_paths_always_404(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Old root docs paths (/docs, /redoc, /openapi.json) must 404 regardless of flag."""
+    app = _app_with_swagger(monkeypatch, enabled=True)
+    client = TestClient(app, raise_server_exceptions=True)
+    for path in _OLD_DOCS_PATHS:
+        resp = client.get(path, follow_redirects=False)
+        assert resp.status_code == _HTTP_NOT_FOUND, (
+            f"Old root path {path} must 404 even with SWAGGER_ENABLE=true, got {resp.status_code}"
         )

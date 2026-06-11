@@ -24,7 +24,7 @@ const uniqueEmail = (prefix: string) =>
   `${prefix}-${Date.now()}@playwright-alerts.example.com`;
 
 async function registerAndLogin(page: Page, email: string, password: string) {
-  await page.request.post("/api/auth/register", {
+  await page.request.post("/api/v1/auth/register", {
     data: { email, password },
     headers: { "Content-Type": "application/json" },
   });
@@ -43,7 +43,7 @@ async function registerAndLogin(page: Page, email: string, password: string) {
 // watchlist via API (cookie-authenticated) so these specs exercise their
 // target pages instead of the onboarding screen.
 async function seedWatchlist(page: Page) {
-  const resp = await page.request.post("/api/watchlists", {
+  const resp = await page.request.post("/api/v1/watchlists", {
     data: {
       topic: "seed-topic",
       channel: { handle: "@seedchannel", kind: "telegram" },

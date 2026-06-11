@@ -119,7 +119,7 @@ def test_trending_limit_zero_returns_422() -> None:
     app.dependency_overrides[current_user_or_api_key] = lambda: stub_user
     try:
         with TestClient(app, raise_server_exceptions=False) as client:
-            resp = client.get("/trending", params={"pack": "crypto-ru", "limit": 0})
+            resp = client.get("/v1/trending", params={"pack": "crypto-ru", "limit": 0})
         assert resp.status_code == 422, f"Expected 422, got {resp.status_code}: {resp.text}"
     finally:
         app.dependency_overrides.pop(current_user, None)
@@ -139,7 +139,7 @@ def test_trending_limit_negative_returns_422() -> None:
     app.dependency_overrides[current_user_or_api_key] = lambda: stub_user
     try:
         with TestClient(app, raise_server_exceptions=False) as client:
-            resp = client.get("/trending", params={"pack": "crypto-ru", "limit": -1})
+            resp = client.get("/v1/trending", params={"pack": "crypto-ru", "limit": -1})
         assert resp.status_code == 422, f"Expected 422, got {resp.status_code}: {resp.text}"
     finally:
         app.dependency_overrides.pop(current_user, None)

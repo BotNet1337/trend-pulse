@@ -154,7 +154,7 @@ def test_feedback_up_creates_row(db_session: Session, client: TestClient) -> Non
         alert_id=alert.id, verdict="up", jwt_secret=jwt_secret, ttl_seconds=_TTL
     )
 
-    response = client.get(f"/feedback/{token}", follow_redirects=False)
+    response = client.get(f"/v1/feedback/{token}", follow_redirects=False)
 
     assert response.status_code == 200
     assert "text/html" in response.headers.get("content-type", "")
@@ -180,14 +180,14 @@ def test_feedback_upsert_changes_verdict(db_session: Session, client: TestClient
     token_up = sign_feedback_token(
         alert_id=alert.id, verdict="up", jwt_secret=jwt_secret, ttl_seconds=_TTL
     )
-    r1 = client.get(f"/feedback/{token_up}", follow_redirects=False)
+    r1 = client.get(f"/v1/feedback/{token_up}", follow_redirects=False)
     assert r1.status_code == 200
 
     # Second tap: down — should update, not duplicate
     token_down = sign_feedback_token(
         alert_id=alert.id, verdict="down", jwt_secret=jwt_secret, ttl_seconds=_TTL
     )
-    r2 = client.get(f"/feedback/{token_down}", follow_redirects=False)
+    r2 = client.get(f"/v1/feedback/{token_down}", follow_redirects=False)
     assert r2.status_code == 200
 
     # Only one row should exist.
@@ -207,7 +207,7 @@ def test_feedback_upsert_changes_verdict(db_session: Session, client: TestClient
 
 def test_garbage_token_returns_4xx(db_session: Session, client: TestClient) -> None:
     """A random garbage token returns 4xx without touching the DB."""
-    response = client.get("/feedback/not-a-valid-token-at-all", follow_redirects=False)
+    response = client.get("/v1/feedback/not-a-valid-token-at-all", follow_redirects=False)
     assert response.status_code in (400, 401, 422)
     # DB must be empty.
     rows = db_session.execute(select(AlertFeedback)).scalars().all()
@@ -224,7 +224,7 @@ def test_expired_token_returns_4xx(db_session: Session, client: TestClient) -> N
         alert_id=alert.id, verdict="up", jwt_secret=jwt_secret, ttl_seconds=-1
     )
 
-    response = client.get(f"/feedback/{token}", follow_redirects=False)
+    response = client.get(f"/v1/feedback/{token}", follow_redirects=False)
     assert response.status_code in (400, 401, 410)
 
     rows = db_session.execute(select(AlertFeedback)).scalars().all()
@@ -256,7 +256,7 @@ def test_tampered_token_returns_4xx(db_session: Session, client: TestClient) -> 
     )
     tampered_token = f"{tampered_payload}.{parts[1]}"
 
-    response = client.get(f"/feedback/{tampered_token}", follow_redirects=False)
+    response = client.get(f"/v1/feedback/{tampered_token}", follow_redirects=False)
     assert response.status_code in (400, 401, 422)
 
     rows = db_session.execute(select(AlertFeedback)).scalars().all()
@@ -271,7 +271,7 @@ def test_alert_deleted_returns_404_or_410(db_session: Session, client: TestClien
         alert_id=999999, verdict="up", jwt_secret=jwt_secret, ttl_seconds=_TTL
     )
 
-    response = client.get(f"/feedback/{token}", follow_redirects=False)
+    response = client.get(f"/v1/feedback/{token}", follow_redirects=False)
     assert response.status_code in (404, 410)
 
 

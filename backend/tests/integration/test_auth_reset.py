@@ -66,7 +66,7 @@ def _register_user(client: TestClient, email: str, password: str) -> None:
     """Register a user (capture+discard the auto-verify email)."""
     captured: MagicMock = MagicMock()
     with patch("api.auth.users.send_templated_email", captured):
-        resp = client.post("/auth/register", json={"email": email, "password": password})
+        resp = client.post("/v1/auth/register", json={"email": email, "password": password})
     assert resp.status_code == 201, f"Register failed: {resp.text}"
 
 
@@ -101,12 +101,12 @@ def test_forgot_password_no_enumeration(client: TestClient) -> None:
     captured: MagicMock = MagicMock()
     with patch("api.auth.users.send_templated_email", captured):
         # For a real (existing) user:
-        real_resp = client.post("/auth/forgot-password", json={"email": _RESET_EMAIL_ENUM})
+        real_resp = client.post("/v1/auth/forgot-password", json={"email": _RESET_EMAIL_ENUM})
 
     # For a nonexistent user (no email sent).
     # Use a valid email format (fastapi-users validates the schema); just not in DB.
     ghost_resp = client.post(
-        "/auth/forgot-password", json={"email": "nobody@ghost-nonexistent.com"}
+        "/v1/auth/forgot-password", json={"email": "nobody@ghost-nonexistent.com"}
     )
 
     # Both responses must have the same status code (no-enumeration, AC3).
@@ -124,7 +124,7 @@ def test_reset_password_end_to_end(client: TestClient) -> None:
     # Capture the reset email call.
     captured: MagicMock = MagicMock()
     with patch("api.auth.users.send_templated_email", captured):
-        forgot = client.post("/auth/forgot-password", json={"email": _RESET_EMAIL_E2E})
+        forgot = client.post("/v1/auth/forgot-password", json={"email": _RESET_EMAIL_E2E})
     assert forgot.status_code in (200, 202), f"forgot-password failed: {forgot.text}"
 
     # Extract reset token from captured email.
@@ -135,21 +135,21 @@ def test_reset_password_end_to_end(client: TestClient) -> None:
 
     # Reset password.
     reset_resp = client.post(
-        "/auth/reset-password",
+        "/v1/auth/reset-password",
         json={"token": token, "password": _NEW_PASSWORD},
     )
     assert reset_resp.status_code == 200, f"reset-password failed: {reset_resp.text}"
 
     # Login with new password succeeds.
     new_login = client.post(
-        "/auth/jwt/login",
+        "/v1/auth/jwt/login",
         data={"username": _RESET_EMAIL_E2E, "password": _NEW_PASSWORD},
     )
     assert new_login.status_code in (200, 204), f"Login with new password failed: {new_login.text}"
 
     # Login with OLD password is rejected (AC2).
     old_login = client.post(
-        "/auth/jwt/login",
+        "/v1/auth/jwt/login",
         data={"username": _RESET_EMAIL_E2E, "password": _ORIGINAL_PASSWORD},
     )
     assert old_login.status_code in (400, 401), (
@@ -162,7 +162,7 @@ def test_reset_password_invalid_token(client: TestClient) -> None:
     _register_user(client, _RESET_EMAIL_INVALID, _ORIGINAL_PASSWORD)
 
     resp = client.post(
-        "/auth/reset-password",
+        "/v1/auth/reset-password",
         json={"token": "fake-tampered-token", "password": "hacked!"},
     )
     assert resp.status_code in (400, 401, 422), (
@@ -171,7 +171,7 @@ def test_reset_password_invalid_token(client: TestClient) -> None:
 
     # Original password still works.
     login = client.post(
-        "/auth/jwt/login",
+        "/v1/auth/jwt/login",
         data={"username": _RESET_EMAIL_INVALID, "password": _ORIGINAL_PASSWORD},
     )
     assert login.status_code in (200, 204), (
@@ -186,10 +186,10 @@ def test_auth_routes_in_openapi(client: TestClient) -> None:
 
     route_paths = {getattr(r, "path", "") for r in _app.routes}
     expected = {
-        "/auth/request-verify-token",
-        "/auth/verify",
-        "/auth/forgot-password",
-        "/auth/reset-password",
+        "/v1/auth/request-verify-token",
+        "/v1/auth/verify",
+        "/v1/auth/forgot-password",
+        "/v1/auth/reset-password",
     }
     missing = expected - route_paths
     assert not missing, f"Auth routes not mounted: {missing}"

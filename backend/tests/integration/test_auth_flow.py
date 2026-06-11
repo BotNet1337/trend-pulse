@@ -52,7 +52,7 @@ def client(db_engine: Engine) -> Iterator[TestClient]:
 
 
 def _register(client: TestClient, email: str = _TEST_EMAIL) -> dict[str, Any]:
-    resp = client.post("/auth/register", json={"email": email, "password": _TEST_PASSWORD})
+    resp = client.post("/v1/auth/register", json={"email": email, "password": _TEST_PASSWORD})
     assert resp.status_code == 201, resp.text
     body: dict[str, Any] = resp.json()
     return body
@@ -64,26 +64,26 @@ def test_register_login_protected_logout(client: TestClient) -> None:
     user_id = user["id"]
 
     # Protected route is 401 without auth (AC2).
-    unauth = client.get("/users/me/tenant")
+    unauth = client.get("/v1/users/me/tenant")
     assert unauth.status_code == 401
 
     # Login via JWT/cookie backend (form: username + password) (AC1).
     login = client.post(
-        "/auth/jwt/login",
+        "/v1/auth/jwt/login",
         data={"username": _TEST_EMAIL, "password": _TEST_PASSWORD},
     )
     assert login.status_code in (200, 204), login.text
     assert "fastapiusersauth" in login.cookies  # httpOnly auth cookie set
 
     # Authenticated request returns the tenant id (AC2/AC3 cookie persists).
-    me = client.get("/users/me/tenant")
+    me = client.get("/v1/users/me/tenant")
     assert me.status_code == 200, me.text
     assert me.json() == {"user_id": user_id}
 
     # Logout clears the cookie; subsequent request is 401 again (AC3).
-    logout = client.post("/auth/jwt/logout")
+    logout = client.post("/v1/auth/jwt/logout")
     assert logout.status_code in (200, 204), logout.text
-    after = client.get("/users/me/tenant")
+    after = client.get("/v1/users/me/tenant")
     assert after.status_code == 401
 
 
@@ -91,7 +91,7 @@ def test_wrong_password_rejected(client: TestClient) -> None:
     """AC5: a wrong password yields 400 (no user-enumeration leak)."""
     _register(client, email="wrongpass@example.com")
     bad = client.post(
-        "/auth/jwt/login",
+        "/v1/auth/jwt/login",
         data={"username": "wrongpass@example.com", "password": "not-the-password"},
     )
     assert bad.status_code == 400
@@ -124,13 +124,13 @@ def test_google_callback_creates_user(client: TestClient, monkeypatch: pytest.Mo
     # fastapi-users >=14 puts a CSRF token in both the state JWT and a cookie and
     # checks they match on callback (double-submit), so a hand-built state is
     # rejected as OAUTH_INVALID_STATE. TestClient persists the CSRF cookie for us.
-    authorize = client.get("/auth/google/authorize")
+    authorize = client.get("/v1/auth/google/authorize")
     assert authorize.status_code == 200, authorize.text
     authorization_url = authorize.json()["authorization_url"]
     state = parse_qs(urlparse(authorization_url).query)["state"][0]
 
     resp = client.get(
-        "/auth/google/callback",
+        "/v1/auth/google/callback",
         params={"code": "fake-code", "state": state},
         follow_redirects=False,
     )

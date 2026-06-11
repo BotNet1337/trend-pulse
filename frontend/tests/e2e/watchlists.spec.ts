@@ -15,7 +15,7 @@ const uniqueEmail = (prefix: string) =>
 
 async function registerAndLogin(page: Page, email: string, password: string) {
   // Register via API
-  await page.request.post('/api/auth/register', {
+  await page.request.post('/api/v1/auth/register', {
     data: { email, password },
     headers: { 'Content-Type': 'application/json' },
   });
@@ -38,7 +38,7 @@ async function registerAndLogin(page: Page, email: string, password: string) {
 // subscribe instead (Free PACKS=1, pack subscribe creates watchlist rows).
 // The seed uses the "crypto-ru" pack (always in catalog; Free cap=1 pack).
 async function seedWatchlist(page: Page) {
-  const resp = await page.request.post('/api/packs/crypto-ru/subscribe', {
+  const resp = await page.request.post('/api/v1/packs/crypto-ru/subscribe', {
     headers: { 'Content-Type': 'application/json' },
   });
   if (resp.status() !== 200) {
@@ -60,7 +60,7 @@ test('AC1 — pack subscribe → appears in watchlist list', async ({ page }) =>
   await registerAndLogin(page, email, password);
 
   // Subscribe to a curated pack (Free users: CHANNELS=0 but PACKS=1 allowed).
-  const packResp = await page.request.post('/api/packs/crypto-ru/subscribe', {
+  const packResp = await page.request.post('/api/v1/packs/crypto-ru/subscribe', {
     headers: { 'Content-Type': 'application/json' },
   });
   expect(packResp.status()).toBe(200);
@@ -87,7 +87,7 @@ test('AC2 — pack list → subscribe → unsubscribe', async ({ page }) => {
   await registerAndLogin(page, email, password);
 
   // Subscribe to a curated pack
-  const subResp = await page.request.post('/api/packs/crypto-ru/subscribe', {
+  const subResp = await page.request.post('/api/v1/packs/crypto-ru/subscribe', {
     headers: { 'Content-Type': 'application/json' },
   });
   expect(subResp.status()).toBe(200);
@@ -98,7 +98,7 @@ test('AC2 — pack list → subscribe → unsubscribe', async ({ page }) => {
   await expect(page).not.toHaveURL(/\/onboarding/, { timeout: 5000 });
 
   // Unsubscribe from pack via API
-  const unsubResp = await page.request.delete('/api/packs/crypto-ru/subscribe', {
+  const unsubResp = await page.request.delete('/api/v1/packs/crypto-ru/subscribe', {
     headers: { 'Content-Type': 'application/json' },
   });
   expect(unsubResp.status()).toBe(200);
@@ -150,13 +150,13 @@ test('AC4 — Free plan channel limit → upsell banner (402 on first own channe
 
   await registerAndLogin(page, email, password);
   // Subscribe a pack to bypass onboarding redirect (Free: PACKS=1 OK)
-  await page.request.post('/api/packs/crypto-ru/subscribe', {
+  await page.request.post('/api/v1/packs/crypto-ru/subscribe', {
     headers: { 'Content-Type': 'application/json' },
   });
 
   // TASK-049: Free CHANNELS=0 → first own channel → 402 immediately.
   // Verify via API first.
-  const apiResp = await page.request.post('/api/watchlists', {
+  const apiResp = await page.request.post('/api/v1/watchlists', {
     data: {
       topic: 'topic-limit-test',
       channel: { handle: '@chan1', kind: 'telegram' },
@@ -198,13 +198,13 @@ test('AC5 — duplicate pack subscribe → idempotent (200, not 409)', async ({ 
   await registerAndLogin(page, email, password);
 
   // First subscribe — should succeed
-  const first = await page.request.post('/api/packs/crypto-ru/subscribe', {
+  const first = await page.request.post('/api/v1/packs/crypto-ru/subscribe', {
     headers: { 'Content-Type': 'application/json' },
   });
   expect(first.status()).toBe(200);
 
   // Second subscribe to same pack — idempotent per TASK-038 (created=0, not 409)
-  const second = await page.request.post('/api/packs/crypto-ru/subscribe', {
+  const second = await page.request.post('/api/v1/packs/crypto-ru/subscribe', {
     headers: { 'Content-Type': 'application/json' },
   });
   expect(second.status()).toBe(200);

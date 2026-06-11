@@ -95,7 +95,7 @@ class TelegramBotBackend:
 
     TASK-042: when `public_base_url` is non-empty and `alert_id` is passed to
     `send`, includes ``reply_markup`` with inline 👍/👎 URL buttons pointing at
-    ``GET {public_base_url}/api/feedback/{token}``. When `public_base_url` is
+    ``GET {public_base_url}/api/v1/feedback/{token}``. When `public_base_url` is
     empty, ``reply_markup`` is omitted (graceful degradation — delivery does not
     fail, buttons are just absent).
     """

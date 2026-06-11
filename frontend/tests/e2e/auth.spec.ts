@@ -53,7 +53,7 @@ test('AC1 — register → login → shows logged-in state', async ({ page }) =>
   expect(page.url()).not.toContain('/auth/sign-in');
 
   // Step 4: GET /users/me should return 200 with email (cookie auto-sent)
-  const meResponse = await page.request.get('/api/users/me');
+  const meResponse = await page.request.get('/api/v1/users/me');
   expect(meResponse.status()).toBe(200);
   const body = await meResponse.json() as { email: string; plan: string; is_verified: boolean };
   expect(body.email).toBe(email);
@@ -72,15 +72,15 @@ test('AC3 — logout → 401 → redirect to /auth/sign-in', async ({ page }) =>
   await login(page, email, password);
 
   // Confirm authenticated
-  const beforeLogout = await page.request.get('/api/users/me');
+  const beforeLogout = await page.request.get('/api/v1/users/me');
   expect(beforeLogout.status()).toBe(200);
 
   // Logout via POST /api/auth/jwt/logout
-  const logoutResp = await page.request.post('/api/auth/jwt/logout');
+  const logoutResp = await page.request.post('/api/v1/auth/jwt/logout');
   expect([200, 204]).toContain(logoutResp.status());
 
   // After logout /api/users/me should be 401
-  const afterLogout = await page.request.get('/api/users/me');
+  const afterLogout = await page.request.get('/api/v1/users/me');
   expect(afterLogout.status()).toBe(401);
 
   // Navigating to a protected route should redirect to sign-in
@@ -114,7 +114,7 @@ test('AC4 — open-redirect: external next is ignored, redirects to home', async
   const password = 'S3curePassw0rd!';
 
   // Register first via API so we can log in
-  await page.request.post('/api/auth/register', {
+  await page.request.post('/api/v1/auth/register', {
     data: { email, password },
     headers: { 'Content-Type': 'application/json' },
   });
@@ -142,7 +142,7 @@ test('AC5 — wrong password shows friendly error message', async ({ page }) => 
   const wrongPwd = 'WrongPassword!99';
 
   // Register user
-  await page.request.post('/api/auth/register', {
+  await page.request.post('/api/v1/auth/register', {
     data: { email, password },
     headers: { 'Content-Type': 'application/json' },
   });

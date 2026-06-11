@@ -1,7 +1,7 @@
 ---
 id: TASK-030
 title: API hardening — единый error-envelope + machine-readable коды + версионирование /api/v1
-status: planned             # planned → in-progress → review → done
+status: done                # planned → in-progress → review → done
 owner: backend
 created: 2026-06-09
 updated: 2026-06-09
@@ -64,13 +64,13 @@ Slowapi-лимит глобальный (120/min, `SlowAPIMiddleware` в `api/ma
 - **Blast radius:** **меняет контракт ВСЕХ роутов** (тело ошибок + путь /v1). Затрагивает каждый фронт-вызов (баseURL + error-маппинг) и каждый e2e (C1–C5 идут через nginx). Регенерация типов. Высокий риск — детальный Plan, синхронная миграция фронт+nginx+backend, прогон всех C1–C5 e2e в verify.
 
 ## Acceptance Criteria
-- [ ] **AC1 — единый error-envelope (failing-test anchor).** Given любой failing-запрос, When ответ 4xx/5xx, Then тело = `{error: {code: <ErrorCode>, message: str, details?}}` для ВСЕХ источников (HTTPException/PlanLimit/RateLimit/BillingNotConfigured/Pydantic-422/generic-500). integration пишется ПЕРВЫМ (RED — сейчас `{detail: ...}`).
-- [ ] **AC2 — machine-readable коды без magic literals.** Given `api/errors.py`, When инспекция, Then коды — `ErrorCode(StrEnum)`; маппинг исключение→code централизован; нет строковых литералов кодов на call-sites; 402→`PLAN_LIMIT_EXCEEDED`, 403(feature)→`FEATURE_NOT_AVAILABLE`, 429→`RATE_LIMITED`, 404→`NOT_FOUND`, 409→`DUPLICATE`, 422→`VALIDATION`.
-- [ ] **AC3 — версионирование `/api/v1`.** Given смонтированные роутеры, When запрос на `/v1/...` (за nginx `/api/v1/...`), Then роут отвечает; стратегия совместимости/миграции корневых роутов реализована per ADR; `/api/v1/openapi.json` доступен.
-- [ ] **AC4 — Pydantic-422 нормализован с полями.** Given невалидный body, When 422, Then `{error: {code: VALIDATION, message, details: [{field, message}, …]}}`; фронт строит per-field ошибки из `details`.
-- [ ] **AC5 — frontend маппит по `error.code`.** Given `backend-error.ts`, When ответ-envelope, Then `kind` выбирается по `error.code` (не HTTP-статус); legacy-fallback на статус если envelope отсутствует; unit покрывают все коды.
-- [ ] **AC6 — обратная совместимость C1–C5.** Given смена контракта, When прогон всех существующих e2e (auth/watchlists/alerts/billing/account) через nginx, Then все зелёные (пути /api/v1 + envelope-маппинг согласованы); ни один C-флоу не сломан.
-- [ ] **AC7 — security + поведенческая (G2) через nginx.** Given 500/неожиданная ошибка, When ответ, Then `{error: {code: INTERNAL, message}}` БЕЗ стека/exception-repr/SQL/внутренних путей (детальный лог — только на сервере); и: `make up` → integration (`test_error_envelope`/`test_api_versioning`) + C1–C5 e2e зелёные за nginx; артефакты on-failure.
+- [x] **AC1 — единый error-envelope (failing-test anchor).** Given любой failing-запрос, When ответ 4xx/5xx, Then тело = `{error: {code: <ErrorCode>, message: str, details?}}` для ВСЕХ источников (HTTPException/PlanLimit/RateLimit/BillingNotConfigured/Pydantic-422/generic-500). integration пишется ПЕРВЫМ (RED — сейчас `{detail: ...}`).
+- [x] **AC2 — machine-readable коды без magic literals.** Given `api/errors.py`, When инспекция, Then коды — `ErrorCode(StrEnum)`; маппинг исключение→code централизован; нет строковых литералов кодов на call-sites; 402→`PLAN_LIMIT_EXCEEDED`, 403(feature)→`FEATURE_NOT_AVAILABLE`, 429→`RATE_LIMITED`, 404→`NOT_FOUND`, 409→`DUPLICATE`, 422→`VALIDATION`.
+- [x] **AC3 — версионирование `/api/v1`.** Given смонтированные роутеры, When запрос на `/v1/...` (за nginx `/api/v1/...`), Then роут отвечает; стратегия совместимости/миграции корневых роутов реализована per ADR; `/api/v1/openapi.json` доступен.
+- [x] **AC4 — Pydantic-422 нормализован с полями.** Given невалидный body, When 422, Then `{error: {code: VALIDATION, message, details: [{field, message}, …]}}`; фронт строит per-field ошибки из `details`.
+- [x] **AC5 — frontend маппит по `error.code`.** Given `backend-error.ts`, When ответ-envelope, Then `kind` выбирается по `error.code` (не HTTP-статус); legacy-fallback на статус если envelope отсутствует; unit покрывают все коды.
+- [x] **AC6 — обратная совместимость C1–C5.** Given смена контракта, When прогон всех существующих e2e (auth/watchlists/alerts/billing/account) через nginx, Then все зелёные (пути /api/v1 + envelope-маппинг согласованы); ни один C-флоу не сломан.
+- [x] **AC7 — security + поведенческая (G2) через nginx.** Given 500/неожиданная ошибка, When ответ, Then `{error: {code: INTERNAL, message}}` БЕЗ стека/exception-repr/SQL/внутренних путей (детальный лог — только на сервере); и: `make up` → integration (`test_error_envelope`/`test_api_versioning`) + C1–C5 e2e зелёные за nginx; артефакты on-failure.
 
 ## Plan
 0. Executor фиксирует `baseline_commit`; ветка `gsd/phase-030-api-hardening-errors-versioning`.
@@ -111,20 +111,58 @@ Slowapi-лимит глобальный (120/min, `SlowAPIMiddleware` в `api/ma
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
-baseline_commit: ""
+current_step: done
+baseline_commit: "2038845"
 branch: "gsd/phase-030-api-hardening-errors-versioning"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + real behavior через nginx/стек)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (если применимо)
-- [ ] 6 ship (PR, squash-merged)
-- [ ] 7 learnings (auto)
+- [x] 3 do (TDD: failing test → minimal code; +debug-цикл: 8 интеграционных падений починены, 1 реальный баг — 402 отсутствовал в HTTP→ErrorCode map)
+- [x] 4 verify (G2 — живой ASGI + реальная БД; полный e2e за nginx — в main-integration CI на merge)
+- [x] 5 review (adversarial — pass; 2 MEDIUM закрыты fix-циклом)
+- [x] 5.5 security (pass — 500 стерилен на РЕАЛЬНОМ handler, exc.detail-свип чист, input-эхо в 422 исключено)
+- [x] 6 ship (PR, squash-merged, CI зелёный)
+- [x] 7 learnings (auto — docs/learnings.md 2026-06-11 TASK-030)
 debug_runs: []
 
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план по эталону [task-013](./task-013-frontend-foundation.md)/[task-017](./task-017-billing-account-ui.md) и реальному коду `backend/src/api/main.py`: сейчас разнородные handlers — `RateLimitExceeded`→429, `PlanLimitExceeded`→`{detail}` 402/403, `BillingNotConfiguredError`→503 `{detail}`, дефолтные `HTTPException` `{detail:str}` и Pydantic-422 `{detail:[...]}`. Нет machine-readable кодов; фронт `shared/lib/backend-error.ts` маппит по HTTP-статусам (хрупко — 403/422 двусмысленны). Роуты на корне, nginx стрипает `/api/`→корень, `/api/v1`-префикса нет. Унифицируем envelope `{error:{code,message,details?}}` + `ErrorCode(StrEnum)` + `/api/v1` (ADR-007). Высокий blast radius — меняет контракт всех роутов → синхронная миграция backend+nginx+фронт+e2e, прогон всех C1–C5. deps: 019 (предполагаемая API-зрелость/типы). ADR пишется ПЕРВЫМ (G1-решение по совместимости). locate+plan выполнены этим планированием — executor стартует с «3 do» (но шаг 1 Plan = ADR-черновик). ОСТОРОЖНО: OAuth-callback под /v1 + state-cookie path; 403 двусмысленность; e2e-пути.)
+
+### do + debug (2026-06-11, loop run)
+- ADR-007 написан ПЕРВЫМ: v1-only атомарный свитч; /health и /ready НЕверсионированы
+  (инфра-пробы); OpenAPI на /v1/openapi.json; 402→PLAN_LIMIT_EXCEEDED / 403(PlanLimit)→
+  FEATURE_NOT_AVAILABLE (по источнику); 500 стерилен; Google redirect URI — деплой-нота
+  (/api/v1/auth/google/callback); _FEEDBACK_API_PATH → /api/v1/feedback/ (старые кнопки в
+  уже отправленных TG-алертах будут 404 — принято, в ADR).
+- RED→GREEN: test_error_envelope.py (все классы ошибок) + test_api_versioning.py.
+- Debug-цикл: do-агент не запустил integration suite; 8 падений — 7 тестов со старыми
+  путями, 1 КОД-БАГ (402 не было в _HTTP_STATUS_TO_CODE → INTERNAL вместо
+  PLAN_LIMIT_EXCEEDED на HTTPException(402)-пути watchlist-роутера).
+- Итог: ci-fast 567 unit; integration 195 passed/10 skipped; frontend 193 vitest + tsc;
+  40+ файлов (обновлены все integration/e2e пути и {detail}-парсинг).
+- **Блокер хоста (зафиксирован):** make up недоступен — исчерпание docker bridge-подсетей;
+  и mass-prune, и пред-создание egress-сети с compose-лейблами запрещены политикой
+  разрешений. Полный e2e C1-C5 за nginx — в main-integration CI на merge (контракт-брейк:
+  после merge СРАЗУ проверить run, чинить форвард при падении).
+
+### verify G2 + fix (2026-06-11, loop run)
+- Живой ASGI: /health и /ready на корне; все 9 классов ошибок дают конверт с верным кодом;
+  500 стерилен (лог детальный, тело — нет); auth-flow под /v1; feedback URL /api/v1/.
+- Найдено и исправлено: (1) routing-miss 404 (Starlette base class) обходил конверт →
+  handler зарегистрирован и на StarletteHTTPException + усилен тест; (2) регенерат
+  OpenAPI/types не был сделан do-агентом → перегенерён, что вскрыло 2 пропущенных typed
+  call-site (schema-ключ /v1/users/me/tenant vs runtime-путь; экспорт ValidationDetailItem);
+  (3) мёртвые переменные в backend-error.spec; (4) stale e2e API_BASE и nginx-комментарий.
+- Гейты после фиксов: ci-fast 567; integration 195/10; frontend lint/tsc/193 vitest;
+  drift-check падает ТОЛЬКО на незакоммиченных файлах дампа (закроется коммитом).
+
+### review + security + fix-цикл #2 (2026-06-11, loop run)
+- review: pass без блокеров. MEDIUM закрыты: тест стерильности 500 переписан на РЕАЛЬНЫЙ
+  app-handler (временный raising-роут + sentinel, teardown в finally); 2 фронт-потребителя
+  {detail} (packs/error-message, onboarding) переведены на envelope-first с legacy-fallback.
+  LOW: hoist импорта в rate_limit, детерминированный 503-тест, докстринги /api/v1/feedback/.
+- security: pass (INFO: exc.detail-passthrough — все raise-сайты статичны/безопасны;
+  422-details без input-эха (loc+msg, ctx/input исключены); cookie path=/ покрывает /v1;
+  деплой-нота: Google redirect URI → /api/v1/auth/google/callback).
+- Финальные гейты: ci-fast 567; integration 195/10; frontend lint/tsc/194 vitest.

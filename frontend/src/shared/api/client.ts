@@ -5,7 +5,13 @@ interface ZodIssue {
   message?: string;
 }
 
-interface ErrorBody {
+/** Unified error envelope shape (TASK-030). */
+interface ErrorEnvelopeBody {
+  /** TASK-030 unified envelope: {error: {code, message, details?}} */
+  error?: { code?: string; message?: string };
+  /** Legacy field (pre-TASK-030 or proxy response): {detail: str} */
+  detail?: string | ZodIssue[];
+  /** Zod/other message field kept for SSR/external services. */
   message?: string | ZodIssue[];
 }
 
@@ -39,8 +45,20 @@ const formatZodIssues = (issues: ZodIssue[]): string => {
   return parts.join('. ');
 };
 
-const extractMessage = (data: ErrorBody | undefined): string | undefined => {
+/**
+ * Extract a human-readable message from the response body.
+ * Checks (in priority order):
+ *  1. Envelope error.message (TASK-030 unified format)
+ *  2. Legacy detail string
+ *  3. Zod/other message field
+ */
+const extractMessage = (data: ErrorEnvelopeBody | undefined): string | undefined => {
   if (!data) return undefined;
+  // 1. Unified envelope (TASK-030)
+  if (typeof data.error?.message === 'string' && data.error.message) return data.error.message;
+  // 2. Legacy detail string
+  if (typeof data.detail === 'string') return data.detail;
+  // 3. Zod issues or other message field
   if (Array.isArray(data.message)) {
     return formatZodIssues(data.message);
   }
@@ -48,12 +66,14 @@ const extractMessage = (data: ErrorBody | undefined): string | undefined => {
 };
 
 // TrendPulse API client — cookie-auth (httpOnly, set by backend fastapi-users).
-// baseURL: '/api' → nginx strips /api prefix and proxies to backend.
+// baseURL: '/api/v1' — nginx strips /api/ and backend mounts all routes under /v1
+// (TASK-030 / ADR-007: versioned API). The client appends relative paths such as
+// '/auth/register' → full URL '/api/v1/auth/register' → backend /v1/auth/register.
 // withCredentials: true → browser sends the fastapiusersauth cookie.
 // No Bearer tokens, no localStorage. No refresh endpoint (TrendPulse uses
 // session cookies; on 401 the user is redirected to /auth/sign-in).
 export const apiClient = axios.create({
-  baseURL: '/api',
+  baseURL: '/api/v1',
   withCredentials: true,
 });
 
@@ -82,7 +102,7 @@ if (import.meta.env?.DEV && typeof window !== 'undefined') {
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
-    const data = error.response?.data as ErrorBody | undefined;
+    const data = error.response?.data as ErrorEnvelopeBody | undefined;
     error.message = resolveErrorMessage(extractMessage(data));
 
     const status = error.response?.status;

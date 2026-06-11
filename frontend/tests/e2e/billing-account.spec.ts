@@ -56,7 +56,7 @@ async function registerAndLogin(page: Page, prefix: string): Promise<string> {
 // /onboarding, so a freshly registered user never reaches /billing or /account.
 // Seed one watchlist via API right after login.
 async function seedWatchlist(page: Page) {
-  const resp = await page.request.post('/api/watchlists', {
+  const resp = await page.request.post('/api/v1/watchlists', {
     data: {
       topic: 'seed-topic',
       channel: { handle: '@seedchannel', kind: 'telegram' },
@@ -78,7 +78,7 @@ test('plan_and_invoice — billing page shows plan and creates invoice', async (
 
   // Stub POST /billing/invoice so we don't need a real NOWPayments API key.
   // The e2e validates the UI flow; integration tests cover the real endpoint.
-  await page.route('/api/billing/invoice', async (route) => {
+  await page.route('/api/v1/billing/invoice', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
