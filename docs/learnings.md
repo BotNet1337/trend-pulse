@@ -415,3 +415,41 @@ Block format:
 - **Gotcha (SSR-only AppShell → контекст-дефолт из `__INITIAL_STATE__`):** client `root.tsx` НЕ оборачивает `RouterProvider` в `AppShell` — провайдер контекста существует только в SSR-дереве. Дефолт контекста читается из `window.__INITIAL_STATE__` на уровне модуля (inline state-скрипт стоит до module-бандла, клиент не фетчит) — разметка клиента == SSR, mismatch исключён. Lint `react-refresh/only-export-components` при этом запрещает экспорт хука из файла с компонентом → context+hook живут в отдельном `src/shared/cases/cases-context.ts`. **How to apply:** при пробросе SSR-данных в React на этом лендинге — контекст-дефолт из initial state, провайдер в AppShell; не полагаться на провайдер на клиенте, пока root.tsx не обёрнут.
 - **Lesson (e2e для SSR-fetch не перехватывается `page.route`):** fetch происходит в Node-процессе сервера, не в браузере — мок обязан жить за `CASES_API_URL` самого сервера. Спека ветвится по `E2E_CASES_MOCK=1`: fallback-ветка (AC2/AC4) гоняется всегда, позитивная AC1-ветка — только против сервера со стабом; в verify обе ветки прогнаны вживую (5 загрузок страницы = 1 hit стаба — кэш доказан на работающем сервере). **How to apply:** для SSR-данных «playwright-мок» = стаб-процесс + env сервера; фиксируй обе ветки в одной спеке с явным skip-гейтом, причину — в шапку файла.
 - **Lesson (дрейф шаблонного домена лечится guard'ом, не одноразовым фиксом):** `robots.txt` пережил ребрендинг со старым `ai-port.me` (повтор класса гочи task-018/060/072: бренд/домен вне `src/` не покрыт тестами). Фикс строки + ~20 строк в `validate-seo.ts`: Sitemap-строка обязана совпадать с `SITE.siteUrl`, любая чужая Sitemap-строка = exit 1 (негативная проверка прогнана: подмена домена валит скрипт). **How to apply:** каждый найденный дрейф бренда/домена закрывать машинной проверкой в существующем validate-скрипте, не точечной правкой.
+
+## 2026-06-11 — Волна F: оркестрация (W3–W5, записано оркестратором)
+
+### TASK-047 (год/квартал-планы)
+- **Decision (две ценовые таблицы с разными ролями):** `PLAN_PERIOD_PRICES_USD` — источник суммы инвойса, `PLAN_PRICES_USD` — месячный якорь MRR-нормализации (`analytics/money.py`). Слить их = тихо сломать money-метрики годовыми суммами. **How to apply:** новые периоды/цены — только в period-таблицу; MRR-якорь меняется отдельным решением.
+- **Lesson:** `react-refresh/only-export-components` запрещает экспорт pure-хелперов из файлов компонентов — view-model-функции сразу в соседний `.ts`; landing `npm run build` перегенерирует `sitemap.xml` (lastmod) — churn откатывать; одноразовые Postgres параллельных задач дерутся за порт — каждому прогону свой порт (env `POSTGRES_HOST/PORT/PASSWORD` переопределяют Settings).
+
+### TASK-068 (Plausible) + найденный мёртвый CookieBanner
+- **Lesson (client-only UI невидим для SSR-тестов):** CookieBanner был сломан с TASK-018 — клиент гидрировал дерево без `AppShell`, баннер не монтировался; smoke/e2e проверяли только SSR-HTML. **How to apply:** каждому client-only компоненту — хотя бы один интерактивный e2e; «есть в HTML» ≠ «работает». `hydrateRoot` обязан рендерить ровно то же дерево, что SSR (обёртки симметрично).
+- **Lesson:** фильтры console-ошибок в e2e — только после доказательства pre-existing на baseline (stash → rebuild → probe), паттерн максимально узкий; Plausible `script.js` молча дропает события на localhost — сетевые ассерты через стаб скрипта + перехват `api/event`.
+
+### TASK-071 (refund policy)
+- **Lesson:** полный e2e лендинга гонять против прод-сборки (`npm run build && npm run start`), не dev — vite HMR ложно красит «no console errors»; playwright-спеки не могут импортировать `src/shared` (config.json import attribute в node ESM) — читать конфиг `fs.readFileSync(new URL(...))`.
+
+### TASK-063 (/admin/metrics)
+- **Decision («404 вместо 403» без дрейфа):** для сокрытия admin-страниц рендерить сам компонент `NotFoundPage`, а не копию его разметки — нулевой риск расхождения и доказуемое отсутствие existence leak; запрос метрик не-superuser'у вообще не уходит (`enabled`-guard).
+- **Gotcha:** полный локальный `pytest` (unit+integration одним процессом) флачит порядко-зависимо (~19 падений analytics/log_hygiene и на baseline; в `--lf`-изоляции зелёные, в CI проходит) — известный долг окружения; runtime-uvicorn и pytest на одной одноразовой БД конфликтуют (drop/create схемы) — runtime-проверки строго после тестов.
+
+### TASK-048 (renewal + grace + underpaid)
+- **Decision (commit point перед side-effect):** invoice-row коммитится ДО отправки письма — фейл письма не откатывает инвойс, retry следующего тика реюзает по персистентному ключу. Дешевле outbox на текущем объёме.
+- **Lesson:** номер миграции из task-дока всегда верифицировать на do (head двигают параллельные волны: док писал 0020, фактически 0021); grace-период ломает «expired вчера»-тесты за пределами Touch ONLY — параметр `expired_for` в фикстуре делает намерение явным; Decimal (Numeric 38,18) → `:.2f`-строка на границе backend→templates (httpx json не сериализует Decimal); рендер-смоук templates без стека: `SCHEMA_PATH=./templates.json PORT=<свободный> npx tsx server/main.ts` + POST /render.
+
+### TASK-070 (showcase runbook)
+- **Lesson (runbook — тоже TDD):** каждую команду runbook'а сверять с фактическим кодом до коммита (поймано RU/EN-расхождение формата поста); план в task-доке может протухнуть между plan и do (имя канала из TrendPulse-эпохи) — чинить через Discussion-запись, не молча; «заполнить config-поле» при внешне-зависимом значении = owner-шаг с пустым no-op дефолтом.
+
+### TASK-073 (launch-kit)
+- **Decision (контент-инварианты тестами, не review-грепом):** unit-сканы исходников статей на литерал бренда, `$NN`-литералы и запрещённые обещания — постоянный гейт против регрессии честности копии. Реестр статей + generic-рендерер по паттерну legal-страниц: новая статья = запись в реестре + страница + 2 строки wiring.
+
+### TASK-069 (lifecycle-письма)
+- **Lesson:** `HTMLResponse | JSONResponse` в аннотации роута требует `response_model=None` (иначе FastAPIError на сборке приложения); patch-таргет email-хуков — имя в модуле-импортёре (`api.auth.users.send_templated_email`); `z.fromJSONSchema` зачищает необъявленные props — опциональные props обязаны быть в JSON-схеме реестра; при конфликте Discussion vs AC по частоте писем — консервативный AND (меньше писем).
+
+### TASK-064 (👍/👎 в вебе)
+- Optimistic update + AlertRead-поля; агент умер на стадии review — дозавершено финишером в том же worktree (PR #95): паттерн «спасения» = новый агент в существующем worktree с инструкцией перепроверить diff и дошипить.
+
+### Оркестрация волны (процесс)
+- **Lesson (learnings.md — точка вечных конфликтов параллельных PR):** с W3 агентам запрещено писать `docs/learnings.md`; уроки возвращаются текстом в финальном ответе, оркестратор добавляет одним PR в конце. То же — `tasks-index.md` (правка только оркестратором, одним PR на волну).
+- **Lesson (красный main лечится до волн):** main-integration был красным с TASK-032 двумя независимыми причинами (nginx dev rate-limit 5r/m → 429 на e2e-register, PR #84; SSR-prefetch без `/v1` после версионирования API → user:null, PR #85). Правило «красный main = СТОП новым задачам, форвард-фикс через PR» отработало.
+- **Gotcha (агентные worktree):** merge с `--delete-branch` падает, если ветка checkout'нута в живом worktree (`git worktree remove` сначала); после удаления worktree cwd шелла может умереть — `cd` по абсолютному пути; squash-merge ломает локальную ветку base — `git fetch && git reset --hard origin/main`.
