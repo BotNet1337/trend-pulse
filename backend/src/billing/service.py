@@ -37,7 +37,7 @@ def create_invoice(
     gateway: PaymentGateway,
 ) -> Invoice:
     """Persist a pending payment + create the gateway invoice for `plan`/`period`."""
-    amount = price_for(plan)
+    amount = price_for(plan, period)
     order_id = _new_order_id()
     payment = BillingPayment(
         user_id=user.id,

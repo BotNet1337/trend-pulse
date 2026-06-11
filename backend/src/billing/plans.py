@@ -22,11 +22,16 @@ class Plan(StrEnum):
 
 
 class BillingPeriod(StrEnum):
-    """Billing period for an invoice. Crypto has no native subscriptions, so the
-    only supported period is a calendar month; the duration lives in `PERIOD_DAYS`.
+    """Billing period for an invoice. Crypto has no native subscriptions — every
+    period is a single prepaid invoice; durations live in `PERIOD_DAYS`.
+
+    TASK-047: `QUARTER` (-10%) and `YEAR` (-20%) extend the grid; prices are
+    explicit constants in `PLAN_PERIOD_PRICES_USD`, never runtime discount math.
     """
 
     MONTH = "month"
+    QUARTER = "quarter"
+    YEAR = "year"
 
 
 class Resource(StrEnum):
@@ -43,10 +48,15 @@ class Resource(StrEnum):
     PACKS = "packs"
 
 
-# Period length in days — named constant, time as an explicit duration (CONVENTIONS).
+# Period lengths in days — named constants, time as explicit durations (CONVENTIONS).
+# TASK-047: fixed durations, no calendar/leap-year magic (month is already a fixed 30).
 _MONTH_DAYS = 30
+_QUARTER_DAYS = 90
+_YEAR_DAYS = 365
 PERIOD_DAYS: dict[BillingPeriod, int] = {
     BillingPeriod.MONTH: _MONTH_DAYS,
+    BillingPeriod.QUARTER: _QUARTER_DAYS,
+    BillingPeriod.YEAR: _YEAR_DAYS,
 }
 
 # --- Per-plan limits (overview §6). `None` = unlimited for countable resources. ---
@@ -114,24 +124,52 @@ PLAN_LIMITS: dict[Plan, dict[Resource, PlanLimit]] = {
     },
 }
 
-# --- Prices (overview §6). Monthly amount per paid plan, in USD. ---
-# TASK-049: new price grid — Pro $29, Trader/Team $99 (start at lower bound; raise after PMF).
+# --- Prices (overview §6). Invoice amounts per paid plan and period, in USD. ---
+# TASK-049: new monthly grid — Pro $29, Trader/Team $99 (start at lower bound; raise after PMF).
+# TASK-047: quarter ≈ -10% and year ≈ -20% off the monthly run-rate, rounded DOWN
+# to a whole dollar in the user's favor (87→78, 297→267, 348→278, 1188→950).
+# Explicit constants — no runtime discount arithmetic, nothing to drift.
 _PRO_PRICE_USD = Decimal("29")
 _TEAM_PRICE_USD = Decimal("99")
+_PRO_QUARTER_PRICE_USD = Decimal("78")
+_TEAM_QUARTER_PRICE_USD = Decimal("267")
+_PRO_YEAR_PRICE_USD = Decimal("278")
+_TEAM_YEAR_PRICE_USD = Decimal("950")
 PRICE_CURRENCY = "usd"
 
+# Monthly anchor prices. Kept as the MRR normalization base (analytics/money.py)
+# and the per-month display anchor — NOT the invoice amount source (see below).
 PLAN_PRICES_USD: dict[Plan, Decimal] = {
     Plan.PRO: _PRO_PRICE_USD,
     Plan.TEAM: _TEAM_PRICE_USD,
+}
+
+# The invoice price grid (TASK-047) — the single source for `price_for`.
+PLAN_PERIOD_PRICES_USD: dict[Plan, dict[BillingPeriod, Decimal]] = {
+    Plan.PRO: {
+        BillingPeriod.MONTH: _PRO_PRICE_USD,
+        BillingPeriod.QUARTER: _PRO_QUARTER_PRICE_USD,
+        BillingPeriod.YEAR: _PRO_YEAR_PRICE_USD,
+    },
+    Plan.TEAM: {
+        BillingPeriod.MONTH: _TEAM_PRICE_USD,
+        BillingPeriod.QUARTER: _TEAM_QUARTER_PRICE_USD,
+        BillingPeriod.YEAR: _TEAM_YEAR_PRICE_USD,
+    },
 }
 
 # Resources that are boolean feature gates (403 when off) vs countable caps (402).
 FEATURE_RESOURCES: frozenset[Resource] = frozenset({Resource.API_ACCESS, Resource.WEBHOOK_DELIVERY})
 
 
-def price_for(plan: Plan) -> Decimal:
-    """Return the monthly USD price for a paid plan. Raises for non-payable plans."""
+def price_for(plan: Plan, period: BillingPeriod) -> Decimal:
+    """Return the USD invoice amount for a paid plan and period (TASK-047).
+
+    Quarter ≈ -10% and year ≈ -20% vs the monthly run-rate; amounts are explicit
+    constants in `PLAN_PERIOD_PRICES_USD`. Raises `ValueError` for the free plan
+    and for any plan/period pair missing from the grid.
+    """
     try:
-        return PLAN_PRICES_USD[plan]
+        return PLAN_PERIOD_PRICES_USD[plan][period]
     except KeyError as exc:
-        raise ValueError(f"plan {plan!r} is not payable (no price)") from exc
+        raise ValueError(f"no price for plan {plan!r} with period {period!r}") from exc

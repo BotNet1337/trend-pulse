@@ -9,7 +9,13 @@
 import * as React from 'react';
 import { useNavigate } from '@tanstack/react-router';
 
-import { type PlanId, PLAN_FREE, PLAN_DISPLAY_NAME } from '@/entities/plan';
+import {
+  type BillingPeriodId,
+  type PlanId,
+  PERIOD_MONTH,
+  PLAN_FREE,
+  PLAN_DISPLAY_NAME,
+} from '@/entities/plan';
 import { useCurrentUser } from '@/entities/viewer/model';
 import { PlanComparison } from '@/features/billing/ui/plan-comparison';
 import { InvoiceDisplay } from '@/features/billing/ui/invoice-display';
@@ -24,6 +30,8 @@ export const BillingPage: React.FC = () => {
   const navigate = useNavigate();
 
   const [pendingInvoice, setPendingInvoice] = React.useState<InvoiceResponse | null>(null);
+  // TASK-047: selected billing period (month default — matches the API default).
+  const [period, setPeriod] = React.useState<BillingPeriodId>(PERIOD_MONTH);
 
   const createInvoiceMutation = useCreateInvoice({
     onSuccess: (invoice) => {
@@ -34,7 +42,7 @@ export const BillingPage: React.FC = () => {
   const handleUpgrade = (plan: PlanId) => {
     if (createInvoiceMutation.isPending) return;
     setPendingInvoice(null);
-    createInvoiceMutation.mutate({ plan, period: 'month' });
+    createInvoiceMutation.mutate({ plan, period });
   };
 
   // Determine current plan — fall back to free if not loaded yet
@@ -119,6 +127,8 @@ export const BillingPage: React.FC = () => {
           ) : (
             <PlanComparison
               currentPlan={currentPlan}
+              period={period}
+              onPeriodChange={setPeriod}
               onUpgrade={handleUpgrade}
               isUpgrading={createInvoiceMutation.isPending}
             />
