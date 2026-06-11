@@ -52,6 +52,9 @@ http {
     upstream frontend_spa {
         server frontend:4000;
     }
+    upstream landing_site {
+        server landing:5174;
+    }
 
     # --- Modern TLS defaults (security 5.5): TLS 1.2/1.3 only, strong ciphers ---
     ssl_protocols       TLSv1.2 TLSv1.3;
@@ -66,7 +69,8 @@ http {
     # ------------------------------------------------------------------------
     server {
         listen 80;
-        server_name ${DOMAIN};
+        # Both the apex (landing) and the app subdomain (SPA) terminate here.
+        server_name ${DOMAIN} app.${DOMAIN};
 
         # Certbot webroot challenge (renewals): served from the bind-mounted
         # /etc/letsencrypt webroot path. Everything else → 301 https.
@@ -82,10 +86,35 @@ http {
     # ------------------------------------------------------------------------
     # Port 443 — TLS termination + proxy.
     # ------------------------------------------------------------------------
+    # --- Apex domain (${DOMAIN}) → marketing landing site -------------------
     server {
         listen 443 ssl;
         http2 on;
         server_name ${DOMAIN};
+
+        # SAN cert covers both ${DOMAIN} and app.${DOMAIN} (primary = apex).
+        ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Referrer-Policy "no-referrer" always;
+
+        location / {
+            proxy_pass http://landing_site;
+            proxy_set_header Host              $host;
+            proxy_set_header X-Real-IP         $remote_addr;
+            proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+    }
+
+    # --- App subdomain (app.${DOMAIN}) → dashboard SPA + API ----------------
+    server {
+        listen 443 ssl;
+        http2 on;
+        server_name app.${DOMAIN};
 
         ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
         ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;

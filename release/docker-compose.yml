@@ -28,6 +28,7 @@ include:
   - compose/worker.yml
   - compose/beat.yml
   - compose/frontend.yml
+  - compose/landing.yml
   - compose/templates.yml
   - compose/nginx.yml
   # NOTE: compose/pg-backup.yml is intentionally NOT included here. Its services

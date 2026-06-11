@@ -44,9 +44,9 @@
       ansible.builtin.command:
         cmd: >-
           certbot certonly --standalone --non-interactive --agree-tos
-          --keep-until-expiring
+          --keep-until-expiring --expand
           --email {{ tls_email }}
-          -d {{ tls_domain }}
+          -d {{ tls_domain }} -d app.{{ tls_domain }}
         creates: "/etc/letsencrypt/live/{{ tls_domain }}/fullchain.pem"
       register: tls_certbot_issue
       changed_when: "'Certificate not yet due for renewal' not in (tls_certbot_issue.stdout | default(''))"
