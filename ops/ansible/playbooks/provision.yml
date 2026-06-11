@@ -47,14 +47,26 @@
           - curl
           - gnupg
           - ufw
+          - git          # host clones the app source (deploy.yml)
+          - make         # host runs the release/ Makefile (render | stack deploy)
         state: present
 
-    - name: Install Docker engine + compose plugin
+    # Detect a pre-existing engine (cloud-init / owner may have installed docker-ce
+    # from Docker's official repo). Installing Ubuntu's docker.io on top conflicts
+    # (containerd.io vs containerd), so skip the install when an engine is present.
+    - name: Detect existing Docker engine
+      ansible.builtin.command: docker --version
+      register: docker_preinstalled
+      changed_when: false
+      failed_when: false
+
+    - name: Install Docker engine + compose plugin (skip when an engine is already present)
       ansible.builtin.package:
         name:
           - docker.io
           - docker-compose-plugin
         state: present
+      when: docker_preinstalled.rc != 0
 
     - name: Ensure Docker service is running and enabled
       ansible.builtin.service:

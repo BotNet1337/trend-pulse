@@ -10,6 +10,11 @@ trendpulse_debug: "false"
 swagger_enable: "false"
 # SECURITY (TASK-025): prod SMTP uses real credentials → STARTTLS MUST be on so
 # user/password are never sent in plaintext (dev/mailpit default is false).
+# Resend transactional SMTP (eu-west-1); user/password live in the vault
+# (vault_smtp_user=resend, vault_smtp_password=<API key>).
+smtp_host: "smtp.resend.com"
+smtp_port: "587"
+smtp_from: "TrendPulse <noreply@foresignal.biz>"
 smtp_starttls: "true"
 # TASK-035/059: Pool health target. Целевое значение: 3. Переключить на "3" по
 # runbook «Поднять порог» (development/scripts/README.md) — ТОЛЬКО после заполнения пула (TASK-059).

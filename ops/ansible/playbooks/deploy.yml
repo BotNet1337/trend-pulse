@@ -22,12 +22,26 @@
     # Ship the application source (release bundle, backend/frontend build contexts,
     # version.env) to the host. Pinned to app_version for a reproducible deploy.
     - name: Check out the application source on the host
+      # Run as the deploy user (NOT root): the read-only repo deploy key lives in
+      # /home/deploy/.ssh/id_ed25519, and {{ app_dir }} is owned by deploy. Under the
+      # play's become:true the task would run as root → wrong HOME (/root/.ssh) →
+      # "Permission denied (publickey)". deploy's default SSH key authenticates to
+      # GitHub (verified), so no explicit key_file is needed here.
+      become: false
       ansible.builtin.git:
         repo: "{{ app_repo_url }}"
         dest: "{{ app_dir }}"
         version: "{{ app_version }}"
         single_branch: true
         depth: 1
+        # Reset tracked files to app_version on every deploy. A prior deploy pins
+        # APP_VERSION into the tracked release/version.env, leaving the working tree
+        # dirty; without force the next checkout fails ("Local modifications exist").
+        # Gitignored release/env/ (rendered secrets) is untracked → preserved.
+        force: true
+        # Trust GitHub's SSH host key on first contact (adds to known_hosts only if
+        # absent — safer than StrictHostKeyChecking=no).
+        accept_newhostkey: true
   roles:
     # Renders deploy.env + sensitive.env into {{ env_dir }} (= release/env) so the
     # compose `env_file:` paths resolve at `compose config` time.

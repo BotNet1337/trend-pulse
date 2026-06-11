@@ -6,11 +6,23 @@ terraform {
       source  = "cloudflare/cloudflare"
       version = "~> 5.0"
     }
+    sentry = {
+      source  = "jianyuan/sentry"
+      version = "~> 0.15"
+    }
   }
 }
 
 provider "cloudflare" {
   api_token = var.cloudflare_api_token
+}
+
+# Sentry SaaS (sentry.io). The token is only exercised when
+# sentry_enabled=true; with the default (false) the module below has
+# count=0 and makes no API calls, so an empty token never breaks the
+# cloudflare-only apply.
+provider "sentry" {
+  token = var.sentry_auth_token
 }
 
 # ============================================================
@@ -47,4 +59,23 @@ module "email_routing" {
   resend_enabled       = var.resend_enabled
   resend_dkim_value    = var.resend_dkim_value
   resend_spf_subdomain = var.resend_spf_subdomain
+}
+
+# ============================================================
+# Sentry project + DSN (TASK-024 observability).
+# Stays off (sentry_enabled=false) until you create an org auth
+# token — flip the flag and set sentry_auth_token + organization,
+# then `terraform apply` and read `terraform output -raw sentry_dsn`.
+# ============================================================
+
+module "sentry" {
+  count  = var.sentry_enabled ? 1 : 0
+  source = "../../modules/sentry/project"
+
+  organization = var.sentry_organization
+  team_name    = var.sentry_team_name
+  team_slug    = var.sentry_team_slug
+  project_name = var.sentry_project_name
+  project_slug = var.sentry_project_slug
+  platform     = var.sentry_platform
 }

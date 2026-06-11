@@ -107,8 +107,10 @@ validate: _check-env ## Check prerequisites (env files present, docker up, swarm
 # touch NOTHING else. The result is piped over stdin — never written to disk.
 # Depends only on _check-env (no swarm) so it validates on any machine with env:
 #   make render | docker compose -f - config -q   # offline validation method
-render: _check-env ## Render the stack YAML to stdout (compose config | strip name:)
-	@$(COMPOSE) config | sed -E '/^name:[[:space:]]/d'
+render: _check-env ## Render the stack YAML to stdout (compose config | strip name: | quote cpus)
+	@$(COMPOSE) config \
+		| sed -E '/^name:[[:space:]]/d' \
+		| sed -E 's/^([[:space:]]*cpus:[[:space:]]*)([0-9.]+)[[:space:]]*$$/\1"\2"/'
 
 ##@ Deploy
 
@@ -117,8 +119,11 @@ deploy: validate ## Render + deploy the stack (waits for convergence)
 	@# --resolve-image never: images are built locally on the host; without this
 	@# swarm would try to pull digests from Docker Hub and fail on local tags.
 	@# --detach=false: deploy waits for convergence and returns non-zero on failure.
+	@# `compose config` emits deploy.resources.*.cpus as a bare number, but stack
+	@# deploy requires a string ("cpus must be a string") — re-quote it.
 	@$(COMPOSE) config \
 		| sed -E '/^name:[[:space:]]/d' \
+		| sed -E 's/^([[:space:]]*cpus:[[:space:]]*)([0-9.]+)[[:space:]]*$$/\1"\2"/' \
 		| docker stack deploy \
 			--compose-file - \
 			--detach=false \

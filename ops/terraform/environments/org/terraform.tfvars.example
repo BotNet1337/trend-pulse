@@ -20,3 +20,11 @@ email_routes = {
 # Resend SMTP (outbound email) — enable later, when SMTP creds are provisioned:
 # resend_enabled    = true
 # resend_dkim_value = "p=MIGfMA0GCSq..."  # Resend → Domains → Add Domain → DNS Records
+
+# Sentry (observability) — enable later, when you have an org auth token.
+# Token scopes: project:read/write/admin, team:read/write, org:read.
+# After apply: terraform output -raw sentry_dsn  → put in the ansible vault.
+# sentry_enabled      = true
+# sentry_auth_token   = "sntrys_xxx"          # Sentry → Settings → Auth Tokens
+# sentry_organization = "your-org-slug"       # Settings → General → Organization Slug
+# sentry_platform     = "python"              # or "node"
