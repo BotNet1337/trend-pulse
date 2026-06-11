@@ -53,7 +53,7 @@ test('AC1 — view-source / contains SSR markup (not empty root div)', async ({ 
   // — конкретная строка зависит от гидратированной страницы).
   // Минимальный признак SSR: тег <html с DOCTYPE и каким-то content в body.
   expect(html.toLowerCase()).toContain('<!doctype html>');
-  expect(html).toContain('TrendPulse');
+  expect(html).toContain('Foresignal');
 });
 
 test('AC1 — view-source /watchlists contains SSR markup (not empty root div)', async ({ page }) => {

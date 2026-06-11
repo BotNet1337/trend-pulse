@@ -16,7 +16,7 @@ RUN npm ci --ignore-scripts
 
 # Stage 2: Build static client assets + type-check
 FROM node:${NODE_VERSION}-alpine AS builder
-ARG VITE_BRAND_NAME=TrendPulse
+ARG VITE_BRAND_NAME=Foresignal
 ARG VITE_HELP_URL=https://foresignal.biz/docs
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules

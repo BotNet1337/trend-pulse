@@ -19,12 +19,13 @@ export function extractErrorMessage(error: unknown): string {
       // Read envelope message first (TASK-030), fall back to legacy {detail}.
       const detail = e.response?.data?.error?.message ?? e.response?.data?.detail;
       return detail
-        ? `Лимит паков: ${detail}`
-        : 'Вы достигли лимита паков на текущем тарифе. Обновите план, чтобы добавить больше.';
+        ? `Pack limit reached: ${detail}`
+        : 'You have reached the pack limit on your current plan. Upgrade your plan to add more.';
     }
     if (e.response?.status === 404) {
-      return 'Набор не найден.';
+      return 'Pack not found.';
     }
   }
-  return 'Что-то пошло не так. Попробуйте ещё раз.';
+  // Verbatim GENERIC_ERROR_MESSAGE (shared/api/client.ts) — single error voice.
+  return 'Something went wrong. Please try again.';
 }

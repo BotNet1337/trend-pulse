@@ -46,7 +46,7 @@ export function HeroSection() {
         <div
           className="bg-card border border-border rounded-xl p-5 shadow-sm font-mono text-sm"
           role="img"
-          aria-label="Example viral alert from TrendPulse"
+          aria-label={`Example viral alert from ${SITE.brandName}`}
         >
           <p className="text-foreground leading-relaxed">
             🔥 <strong>Viral alert</strong> [crypto] —{' '}

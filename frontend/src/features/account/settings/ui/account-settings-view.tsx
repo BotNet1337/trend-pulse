@@ -4,7 +4,7 @@ import { useAuth } from "@/app/providers/use-auth"
 import { useCurrentUser } from "@/entities/viewer/model"
 import { type PlanId, PLAN_FREE } from "@/entities/plan"
 import { Button } from "@/shared/components/button"
-import { SUPPORT_EMAIL } from "@/shared/config"
+import { BRAND_NAME, SUPPORT_EMAIL } from "@/shared/config"
 import { DeliveryConfigForm } from "@/features/delivery-config/ui/delivery-config-form"
 import { useDeliveryConfig, useUpdateDeliveryConfig } from "@/features/delivery-config/model"
 import { DeleteAccountDialog } from "../../delete/ui/delete-account-dialog"
@@ -50,7 +50,7 @@ export const AccountSettingsView: React.FC = () => {
           Account settings
         </h1>
         <p className="m-0 text-sm text-muted-foreground">
-          Manage your TrendPulse account.
+          Manage your {BRAND_NAME} account.
         </p>
       </header>
 
@@ -137,7 +137,7 @@ export const AccountSettingsView: React.FC = () => {
         <header className="mb-5 flex flex-col gap-1">
           <h3 className="m-0 text-base font-semibold">Notification delivery</h3>
           <p className="m-0 text-xs text-muted-foreground">
-            Configure how TrendPulse delivers alerts to you.
+            Configure how {BRAND_NAME} delivers alerts to you.
           </p>
         </header>
 
@@ -208,8 +208,6 @@ export const AccountSettingsView: React.FC = () => {
         onOpenChange={setDeleteOpen}
         userId={userId}
         email={email}
-        ownedWorkspacesCount={0}
-        ownedPostsCount={0}
       />
 
       <ChangePasswordDialog

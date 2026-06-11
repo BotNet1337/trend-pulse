@@ -2,18 +2,18 @@ import { test, expect } from '@playwright/test';
 
 /**
  * TASK-018 smoke e2e — RED anchor (AC1-AC4)
- * Verifies TrendPulse brand, key sections, CTA href, compliance footer.
+ * Verifies Foresignal brand, key sections, CTA href, compliance footer.
  */
 
-test.describe('TrendPulse landing smoke', () => {
-  test('AC1 — page loads with TrendPulse brand (not template brand)', async ({ page }) => {
+test.describe('Foresignal landing smoke', () => {
+  test('AC1 — page loads with Foresignal brand (not template brand)', async ({ page }) => {
     await page.goto('/');
-    await expect(page).toHaveTitle(/TrendPulse/i);
+    await expect(page).toHaveTitle(/Foresignal/i);
     // Must NOT show old template brand
     const bodyText = await page.locator('body').innerText();
     expect(bodyText).not.toMatch(/PostBolt/i);
     // Brand visible in nav
-    await expect(page.locator('nav').getByText('TrendPulse')).toBeVisible();
+    await expect(page.locator('nav').getByText('Foresignal')).toBeVisible();
   });
 
   test('AC2 — key sections present: hero with viral-alert, how-it-works, features, pricing, footer', async ({ page }) => {
@@ -76,16 +76,16 @@ test.describe('TrendPulse landing smoke', () => {
   test('AC4 — privacy-policy page mentions 48h retention and public channels', async ({ page }) => {
     await page.goto('/privacy-policy');
     const bodyText = await page.locator('body').innerText();
-    expect(bodyText).toMatch(/TrendPulse/i);
+    expect(bodyText).toMatch(/Foresignal/i);
     expect(bodyText).not.toMatch(/PostBolt/i);
     expect(bodyText).toMatch(/48.?h(ours?)?|48-hour/i);
     expect(bodyText).toMatch(/public.{0,30}channel/i);
   });
 
-  test('AC4 — terms-of-service page has TrendPulse brand', async ({ page }) => {
+  test('AC4 — terms-of-service page has Foresignal brand', async ({ page }) => {
     await page.goto('/terms-of-service');
     const bodyText = await page.locator('body').innerText();
-    expect(bodyText).toMatch(/TrendPulse/i);
+    expect(bodyText).toMatch(/Foresignal/i);
     expect(bodyText).not.toMatch(/PostBolt/i);
   });
 });
