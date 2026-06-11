@@ -201,10 +201,10 @@ TASK-035); fail2ban активен на SSH. Все таски идемпоте�
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 6
+current_step: 7
 baseline_commit: "c390c4c"
 branch: "task/061-vps-ops-hygiene"
-lock: "fable-next-executor 2026-06-11 worktree agent-a429688655ed607bc"
+lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [x] 3 do (ansible-таски + роль host_alerts + backup-роль)
@@ -217,8 +217,11 @@ lock: "fable-next-executor 2026-06-11 worktree agent-a429688655ed607bc"
 - [x] 5.5 security (PASS, 0 блокеров; токен-in-URL → ps = accepted residual
       risk c митигациями 0750 root-only / short-lived / single-operator;
       секретов в диффе нет, prod.yml не тронут)
-- [ ] 6 ship (confirm plan done → PR)
-- [ ] 7 learnings (auto)
+- [x] 6 ship (PR #87 https://github.com/BotNet1337/trend-pulse/pull/87 —
+      мерж и tasks-index.md за оркестратором; живые AC — после `make deploy`)
+- [x] 7 learnings (docs/learnings.md §TASK-061: var-naming префикс роли,
+      sed-extract вместо source секрет-файла, TDD ansible-шаблона через
+      StrictUndefined+shellcheck+curl-stub, baseline-сравнение lint-гейта)
 debug_runs: []
 
 ## Details
