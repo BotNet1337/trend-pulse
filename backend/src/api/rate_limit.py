@@ -27,6 +27,7 @@ from starlette.responses import JSONResponse
 from starlette.status import HTTP_429_TOO_MANY_REQUESTS
 
 from api.auth.backend import cookie_transport
+from api.errors import ErrorCode, build_error_response
 from config import get_settings
 
 # fastapi-users JWTStrategy defaults (api/auth/backend.py): HS256 + this audience.
@@ -126,8 +127,9 @@ limiter = build_limiter()
 
 
 def rate_limit_handler(_: Request, exc: RateLimitExceeded) -> JSONResponse:
-    """Map a rate-limit breach to a clear 429 JSON body (no internal leakage)."""
-    return JSONResponse(
-        status_code=HTTP_429_TOO_MANY_REQUESTS,
-        content={"detail": f"rate limit exceeded: {exc.detail}"},
+    """Map a rate-limit breach to the unified 429 envelope (no internal leakage)."""
+    return build_error_response(
+        code=ErrorCode.RATE_LIMITED,
+        message="Rate limit exceeded. Please slow down.",
+        status=HTTP_429_TOO_MANY_REQUESTS,
     )

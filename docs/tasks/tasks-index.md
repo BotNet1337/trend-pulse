@@ -36,7 +36,7 @@ Roadmap: [`../architecture/roadmap.md`](../architecture/roadmap.md). Epic A = Ba
 | [TASK-027](./task-027-subscription-renewal-notifications.md) | Subscription renewal/expiry-уведомления (Beat + notifier/email) | D | done | backend | 010, 009, 025 | 2026-06-09 |
 | [TASK-028](./task-028-api-keys-team.md) | API-ключи для Team-плана (api_keys, issue/revoke, X-API-Key auth, rate-limit keying) | D | done | backend | 003, 010 | 2026-06-09 |
 | [TASK-029](./task-029-frontend-ssr-enablement.md) | Frontend SSR enablement (TanStack hydration, cookie-forward) + manualChunks | D | done | frontend | 013, 014 | 2026-06-09 |
-| [TASK-030](./task-030-api-hardening-errors-versioning.md) | API hardening — единый error-envelope + machine-readable коды + /api/v1 версионирование | D | planned | backend | 019 | 2026-06-09 |
+| [TASK-030](./task-030-api-hardening-errors-versioning.md) | API hardening — единый error-envelope + machine-readable коды + /api/v1 версионирование | D | done | backend | 019 | 2026-06-09 |
 | [TASK-031](./task-031-twitter-source.md) | Twitter/X source readiness (collector/twitter по ADR-001 + per-source лимиты) | D | planned | backend | 005 | 2026-06-09 |
 | [TASK-032](./task-032-security-hardening.md) | Security hardening — per-route rate-limit + CSRF в nginx + at-rest шифрование (app-level, опц.) | D | planned | infra | 011, 012 | 2026-06-09 |
 | [TASK-033](./task-033-gdpr-data-export.md) | GDPR data-export (GET /account/export, Art.20 portability) | D | planned | backend | 011 | 2026-06-09 |

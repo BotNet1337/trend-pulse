@@ -55,8 +55,8 @@ export async function logout(): Promise<void> {
 /**
  * Initiate Google OAuth — full browser redirect (NOT fetch).
  * No secrets on the frontend: redirect_uri and client_id live on backend.
- * The /api prefix is the nginx strip-prefix for the backend.
+ * /api/v1 = nginx strip-prefix /api/ + backend /v1 version prefix (TASK-030/ADR-007).
  */
 export function navigateToGoogleAuth(): void {
-  window.location.assign('/api/auth/google/authorize');
+  window.location.assign('/api/v1/auth/google/authorize');
 }

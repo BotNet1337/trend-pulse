@@ -143,7 +143,7 @@ def anon_client(db_session_committing: Session) -> Iterator[TestClient]:
 
 def test_cases_no_auth_returns_200_empty_list(anon_client: TestClient) -> None:
     """AC4: GET /cases with no auth → 200 with empty list (no qualifying cases)."""
-    resp = anon_client.get("/cases")
+    resp = anon_client.get("/v1/cases")
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert "items" in body
@@ -182,7 +182,7 @@ def test_cases_returns_only_mainstream_at_not_null(
     db_session_committing.flush()
     db_session_committing.commit()
 
-    resp = anon_client.get("/cases")
+    resp = anon_client.get("/v1/cases")
     assert resp.status_code == 200, resp.text
 
     items = resp.json()["items"]
@@ -233,7 +233,7 @@ def test_cases_sorted_by_lead_time_desc(
     db_session_committing.flush()
     db_session_committing.commit()
 
-    resp = anon_client.get("/cases")
+    resp = anon_client.get("/v1/cases")
     assert resp.status_code == 200, resp.text
 
     items = resp.json()["items"]
@@ -273,7 +273,7 @@ def test_cases_capped_at_top_n(
     db_session_committing.flush()
     db_session_committing.commit()
 
-    resp = anon_client.get("/cases")
+    resp = anon_client.get("/v1/cases")
     assert resp.status_code == 200, resp.text
     items = resp.json()["items"]
     assert len(items) <= max_n, f"Expected at most {max_n} items, got {len(items)}"
@@ -287,7 +287,7 @@ def test_cases_top_n_param_over_max_returns_422(
     from config import get_settings
 
     max_n = get_settings().cases_top_n_max
-    resp = anon_client.get("/cases", params={"top_n": max_n + 1})
+    resp = anon_client.get("/v1/cases", params={"top_n": max_n + 1})
     assert resp.status_code == 422, resp.text
 
 
@@ -311,7 +311,7 @@ def test_cases_response_contains_only_schema_fields(
     db_session_committing.flush()
     db_session_committing.commit()
 
-    resp = anon_client.get("/cases")
+    resp = anon_client.get("/v1/cases")
     assert resp.status_code == 200, resp.text
     items = resp.json()["items"]
     assert len(items) >= 1
@@ -361,7 +361,7 @@ def test_cases_lead_time_seconds_computed_correctly(
     db_session_committing.flush()
     db_session_committing.commit()
 
-    resp = anon_client.get("/cases")
+    resp = anon_client.get("/v1/cases")
     assert resp.status_code == 200, resp.text
     items = resp.json()["items"]
     assert len(items) >= 1

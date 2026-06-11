@@ -115,7 +115,7 @@ test('AC3 — authenticated SSR: __INITIAL_STATE__ contains user data', async ({
   const password = 'S3curePassw0rd!';
 
   // Register
-  const regResp = await page.request.post('/api/auth/register', {
+  const regResp = await page.request.post('/api/v1/auth/register', {
     data: { email, password },
     headers: { 'Content-Type': 'application/json' },
   });
@@ -123,7 +123,7 @@ test('AC3 — authenticated SSR: __INITIAL_STATE__ contains user data', async ({
   expect([201, 400]).toContain(regResp.status());
 
   // Login — sets fastapiusersauth cookie
-  const loginResp = await page.request.post('/api/auth/jwt/login', {
+  const loginResp = await page.request.post('/api/v1/auth/jwt/login', {
     form: { username: email, password },
   });
   // fastapi-users OAuth2PasswordRequestForm → 200 on success

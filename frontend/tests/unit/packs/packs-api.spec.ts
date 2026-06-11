@@ -10,7 +10,19 @@ import { describe, it, expect } from 'vitest';
 import { extractErrorMessage } from '../../../src/features/packs/error-message';
 
 describe('packs extractErrorMessage', () => {
-  it('maps 402 with detail to localised quota message with detail', () => {
+  it('maps 402 with envelope error.message to localised quota message (TASK-030 envelope first)', () => {
+    const err = {
+      response: {
+        status: 402,
+        data: { error: { message: 'packs limit reached: the free plan allows 1' } },
+      },
+    };
+    const msg = extractErrorMessage(err);
+    expect(msg).toContain('Лимит паков');
+    expect(msg).toContain('packs limit reached');
+  });
+
+  it('maps 402 with legacy {detail} to localised quota message (legacy fallback)', () => {
     const err = { response: { status: 402, data: { detail: 'packs limit reached: the free plan allows 1' } } };
     const msg = extractErrorMessage(err);
     expect(msg).toContain('Лимит паков');

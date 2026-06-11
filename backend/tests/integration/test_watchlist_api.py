@@ -120,7 +120,7 @@ def client(db_session_committing: Session, user: User) -> Iterator[TestClient]:
 
 def test_create_returns_201_with_user_id(client: TestClient, user: User) -> None:
     """AC1 (RED anchor): create -> 201 + body carrying id and the owner's user_id."""
-    resp = client.post("/watchlists", json=_payload())
+    resp = client.post("/v1/watchlists", json=_payload())
     assert resp.status_code == 201, resp.text
     body = resp.json()
     assert isinstance(body["id"], int)
@@ -148,9 +148,9 @@ def test_list_returns_only_own(
     )
     db_session_committing.flush()
 
-    client.post("/watchlists", json=_payload(handle="@mine_chan", topic="mine"))
+    client.post("/v1/watchlists", json=_payload(handle="@mine_chan", topic="mine"))
 
-    resp = client.get("/watchlists")
+    resp = client.get("/v1/watchlists")
     assert resp.status_code == 200, resp.text
     rows = resp.json()
     assert len(rows) == 1
@@ -176,21 +176,21 @@ def test_update_and_delete_enforce_ownership(
     foreign_id = foreign.id
 
     # Foreign id is indistinguishable from missing -> 404 on update and delete.
-    assert client.patch(f"/watchlists/{foreign_id}", json={"topic": "hacked"}).status_code == 404
-    assert client.delete(f"/watchlists/{foreign_id}").status_code == 404
+    assert client.patch(f"/v1/watchlists/{foreign_id}", json={"topic": "hacked"}).status_code == 404
+    assert client.delete(f"/v1/watchlists/{foreign_id}").status_code == 404
 
-    created = client.post("/watchlists", json=_payload(handle="@own_chan")).json()
+    created = client.post("/v1/watchlists", json=_payload(handle="@own_chan")).json()
     own_id = created["id"]
-    upd = client.patch(f"/watchlists/{own_id}", json={"topic": "renamed"})
+    upd = client.patch(f"/v1/watchlists/{own_id}", json={"topic": "renamed"})
     assert upd.status_code == 200, upd.text
     assert upd.json()["topic"] == "renamed"
-    assert client.delete(f"/watchlists/{own_id}").status_code == 204
-    assert client.get(f"/watchlists/{own_id}").status_code == 404
+    assert client.delete(f"/v1/watchlists/{own_id}").status_code == 204
+    assert client.get(f"/v1/watchlists/{own_id}").status_code == 404
 
 
 def test_bad_handle_returns_422(client: TestClient) -> None:
     """AC4: a malformed handle is rejected at the boundary (Pydantic 422)."""
-    resp = client.post("/watchlists", json=_payload(handle="@bad handle!"))
+    resp = client.post("/v1/watchlists", json=_payload(handle="@bad handle!"))
     assert resp.status_code == 422, resp.text
 
 
@@ -218,7 +218,9 @@ def test_over_limit_returns_402(db_session_committing: Session) -> None:
     try:
         with TestClient(app) as free_client:
             # Free CHANNELS=0 → first own channel create → 402
-            resp = free_client.post("/watchlists", json=_payload(handle="@chan_free_1", topic="t1"))
+            resp = free_client.post(
+                "/v1/watchlists", json=_payload(handle="@chan_free_1", topic="t1")
+            )
             assert resp.status_code == 402, resp.text
     finally:
         app.dependency_overrides.pop(current_user, None)
@@ -228,7 +230,7 @@ def test_over_limit_returns_402(db_session_committing: Session) -> None:
 
 def test_default_kind_is_telegram(client: TestClient) -> None:
     """AC6: omitting kind stores/returns source_kind == 'telegram'."""
-    resp = client.post("/watchlists", json=_payload(handle="@default_kind"))
+    resp = client.post("/v1/watchlists", json=_payload(handle="@default_kind"))
     assert resp.status_code == 201, resp.text
     assert resp.json()["channel"]["kind"] == "telegram"
 
@@ -237,7 +239,7 @@ def test_no_auth_returns_401() -> None:
     """AC7: without the current_user override the route is 401 (auth-guard)."""
     # No override of current_user here -> the real dependency rejects the request.
     with TestClient(app) as anon:
-        resp = anon.post("/watchlists", json=_payload())
+        resp = anon.post("/v1/watchlists", json=_payload())
     assert resp.status_code == 401
 
 
@@ -247,7 +249,7 @@ def test_duplicate_channel_topic_returns_409(client: TestClient) -> None:
     Exercises the IntegrityError -> rollback -> DuplicateWatchlistError -> 409 path
     (unique (user_id, channel_id, topic) from task-002).
     """
-    first = client.post("/watchlists", json=_payload(handle="@dup_chan", topic="dup"))
+    first = client.post("/v1/watchlists", json=_payload(handle="@dup_chan", topic="dup"))
     assert first.status_code == 201, first.text
-    second = client.post("/watchlists", json=_payload(handle="@dup_chan", topic="dup"))
+    second = client.post("/v1/watchlists", json=_payload(handle="@dup_chan", topic="dup"))
     assert second.status_code == 409, second.text

@@ -52,14 +52,14 @@ def client(db_engine: Any) -> Iterator[TestClient]:
 def _register_and_login(client: TestClient) -> dict[str, Any]:
     """Register a fresh user and log in; returns the UserRead body from register."""
     reg = client.post(
-        "/auth/register",
+        "/v1/auth/register",
         json={"email": _TEST_EMAIL, "password": _TEST_PASSWORD},
     )
     assert reg.status_code == 201, reg.text
     user: dict[str, Any] = reg.json()
 
     login = client.post(
-        "/auth/jwt/login",
+        "/v1/auth/jwt/login",
         data={"username": _TEST_EMAIL, "password": _TEST_PASSWORD},
     )
     assert login.status_code in (200, 204), login.text
@@ -69,7 +69,7 @@ def _register_and_login(client: TestClient) -> dict[str, Any]:
 
 def test_get_users_me_unauthenticated(client: TestClient) -> None:
     """AC2 (RED anchor): GET /users/me without cookie → 401."""
-    resp = client.get("/users/me")
+    resp = client.get("/v1/users/me")
     assert resp.status_code == 401
 
 
@@ -77,7 +77,7 @@ def test_get_users_me_authenticated(client: TestClient) -> None:
     """AC2: GET /users/me with valid cookie → 200, email/plan/is_verified present."""
     user = _register_and_login(client)
 
-    resp = client.get("/users/me")
+    resp = client.get("/v1/users/me")
     assert resp.status_code == 200, resp.text
 
     body: dict[str, Any] = resp.json()

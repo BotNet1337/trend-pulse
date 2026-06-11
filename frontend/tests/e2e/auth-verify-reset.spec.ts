@@ -26,7 +26,7 @@ import { test, expect, request as playwrightRequest } from '@playwright/test'
 // Mailpit runs on port 8025 internally; nginx exposes it only for dev stacks.
 // In the compose stack the mailpit UI is typically accessible from the host.
 const MAILPIT_URL = process.env.MAILPIT_URL ?? 'http://localhost:8025'
-const API_BASE = '/api'
+const API_BASE = '/api/v1'
 
 // ---------------------------------------------------------------------------
 // Helpers

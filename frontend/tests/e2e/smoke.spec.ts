@@ -65,7 +65,7 @@ test('AC3 — API GET /users/me/tenant 401 causes redirect to /login', async ({ 
   await page.context().clearCookies();
 
   // Intercept any navigation triggered by 401
-  const responsePromise = page.request.get('/api/users/me/tenant');
+  const responsePromise = page.request.get('/api/v1/users/me/tenant');
 
   const response = await responsePromise;
   expect(response.status()).toBe(401);

@@ -206,7 +206,7 @@ def test_first_ipn_creates_referral_reward(
         "price_currency": "usd",
     }
     raw, sig = _sign(body)
-    resp = ipn_client.post("/billing/ipn", content=raw, headers={_SIG_HEADER: sig})
+    resp = ipn_client.post("/v1/billing/ipn", content=raw, headers={_SIG_HEADER: sig})
     assert resp.status_code == 200, resp.text
 
     db_session_ref.expire_all()
@@ -238,7 +238,7 @@ def test_second_payment_no_new_reward(
         "price_currency": "usd",
     }
     raw1, sig1 = _sign(body1)
-    resp1 = ipn_client.post("/billing/ipn", content=raw1, headers={_SIG_HEADER: sig1})
+    resp1 = ipn_client.post("/v1/billing/ipn", content=raw1, headers={_SIG_HEADER: sig1})
     assert resp1.status_code == 200
 
     # Second payment (different invoice, different payment_id)
@@ -250,7 +250,7 @@ def test_second_payment_no_new_reward(
         "price_currency": "usd",
     }
     raw2, sig2 = _sign(body2)
-    resp2 = ipn_client.post("/billing/ipn", content=raw2, headers={_SIG_HEADER: sig2})
+    resp2 = ipn_client.post("/v1/billing/ipn", content=raw2, headers={_SIG_HEADER: sig2})
     assert resp2.status_code == 200
 
     db_session_ref.expire_all()
@@ -277,10 +277,10 @@ def test_replay_same_ipn_no_duplicate_reward(
         "price_currency": "usd",
     }
     raw, sig = _sign(body)
-    resp1 = ipn_client.post("/billing/ipn", content=raw, headers={_SIG_HEADER: sig})
+    resp1 = ipn_client.post("/v1/billing/ipn", content=raw, headers={_SIG_HEADER: sig})
     assert resp1.status_code == 200
     # Replay
-    resp2 = ipn_client.post("/billing/ipn", content=raw, headers={_SIG_HEADER: sig})
+    resp2 = ipn_client.post("/v1/billing/ipn", content=raw, headers={_SIG_HEADER: sig})
     assert resp2.status_code == 200
 
     db_session_ref.expire_all()
@@ -391,7 +391,7 @@ def _register(
     """POST /auth/register and return the raw response."""
     payload: dict[str, object] = {"email": email, "password": password}
     payload.update(extra)
-    return client.post("/auth/register", json=payload)
+    return client.post("/v1/auth/register", json=payload)
 
 
 def _db_user(db_engine: Engine, email: str) -> User | None:
@@ -550,7 +550,7 @@ def test_ipn_integrity_error_in_reward_does_not_rollback_payment(
     # Bypass _referral_reward_exists (simulates the race window) so the INSERT runs
     # and hits the UNIQUE constraint — this is the actual trigger for the bug.
     with patch("referral.service._referral_reward_exists", return_value=False):
-        resp = ipn_client.post("/billing/ipn", content=raw, headers={_SIG_HEADER: sig})
+        resp = ipn_client.post("/v1/billing/ipn", content=raw, headers={_SIG_HEADER: sig})
 
     # CRITICAL: must not 500; outer IPN transaction must survive.
     assert resp.status_code == 200, (
@@ -644,7 +644,7 @@ def test_ipn_runtime_error_in_reward_hook_does_not_cause_500(
 
     db_session_ref.flush = patched_flush  # type: ignore[method-assign]
     try:
-        resp = ipn_client.post("/billing/ipn", content=raw, headers={_SIG_HEADER: sig})
+        resp = ipn_client.post("/v1/billing/ipn", content=raw, headers={_SIG_HEADER: sig})
     finally:
         db_session_ref.flush = original_flush  # type: ignore[method-assign]
 
@@ -700,7 +700,7 @@ def test_third_payment_no_reward_no_raise(
         "price_currency": "usd",
     }
     raw1, sig1 = _sign(body1)
-    resp1 = ipn_client.post("/billing/ipn", content=raw1, headers={_SIG_HEADER: sig1})
+    resp1 = ipn_client.post("/v1/billing/ipn", content=raw1, headers={_SIG_HEADER: sig1})
     assert resp1.status_code == 200, f"First IPN failed: {resp1.text}"
 
     # Second payment activates for the same user (new invoice = renewal).
@@ -712,7 +712,7 @@ def test_third_payment_no_reward_no_raise(
         "price_currency": "usd",
     }
     raw2, sig2 = _sign(body2)
-    resp2 = ipn_client.post("/billing/ipn", content=raw2, headers={_SIG_HEADER: sig2})
+    resp2 = ipn_client.post("/v1/billing/ipn", content=raw2, headers={_SIG_HEADER: sig2})
     assert resp2.status_code == 200, f"Second IPN failed: {resp2.text}"
 
     # Add a third invoice and fire it.
@@ -737,7 +737,7 @@ def test_third_payment_no_reward_no_raise(
         "price_currency": "usd",
     }
     raw3, sig3 = _sign(body3)
-    resp3 = ipn_client.post("/billing/ipn", content=raw3, headers={_SIG_HEADER: sig3})
+    resp3 = ipn_client.post("/v1/billing/ipn", content=raw3, headers={_SIG_HEADER: sig3})
     assert resp3.status_code == 200, (
         f"Third IPN returned {resp3.status_code} — possible MultipleResultsFound from "
         f"one_or_none() on 2 prior processed payments. Body: {resp3.text}"

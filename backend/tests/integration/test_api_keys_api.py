@@ -173,7 +173,7 @@ def test_team_create_api_key_returns_201_with_plaintext(
     """AC1: Team user POST /api-keys → 201; plaintext key in body exactly once;
     DB stores key_hash (≠ plaintext) and prefix; no plaintext persisted in DB.
     """
-    resp = team_client.post("/api-keys", json={"name": "my-key"})
+    resp = team_client.post("/v1/api-keys", json={"name": "my-key"})
     assert resp.status_code == 201, resp.text
     body = resp.json()
 
@@ -215,13 +215,13 @@ def test_free_user_create_api_key_returns_403(free_client: TestClient) -> None:
     POST /api-keys uses `current_user` (cookie-only), overridden here to free_user.
     The assert_within_limit(API_ACCESS) for Free plan raises PlanLimitExceeded→403.
     """
-    resp = free_client.post("/api-keys", json={"name": "should-fail"})
+    resp = free_client.post("/v1/api-keys", json={"name": "should-fail"})
     assert resp.status_code == 403, resp.text
 
 
 def test_pro_user_create_api_key_returns_403(pro_client: TestClient) -> None:
     """AC2: Pro user POST /api-keys → 403 (API_ACCESS not on Pro plan)."""
-    resp = pro_client.post("/api-keys", json={"name": "should-fail-pro"})
+    resp = pro_client.post("/v1/api-keys", json={"name": "should-fail-pro"})
     assert resp.status_code == 403, resp.text
 
 
@@ -229,7 +229,7 @@ def test_free_user_key_not_created_in_db(
     free_client: TestClient, db_session_committing: Session
 ) -> None:
     """AC2: After 403, no api_key row should exist in the DB."""
-    free_client.post("/api-keys", json={"name": "should-fail"})
+    free_client.post("/v1/api-keys", json={"name": "should-fail"})
     from sqlalchemy import select
 
     from storage.models.api_keys import ApiKey
@@ -248,7 +248,7 @@ def test_x_api_key_authenticates_on_get_alerts(
 ) -> None:
     """AC3: Valid X-API-Key header (no cookie) → 200 on GET /alerts; last_used_at updated."""
     # Create a key (uses current_user override)
-    resp = team_client.post("/api-keys", json={"name": "alerts-key"})
+    resp = team_client.post("/v1/api-keys", json={"name": "alerts-key"})
     assert resp.status_code == 201, resp.text
     plaintext = resp.json()["key"]
     key_id = resp.json()["id"]
@@ -266,7 +266,7 @@ def test_x_api_key_authenticates_on_get_alerts(
 
     try:
         with TestClient(app) as raw_client:
-            resp2 = raw_client.get("/alerts", headers={"X-API-Key": plaintext})
+            resp2 = raw_client.get("/v1/alerts", headers={"X-API-Key": plaintext})
         assert resp2.status_code == 200, f"X-API-Key should authenticate: {resp2.text}"
 
         # Verify last_used_at was updated
@@ -305,7 +305,7 @@ def test_x_api_key_tenant_scoped(
 
     try:
         with TestClient(app) as c:
-            resp = c.get("/alerts", headers={"X-API-Key": plaintext})
+            resp = c.get("/v1/alerts", headers={"X-API-Key": plaintext})
         assert resp.status_code == 200, resp.text
         items = resp.json()["items"]
         # Only team_user's alerts — should be empty (no alerts created) but 200 OK
@@ -324,10 +324,10 @@ def test_list_api_keys_returns_masked(
     db_session_committing: Session,
 ) -> None:
     """AC4: GET /api-keys returns list without full key/key_hash; prefix/name/timestamps shown."""
-    team_client.post("/api-keys", json={"name": "key-one"})
-    team_client.post("/api-keys", json={"name": "key-two"})
+    team_client.post("/v1/api-keys", json={"name": "key-one"})
+    team_client.post("/v1/api-keys", json={"name": "key-two"})
 
-    resp = team_client.get("/api-keys")
+    resp = team_client.get("/v1/api-keys")
     assert resp.status_code == 200, resp.text
     items = resp.json()
     assert len(items) >= 2
@@ -349,13 +349,13 @@ def test_revoke_api_key(
 ) -> None:
     """AC4: DELETE /api-keys/{id} revokes the key (revoked_at set); subsequent use → 401."""
     # Create key
-    create_resp = team_client.post("/api-keys", json={"name": "to-revoke"})
+    create_resp = team_client.post("/v1/api-keys", json={"name": "to-revoke"})
     assert create_resp.status_code == 201, create_resp.text
     key_id = create_resp.json()["id"]
     plaintext = create_resp.json()["key"]
 
     # Revoke it
-    del_resp = team_client.delete(f"/api-keys/{key_id}")
+    del_resp = team_client.delete(f"/v1/api-keys/{key_id}")
     assert del_resp.status_code == 204, del_resp.text
 
     # DB: revoked_at should be set
@@ -378,7 +378,7 @@ def test_revoke_api_key(
 
     try:
         with TestClient(app) as raw_client:
-            resp = raw_client.get("/alerts", headers={"X-API-Key": plaintext})
+            resp = raw_client.get("/v1/alerts", headers={"X-API-Key": plaintext})
         assert resp.status_code == 401, f"Revoked key should yield 401: {resp.text}"
     finally:
         app.dependency_overrides.pop(get_db_session, None)
@@ -387,7 +387,7 @@ def test_revoke_api_key(
 
 def test_delete_nonexistent_api_key_returns_404(team_client: TestClient) -> None:
     """AC4: DELETE /api-keys/{id} for non-existent id → 404."""
-    resp = team_client.delete("/api-keys/999999")
+    resp = team_client.delete("/v1/api-keys/999999")
     assert resp.status_code == 404, resp.text
 
 
@@ -402,7 +402,7 @@ def test_delete_other_users_key_returns_404(
     other_row, _ = create_api_key(db_session_committing, user_id=free_user.id, name="other-key")
     db_session_committing.flush()
 
-    resp = team_client.delete(f"/api-keys/{other_row.id}")
+    resp = team_client.delete(f"/v1/api-keys/{other_row.id}")
     assert resp.status_code == 404, resp.text
 
 
@@ -444,7 +444,7 @@ def test_mutation_watchlist_with_api_key_denied(
 
     try:
         with TestClient(app) as c:
-            resp = c.post("/watchlists", json=payload, headers={"X-API-Key": plaintext})
+            resp = c.post("/v1/watchlists", json=payload, headers={"X-API-Key": plaintext})
         # Mutations via API-key must be rejected (401 from current_user dep — no cookie)
         assert resp.status_code in (401, 403), (
             f"Mutation with X-API-Key should be denied, got {resp.status_code}: {resp.text}"
@@ -465,5 +465,5 @@ def test_cookie_flow_on_get_alerts_still_works(
     cookie-authenticated UI flow — the dep is overridden the same way it would
     be resolved by the real cookie/JWT path).
     """
-    resp = team_client.get("/alerts")
+    resp = team_client.get("/v1/alerts")
     assert resp.status_code == 200, f"Cookie flow should still work: {resp.text}"

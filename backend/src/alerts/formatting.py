@@ -8,7 +8,7 @@ and the latest `Score` row (velocity), then packed into an `AlertView`. Keeping
 the formatters pure (no DB, no mutation) makes them trivially testable (AC1).
 
 `build_reply_markup` (TASK-042) constructs the Telegram InlineKeyboardMarkup
-dict with two URL-buttons 👍/👎 pointing at ``GET /api/feedback/{token}``.
+dict with two URL-buttons 👍/👎 pointing at ``GET /api/v1/feedback/{token}``.
 When `public_base_url` is empty it logs a one-time warning and returns None
 so the delivery path degrades gracefully (Invariant).
 """
@@ -28,9 +28,9 @@ _WEBHOOK_EVENT = "viral_alert"
 _FIRST_SEEN_TIME_FORMAT = "%H:%M"
 
 # Feedback API path — must match nginx /api/ prefix strip (TASK-042 locate).
-# nginx proxies /api/* → backend root, stripping /api prefix.
-# So the full public URL is: {public_base_url}/api/feedback/{token}.
-_FEEDBACK_API_PATH = "/api/feedback/"
+# nginx proxies /api/* → backend /v1/* (TASK-030: /api/v1 versioning, ADR-007).
+# So the full public URL is: {public_base_url}/api/v1/feedback/{token}.
+_FEEDBACK_API_PATH = "/api/v1/feedback/"
 
 # Button emoji labels — named, not magic literals.
 _BUTTON_UP_LABEL = "👍"
@@ -93,7 +93,7 @@ def build_reply_markup(
     or ``None`` when ``public_base_url`` is empty (graceful degradation — alert
     is delivered without buttons; one-time WARNING logged).
 
-    Each button's URL points to ``{public_base_url}/api/feedback/{token}``
+    Each button's URL points to ``{public_base_url}/api/v1/feedback/{token}``
     where ``token`` is a short HMAC-SHA256-signed token encoding
     (alert_id, verdict, exp). The nginx edge proxy strips the ``/api/`` prefix
     before forwarding to the backend.

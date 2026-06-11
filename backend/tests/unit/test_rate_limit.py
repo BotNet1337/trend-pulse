@@ -44,13 +44,16 @@ def test_within_limit_returns_200(client: TestClient) -> None:
 
 
 def test_over_limit_returns_429_with_clear_body(client: TestClient) -> None:
+    """429 body uses the unified error-envelope (TASK-030) with code=RATE_LIMITED."""
     for _ in range(_LIMIT):
         client.get("/ping")
     response = client.get("/ping")
     assert response.status_code == _HTTP_TOO_MANY
     body = response.json()
-    assert "detail" in body
-    assert "rate limit exceeded" in body["detail"]
+    # Unified envelope: {error: {code, message}}
+    assert "error" in body, f"Expected error envelope, got: {body}"
+    assert body["error"]["code"] == "RATE_LIMITED"
+    assert isinstance(body["error"]["message"], str) and body["error"]["message"]
 
 
 # --- key function: authenticated requests key by user, not IP (AC4) ---

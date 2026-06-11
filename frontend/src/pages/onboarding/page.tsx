@@ -44,8 +44,11 @@ export const OnboardingPage: React.FC = () => {
       setSubscribed(true);
       void navigate({ to: paths.watchlists.list, replace: true });
     } catch (err: unknown) {
-      const e = err as { response?: { status?: number; data?: { detail?: string } } };
-      const detail = e.response?.data?.detail;
+      const e = err as {
+        response?: { status?: number; data?: { error?: { message?: string }; detail?: string } };
+      };
+      // Read envelope message first (TASK-030 unified format), fall back to legacy {detail}.
+      const detail = e.response?.data?.error?.message ?? e.response?.data?.detail;
       setSubscribeError(
         detail ? `Ошибка: ${detail}` : 'Не удалось подключить набор. Попробуйте ещё раз.',
       );

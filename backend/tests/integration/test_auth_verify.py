@@ -100,7 +100,7 @@ def test_register_verify_email_flow(client: TestClient, monkeypatch: pytest.Monk
         # 1. Register — triggers on_after_register → request_verify → on_after_request_verify
         #    → send_templated_email captured.
         resp = client.post(
-            "/auth/register",
+            "/v1/auth/register",
             json={"email": _TEST_EMAIL, "password": _TEST_PASSWORD},
         )
         assert resp.status_code == 201, f"Register failed: {resp.text}"
@@ -115,26 +115,26 @@ def test_register_verify_email_flow(client: TestClient, monkeypatch: pytest.Monk
         )
 
     # 3. POST /auth/verify — this will 404 BEFORE the router is mounted (RED anchor).
-    verify_resp = client.post("/auth/verify", json={"token": token})
+    verify_resp = client.post("/v1/auth/verify", json={"token": token})
     assert verify_resp.status_code == 200, (
         f"Expected 200 from /auth/verify, got {verify_resp.status_code}: {verify_resp.text}"
     )
 
     # 4. Login and check is_verified=true via GET /users/me.
     login = client.post(
-        "/auth/jwt/login",
+        "/v1/auth/jwt/login",
         data={"username": _TEST_EMAIL, "password": _TEST_PASSWORD},
     )
     assert login.status_code in (200, 204), f"Login failed: {login.text}"
 
-    me = client.get("/users/me")
+    me = client.get("/v1/users/me")
     assert me.status_code == 200, f"GET /users/me failed: {me.text}"
     assert me.json().get("is_verified") is True, f"Expected is_verified=true, got: {me.json()}"
 
 
 def test_verify_invalid_token_rejected(client: TestClient) -> None:
     """AC5 — invalid token → 4xx, no state change."""
-    resp = client.post("/auth/verify", json={"token": "totally-fake-token"})
+    resp = client.post("/v1/auth/verify", json={"token": "totally-fake-token"})
     assert resp.status_code in (400, 401, 422), (
         f"Expected 4xx for invalid token, got {resp.status_code}: {resp.text}"
     )
@@ -144,5 +144,5 @@ def test_request_verify_token_endpoint_exists(client: TestClient) -> None:
     """AC4 — POST /auth/request-verify-token endpoint is mounted (not 404/405)."""
     # We don't have a verified user here; just check the route is mounted.
     # A 422 means the route exists but the body is missing (expected before login).
-    resp = client.post("/auth/request-verify-token", json={"email": _TEST_EMAIL})
+    resp = client.post("/v1/auth/request-verify-token", json={"email": _TEST_EMAIL})
     assert resp.status_code != 404, "Route /auth/request-verify-token is not mounted (got 404)"

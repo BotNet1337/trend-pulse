@@ -113,7 +113,7 @@ def test_finished_ipn_activates_plan(
 ) -> None:
     """AC3: valid finished IPN → plan pro + expires_at set, 200."""
     raw, sig = _sign(_ipn_body())
-    resp = client.post("/billing/ipn", content=raw, headers={_SIG_HEADER: sig})
+    resp = client.post("/v1/billing/ipn", content=raw, headers={_SIG_HEADER: sig})
     assert resp.status_code == 200, resp.text
 
     db_session_committing.expire_all()
@@ -133,7 +133,7 @@ def test_replay_same_payment_id_no_double_extend(
 ) -> None:
     """AC5: replaying the same payment_id does not extend expiry twice; still 200."""
     raw, sig = _sign(_ipn_body())
-    first = client.post("/billing/ipn", content=raw, headers={_SIG_HEADER: sig})
+    first = client.post("/v1/billing/ipn", content=raw, headers={_SIG_HEADER: sig})
     assert first.status_code == 200
 
     db_session_committing.expire_all()
@@ -142,7 +142,7 @@ def test_replay_same_payment_id_no_double_extend(
     ).one()
     first_expiry = sub1.expires_at
 
-    second = client.post("/billing/ipn", content=raw, headers={_SIG_HEADER: sig})
+    second = client.post("/v1/billing/ipn", content=raw, headers={_SIG_HEADER: sig})
     assert second.status_code == 200
 
     db_session_committing.expire_all()
@@ -157,7 +157,7 @@ def test_invalid_signature_rejected_no_change(
 ) -> None:
     """AC4: a wrong signature → 401 and the plan is unchanged."""
     raw, _ = _sign(_ipn_body())
-    resp = client.post("/billing/ipn", content=raw, headers={_SIG_HEADER: "deadbeef"})
+    resp = client.post("/v1/billing/ipn", content=raw, headers={_SIG_HEADER: "deadbeef"})
     assert resp.status_code == 401
 
     db_session_committing.expire_all()
@@ -171,7 +171,7 @@ def test_partially_paid_no_activation(
 ) -> None:
     """AC6: partially_paid → 200 but plan stays free, no subscription activated."""
     raw, sig = _sign(_ipn_body("partially_paid"))
-    resp = client.post("/billing/ipn", content=raw, headers={_SIG_HEADER: sig})
+    resp = client.post("/v1/billing/ipn", content=raw, headers={_SIG_HEADER: sig})
     assert resp.status_code == 200
 
     db_session_committing.expire_all()
@@ -213,7 +213,7 @@ def test_old_price_invoice_activates_after_price_bump(
         "price_currency": "usd",
     }
     raw, sig = _sign(ipn_body)
-    resp = client.post("/billing/ipn", content=raw, headers={_SIG_HEADER: sig})
+    resp = client.post("/v1/billing/ipn", content=raw, headers={_SIG_HEADER: sig})
     assert resp.status_code == 200, resp.text
 
     db_session_committing.expire_all()
