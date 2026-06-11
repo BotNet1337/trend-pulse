@@ -91,7 +91,7 @@ push в main (`.github/workflows/main-integration.yml`), а PR CI = `ci-fast` = 
 - [x] **AC3 — smoke ловит дрейф.** Given ветка, где ops-роут уезжает из-под `/v1`
   (локальная проверка-симуляция: временно снять `v1_router.include_router(ops_business_router)`)
   When `make test-integration-smoke` Then прогон красный; после отката — зелёный.
-- [ ] **AC4 — PR CI расширен.** Given открытый PR When отрабатывает `pr-checks`
+- [x] **AC4 — PR CI расширен.** Given открытый PR When отрабатывает `pr-checks`
   Then job `integration-smoke` присутствует, зелёный, и обязателен наравне с
   остальными jobs (без изменения их состава).
 
@@ -174,5 +174,7 @@ debug_runs: []
   make exit≠0; после `git checkout` отката — снова **19 passed**.
 - YAML pr-checks.yml валиден, jobs: backend, integration-smoke, openapi-contract,
   frontend, landing, templates, dep-scan (существующие не тронуты — инвариант).
-- AC4 — self-test job на самом ship-PR (после push; required-статус job настраивает
-  owner в branch protection, если required-набор задан явным списком).
+- AC4 ✓: PR #86 — job «Backend integration smoke (route contracts)» присутствует и
+  pass за 50s (run 27360865558); все 7 jobs pr-checks зелёные, существующие не
+  изменены. Required-статус в branch protection (если required-набор задан явным
+  списком) добавляет owner.
