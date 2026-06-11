@@ -8,6 +8,7 @@ import type { AuthStore } from '../stores/auth.store';
 import { ProtectedLayout, RootLayout } from '@/pages/index/layout';
 import {
   AccountSettingsPage,
+  AdminMetricsPage,
   AlertDetailPage,
   AlertsListPage,
   AnonymousLayout,
@@ -79,6 +80,15 @@ const indexRoute = createRoute({
     throw redirect({ to: paths.watchlists.list, replace: true });
   },
   component: () => null,
+});
+
+// Admin money dashboard (TASK-063) — registered statically like every other
+// route (no lazy routes in this router). The page itself renders a 404-clone
+// for non-superusers; the real gate is `current_superuser` on the server.
+const adminMetricsRoute = createRoute({
+  getParentRoute: () => protectedContentRoute,
+  path: paths.admin.metrics,
+  component: AdminMetricsPage,
 });
 
 const accountSettingsRoute = createRoute({
@@ -181,6 +191,7 @@ const routeTree = rootRoute.addChildren([
   protectedLayoutRoute.addChildren([
     protectedContentRoute.addChildren([
       indexRoute,
+      adminMetricsRoute,
       accountSettingsRoute,
       accountInviteRoute,
       billingRoute,

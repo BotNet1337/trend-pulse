@@ -1287,6 +1287,8 @@ export interface components {
             email: string;
             /** Id */
             id: number;
+            /** Is Superuser */
+            is_superuser: boolean;
             /** Is Verified */
             is_verified: boolean;
             /** Plan */
