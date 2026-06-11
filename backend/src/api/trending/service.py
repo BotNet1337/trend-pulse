@@ -95,6 +95,7 @@ def get_trending(
         select(
             Cluster.topic,
             Score.viral_score,
+            Score.channels_count,
             Cluster.first_seen,
         )
         .join(Score, (Score.cluster_id == Cluster.id) & (Score.user_id == Cluster.user_id))
@@ -111,17 +112,14 @@ def get_trending(
     # topic is sanitized via _sanitize_topic_label() — clusters.topic may contain
     # raw post text (pipeline cluster.py: post.text[:255]); we strip URLs/@-handles
     # before returning to callers (AC5, compliance §7).
-    # channels_count is not persisted separately in the Score model; we default
-    # to 1 as a safe placeholder — the scorer writes velocity/engagement/cross_channel
-    # but not channels_count directly. To expose a real count, the scorer would need
-    # to persist it; for now we expose the cross_channel component (0-1) as a proxy
-    # count by using a value of 1 (minimal safe default, honest aggregate).
-    # TODO: when scorer persists channels_count per cluster, join it here.
+    # channels_count is the real per-cluster unique-channel count persisted by the
+    # scorer (scores.channels_count, TASK-066) — an aggregate number only, no
+    # channel ids/handles (compliance §7).
     items = [
         TrendingItem(
             topic=_sanitize_topic_label(row.topic),
             viral_score=row.viral_score,
-            channels_count=1,
+            channels_count=row.channels_count,
             first_seen=row.first_seen,
         )
         for row in rows

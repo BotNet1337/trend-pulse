@@ -333,3 +333,74 @@ def test_persist_score_upsert_no_growth(db_session: Session) -> None:
     assert count == 1, (
         f"Expected 1 Score row after two ticks (upsert), got {count} (insert-each-tick bug)"
     )
+
+
+def test_persist_score_channels_count_real_and_upsert_updates(db_session: Session) -> None:
+    """TASK-066 AC1: scores.channels_count carries the real unique-channel count.
+
+    Given a cluster with posts from 3 distinct channels, a scorer tick persists
+    channels_count == 3 in the Score row. After a post from a 4th channel joins
+    the cluster, the next tick's upsert updates the same row to 4.
+    """
+    from scorer.tasks import score_recent_clusters
+    from storage.models import Score
+
+    user = _seed_user(db_session, "chcount@example.com")
+    channels = [_seed_channel(db_session, f"@chcount{i}") for i in range(4)]
+    for ch in channels:
+        db_session.add(
+            Watchlist(user_id=user.id, channel_id=ch.id, topic="crypto", threshold=0.0)
+        )
+    cluster = _seed_cluster(db_session, user_id=user.id, topic="crypto")
+    # Posts from 3 distinct channels.
+    for i, ch in enumerate(channels[:3]):
+        _seed_post(
+            db_session,
+            user_id=user.id,
+            channel_id=ch.id,
+            external_id=f"cc{i}",
+            views=1000,
+            forwards=50,
+            reactions=100,
+            minutes_ago=30 - i * 5,
+            cluster_id=cluster.id,
+        )
+    db_session.commit()
+
+    score_recent_clusters()
+
+    db_session.expire_all()
+    row = (
+        db_session.query(Score)
+        .filter(Score.user_id == user.id, Score.cluster_id == cluster.id)
+        .one()
+    )
+    assert row.channels_count == 3, (
+        f"Expected channels_count == 3 (real unique channels), got {row.channels_count}"
+    )
+
+    # A 4th channel joins the cluster → upsert must update the counter in place.
+    _seed_post(
+        db_session,
+        user_id=user.id,
+        channel_id=channels[3].id,
+        external_id="cc3",
+        views=500,
+        forwards=20,
+        reactions=40,
+        minutes_ago=2,
+        cluster_id=cluster.id,
+    )
+    db_session.commit()
+
+    score_recent_clusters()
+
+    db_session.expire_all()
+    row = (
+        db_session.query(Score)
+        .filter(Score.user_id == user.id, Score.cluster_id == cluster.id)
+        .one()
+    )
+    assert row.channels_count == 4, (
+        f"Expected upsert to update channels_count to 4, got {row.channels_count}"
+    )

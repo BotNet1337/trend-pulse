@@ -77,7 +77,9 @@ class ShowcaseCase(Base):
     # First detection timestamp (cluster.first_seen at fixation).
     first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
-    # Number of channels contributing. MVP = 1; TODO: persist real count in scorer.
+    # Number of channels contributing — snapshot of scores.channels_count at
+    # fixation time (real count, TASK-066). default=1 stays as a safe fallback
+    # for rows created without an explicit value.
     channels_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
     # Operator-filled: when this topic appeared in mainstream media.
