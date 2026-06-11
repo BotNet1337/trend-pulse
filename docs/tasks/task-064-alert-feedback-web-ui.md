@@ -1,12 +1,12 @@
 ---
 id: TASK-064
 title: Фидбек 👍/👎 в вебе — кнопки на детальной странице алерта + optimistic update
-status: planned            # planned → in-progress → review → done
+status: review        # planned → in-progress → review → done
 owner: frontend
 created: 2026-06-11
 updated: 2026-06-11
 baseline_commit: "c390c4c"
-branch: ""
+branch: "task/064-alert-feedback-web-ui"
 tags: [frontend, alerts, feedback, spa, backend-extension]
 ---
 
@@ -77,6 +77,11 @@ optimistic-update паттерна в кодовой базе ещё нет — 
   SPA? → A: нет → Decision: один юзер физически не делает 30 тапов/мин; 429
   обрабатываем как обычную ошибку (rollback + сообщение). Лимит не трогаем.
 - Q: deps 042/016 — в main? → A: да (волна E смержена, PR #52-63); блокеров нет.
+- Q: HTML-страницы `/feedback/{token}` на русском («Спасибо») — переводить на EN
+  (продукт EN-only)? → A: вне Scope — `backend/src/api/feedback/router.py` в
+  Do-NOT-touch списке этого таска → Decision: не трогаем здесь; EN-перевод HTML —
+  отдельный микро-таск (см. Details). SPA тело ответа игнорирует (важен только
+  статус), так что веб-флоу это не затрагивает.
 
 ## Scope
 
@@ -208,17 +213,17 @@ optimistic-update паттерна в кодовой базе ещё нет — 
 
 ## Checkpoints
 
-current_step: 3
-baseline_commit: "c390c4c"
-branch: ""
+current_step: 7
+baseline_commit: "a6b0594"
+branch: "task/064-alert-feedback-web-ui"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + runtime + real behavior)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (REQUIRED — feedback-токены в API-ответе)
-- [ ] 6 ship (confirm plan done → PR(s))
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + runtime + real behavior)
+- [x] 5 review (auto, adversarial) — pass, 0 CRITICAL/HIGH, 3 LOW (см. Details)
+- [x] 5.5 security (REQUIRED — feedback-токены в API-ответе) — approve, 0 findings
+- [x] 6 ship (confirm plan done → PR(s))
 - [ ] 7 learnings (auto)
 debug_runs: []
 
@@ -228,3 +233,48 @@ debug_runs: []
 переиспользовать token-write-path вместо нового POST-эндпоинта; backend-расширение
 ограничено тремя additive-полями detail-ответа. Первый optimistic-update паттерн
 в SPA — задокументировать в learnings как эталон.)
+
+(do/verify 2026-06-11, ветка task/064-alert-feedback-web-ui от a6b0594:
+- backend: `_VERDICT_INT_TO_STR`, `_current_verdict`, `_mint_feedback_tokens`
+  (graceful degradation: пустой jwt_secret / падение минта → (None, None) +
+  warning-лог без токена), проводка только в `get_alert`; router не менялся.
+- frontend: `sendFeedback` (GET /feedback/{token}, тело-HTML игнорируется),
+  `feedbackMutationOptions` вынесен из `useSendFeedback` для тестируемости без
+  React-mount (в проекте нет @testing-library/react — конвенция соседних спеков);
+  компонент `AlertFeedbackButtons` в detail.tsx (aria-pressed, min-h-11/min-w-11
+  ≥44px, role="alert" EN-ошибка, скрыт при null-токенах).
+- integration: в `client`-фикстуре test_alerts_api.py добавлен override
+  `feedback_get_db_session` → общая committing-сессия, иначе write-path не видит
+  незакоммиченные фикстуры (у него своя session-зависимость с commit()).
+- e2e: сценарий зафиксирован как test.skip + ручной G2-runbook — в e2e нет
+  сидинга delivered-алертов (та же констатация, что в существующем alerts.spec).
+- verify G2: ruff/ruff-format/mypy зелёные; backend unit 614 passed (5 errors —
+  предсуществующие integration-marked тесты TASK-043 в tests/unit, требуют
+  compose-host `postgres`, к таску отношения не имеют); integration
+  test_alerts_api+test_feedback_api 27/27 (4 новых TASK-064, 8 старых TASK-042 —
+  AC5); vitest 228 passed (23 файла, в т.ч. 8 новых); eslint/tsc clean;
+  gen-openapi/gen-types идемпотентны (drift-check пройдёт после коммита дампа).
+  Real-behavior round-trip покрыт integration-тестом через TestClient на живом
+  Postgres 15432 (tp064-pg): detail → token → GET /feedback/{token_up} → 200 →
+  detail feedback="up" → token_down → feedback="down". Ручной тап на полном
+  стеке (make up недоступен) — owner-шаг AC6.)
+
+(review 2026-06-11, adversarial, свежий контекст: re-verify зелёный — ruff/
+ruff-format/mypy clean, backend unit 614 passed, vitest 228 passed (23 файла),
+eslint/tsc clean, `make gen-openapi gen-types` идемпотентен (diff не растёт —
+дамп и типы от регена, не от руки). Дифф пройден по трём линзам против
+Scope/AC/CONVENTIONS. CRITICAL/HIGH: нет. LOW (не блокируют, фиксация):
+- L1 scope: `frontend/src/features/alerts/index.ts` не объявлен в Touch ONLY —
+  barrel re-export новых символов, обязательная проводка, additive.
+- L2 тесты: render-decision блок в `alert-feedback.spec.tsx` проверяет локальные
+  pure-копии логики (shouldRenderFeedback/isUpPressed), а не JSX компонента —
+  следствие отсутствия @testing-library/react (конвенция соседних спеков);
+  JSX-регрессию словит только manual G2/e2e. Optimistic/rollback при этом
+  тестируется на РЕАЛЬНОМ `feedbackMutationOptions` через MutationObserver.
+- L3 типизация: `AlertRead.feedback: str | None` — свободная строка, не
+  Literal["up","down"] (так в Scope); потребитель сравнивает `=== 'up'/'down'`,
+  неизвестное значение деградирует в «нет подсветки» — безопасно.
+Инварианты подтверждены: единый write-path (feedback/router.py не тронут),
+токены только в detail tenant-scoped владельцу (404 на чужой id — integration),
+list не минтит (unit + integration AC4), onSettled→invalidate сходимость кэша,
+TTL — существующий `feedback_token_ttl_seconds`, токены не логируются.)
