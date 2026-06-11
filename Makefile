@@ -39,7 +39,7 @@ PROD_INVENTORY := $(ANSIBLE_DIR)/inventory/prod.yml
 .PHONY: help up dev-up dev-infra-up down build logs logs-once ps restart sh migrate \
         ansible-unpack tf-validate ansible-lint ansible-check \
         deploy smoke \
-        lint fmt typecheck test test-cov test-integration ci ci-fast \
+        lint fmt typecheck test test-cov test-integration test-integration-smoke ci ci-fast \
         gen-openapi gen-types openapi-drift-check \
         backup backup-restore-check \
         showcase-init case-mainstream referral-paid superuser-grant
@@ -207,6 +207,11 @@ test:
 
 test-integration:
 	$(UV) pytest -m integration
+
+# Contract-smoke subset for PR CI (TASK-062): route/versioning drift detectors
+# only. Full `-m integration` suite still runs on push to main (main-integration).
+test-integration-smoke:
+	$(UV) pytest -m integration tests/integration/test_api_versioning.py tests/integration/test_ops_business_metrics.py
 
 test-cov:
 	$(UV) pytest -m 'not integration' --cov

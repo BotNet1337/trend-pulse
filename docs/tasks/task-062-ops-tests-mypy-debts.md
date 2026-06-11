@@ -1,12 +1,12 @@
 ---
 id: TASK-062
 title: Долги TASK-051 — ops-тесты /v1 + showcase mypy (верификация) + integration-smoke на PR CI
-status: planned        # planned → in-progress → review → done
+status: review         # planned → in-progress → review → done
 owner: backend
 created: 2026-06-11
 updated: 2026-06-11
 baseline_commit: "c390c4c"
-branch: ""
+branch: "task/062-ops-tests-mypy-debts"
 tags: [debt, ci, tests, mypy, ops]
 ---
 
@@ -81,14 +81,14 @@ push в main (`.github/workflows/main-integration.yml`), а PR CI = `ci-fast` = 
 
 ## Acceptance Criteria
 
-- [ ] **AC1 — долг (a) подтверждён закрытым.** Given baseline `c390c4c` и живой
+- [x] **AC1 — долг (a) подтверждён закрытым.** Given baseline `c390c4c` и живой
   Postgres When `uv run pytest -m integration tests/integration/test_ops_business_metrics.py`
   Then все тесты (auth-matrix 401/403/200, seeded numbers, funnel) зелёные —
   вывод прогона зафиксирован в Details.
-- [ ] **AC2 — долг (b) подтверждён закрытым.** Given baseline When
+- [x] **AC2 — долг (b) подтверждён закрытым.** Given baseline When
   `make typecheck` (mypy strict, `showcase` входит в packages — `pyproject.toml:98`)
   Then 0 ошибок по `src/showcase/`.
-- [ ] **AC3 — smoke ловит дрейф.** Given ветка, где ops-роут уезжает из-под `/v1`
+- [x] **AC3 — smoke ловит дрейф.** Given ветка, где ops-роут уезжает из-под `/v1`
   (локальная проверка-симуляция: временно снять `v1_router.include_router(ops_business_router)`)
   When `make test-integration-smoke` Then прогон красный; после отката — зелёный.
 - [ ] **AC4 — PR CI расширен.** Given открытый PR When отрабатывает `pr-checks`
@@ -137,14 +137,14 @@ push в main (`.github/workflows/main-integration.yml`), а PR CI = `ci-fast` = 
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
+current_step: 5
 baseline_commit: "c390c4c"
-branch: ""
-lock: ""
+branch: "task/062-ops-tests-mypy-debts"
+lock: "next-executor-2026-06-11-task062"
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + runtime + real behavior)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + runtime + real behavior)
 - [ ] 5 review (auto, adversarial)
 - [ ] 5.5 security (if touches auth/input/secrets/OAuth)
 - [ ] 6 ship (confirm plan done → PR(s))
@@ -157,3 +157,22 @@ debug_runs: []
 и (b) showcase mypy уже закрыты PR #70 `e9070d3` — задача честно сужена до
 верификации + закрытия корневой причины: PR CI не гоняет integration, дрейф
 контракта виден только на main. Smoke из 2 контрактных файлов — минимальный дифф.)
+
+(do+verify 2026-06-11, ветка task/062, от main=5fc442c):
+- do: `Makefile` — таргет `test-integration-smoke` (+ .PHONY); `pr-checks.yml` —
+  job `integration-smoke` (pgvector:pg16 + redis:7 service-контейнеры, env-блок
+  идентичен `main-integration.yml`, фиктивные CI-секреты `JWT_SECRET: ci` и т.п.).
+- AC1 ✓: хост без `make up` (bridge-подсети исчерпаны), socat tp-pg-fwd отсутствовал →
+  одноразовый контейнер `tp-pg-task062` (pgvector/pgvector:pg16, default bridge,
+  localhost:15432, user/pass/db=trendpulse). `make test-integration-smoke` →
+  **19 passed** за 21.5s (test_ops_business_metrics: auth-matrix 401/403/200,
+  no-per-user-identifiers, seeded MRR/планы/avg-check, funnel; + test_api_versioning).
+- AC2 ✓: `make typecheck` → «Success: no issues found in 167 source files»
+  (showcase в `[tool.mypy] packages`, pyproject.toml:98).
+- AC3 ✓: закомментирован `v1_router.include_router(ops_business_router)`
+  (api/main.py:357) → `make test-integration-smoke` → **6 failed, 13 passed**,
+  make exit≠0; после `git checkout` отката — снова **19 passed**.
+- YAML pr-checks.yml валиден, jobs: backend, integration-smoke, openapi-contract,
+  frontend, landing, templates, dep-scan (существующие не тронуты — инвариант).
+- AC4 — self-test job на самом ship-PR (после push; required-статус job настраивает
+  owner в branch protection, если required-набор задан явным списком).
