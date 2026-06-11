@@ -29,7 +29,7 @@
 | [E1](../product/epics/epic-e1-first-value.md) | Первая польза за 30 секунд: паки, instant value, free-delay | 038–040 — **done** | done (2026-06-10) |
 | [E2](../product/epics/epic-e2-signal-quality.md) | Качество сигнала: историч. baseline, 👍/👎, адаптивный порог | 041–043 — **done** | done (2026-06-10/11) |
 | [E3](../product/epics/epic-e3-showcase-channel.md) | Витрина-канал: авто-постинг, proof-of-speed, рефералка | 044–046 — **done** | done (2026-06-11) |
-| [E4](../product/epics/epic-e4-frictionless-money.md) | Деньги без трения: год/квартал, one-click renewal, grace | 047–048 | после E1–E3 |
+| [E4](../product/epics/epic-e4-frictionless-money.md) | Деньги без трения: год/квартал, one-click renewal, grace | 047–048 — **planned** (доки 2026-06-11) | сейчас (E1–E3 done) |
 | [E5](../product/epics/epic-e5-pricing-packaging.md) | Цены и упаковка: Pro $29 / Trader $99, Free=воронка | 049 (+030) — **done** | done (2026-06-11) |
 | [E6](../product/epics/epic-e6-business-metrics.md) | Бизнес-метрики: воронка, конверсия, MRR-дашборд | 050 — **done**; 051 in-progress | сейчас |
 | [E7](../product/epics/epic-e7-cost-and-scale.md) | Масштаб: глобальный pipeline, событийный скоринг, fallback-источник | 052–055 | после E6 |
@@ -38,6 +38,25 @@
 **Критический путь до первого доллара:**
 056 (Hetzner-бакет) → 034 (бэкапы) → 038 (packs) → 039 (instant value) → 040 (free-delay) → 042 (👍/👎) → 044 (витрина) → 049 (цены).
 E0–E3 параллелятся; включать платное продвижение раньше E1–E3 — бессмысленно.
+
+## Волна F — Activation & polish (gap-анализ 2026-06-11)
+
+Код волны E готов, но не активирован: фичи без UI, growth-механики без живых каналов,
+ops-гигиена без ротации логов. Волна F закрывает «последний сантиметр» — доки TASK-061..073
+(все planned, см. [tasks-index](../tasks/tasks-index.md)):
+
+| Поток | Задачи | Суть |
+|-------|--------|------|
+| Деньги (E4) | 047, 048 | год/квартал −10/−20%, one-click renewal, grace 72h, partially_paid-письмо |
+| Долги/качество | 062, 066 | CI-гейт против route-дрейфа; честный channels_count в trending/cases |
+| UI-хвосты SPA | 063, 064, 065, 072 | admin-метрики, 👍/👎 в вебе, API-ключи, EN-унификация |
+| Лендинг/маркетинг-код | 067, 068, 071 | proof-of-speed кейсы, Plausible, refund policy + FAQ |
+| Lifecycle-письма | 069 | welcome, weekly digest, win-back + unsubscribe |
+| Активация роста | 070, 073 | showcase-канал live, X + блог + каталоги + closed-alpha |
+| Ops-гигиена | 061 | log-rotation, restore-check cron, host-алерты, fail2ban |
+
+Порядок: 062/061/066 — сразу; 047/048 + UI-хвосты — параллельно; 067→070→073 — цепочка
+активации (требует live-прод 057). E7 (052–055) и E8 (031) остаются за триггерами.
 
 ## Хвост Epic D
 
