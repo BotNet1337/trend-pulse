@@ -199,14 +199,14 @@ Trader») → `/billing`. DoD = AC + vitest/e2e зелёные.
 
 ## Checkpoints
 
-current_step: 3
+current_step: 5
 baseline_commit: "c390c4c"
-branch: ""
-lock: ""
+branch: "task/065-api-keys-ui"
+lock: "fable-2026-06-11-task065"
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + runtime + real behavior)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — vitest 220/220, eslint, tsc -b, vite build зелёные; e2e + живой цикл ключа — CI/owner, см. Details)
 - [ ] 5 review (auto, adversarial)
 - [ ] 5.5 security (REQUIRED — plaintext-секрет в UI)
 - [ ] 6 ship (confirm plan done → PR(s))
@@ -219,3 +219,21 @@ debug_runs: []
 TASK-049). Backend-контракт TASK-028 заморожен и уже в типах; весь diff —
 изолированный feature-модуль + одна секция в settings. Plaintext-дисциплина —
 центральный инвариант ревью.)
+
+(do/verify 2026-06-11, ветка `task/065-api-keys-ui`):
+- @testing-library/react в проекте не установлен (паттерн: unit = чистые
+  функции, node env) → «рендер-тесты секции» из Test plan реализованы как
+  (а) unit на чистые хелперы (`lib.ts`: validateApiKeyName/isApiKeyRevoked,
+  error-message) + мок apiClient для api-слоя, (б) e2e `api-keys.spec.ts`
+  (CTA-ветка Free, серверный 403, изоляция 5xx). Консервативный дефолт —
+  без новых dev-зависимостей.
+- Plaintext-инвариант: `ApiKeyCreated` идёт из `mutateAsync` → локальный
+  state модалки, сразу после — `createMutation.reset()` (секрет не живёт в
+  mutation state); list-кэш — только `ApiKeyRead`.
+- e2e Trader-цикла (выпуск→copy→revoke) нет в автотестах: e2e-окружение
+  регистрирует только Free (нет paid-сидинга) — зафиксировано в спеке,
+  ручная G2-проверка на стеке = owner-шаг (psql UPDATE plan='team' +
+  активная Subscription, гочча TASK-049).
+- verify: vitest 220/220, eslint чисто, `tsc -b` чисто, `vite build` ок;
+  `make up`/локальный стек недоступны (bridge-подсети исчерпаны) → runtime
+  e2e уйдёт в CI на PR.
