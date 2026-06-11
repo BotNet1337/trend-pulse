@@ -1,0 +1,58 @@
+# release/docker-compose.yml — top assembly for the PRODUCTION Docker Swarm stack.
+#
+# Assembled from per-service + provisioning fragments via `include:`. Networks are
+# declared here (and re-declared in each fragment for standalone compose-config
+# validity); see docs/architecture/network-design.md.
+#
+# IMPORTANT — this file is NEVER passed directly to `docker stack deploy`.
+# `stack deploy` ignores include:/env_file:/build:/depends_on.condition. The bundle
+# is deployed ONLY via the Makefile `render` target, which runs:
+#   docker compose ... config | <strip top-level name:> | docker stack deploy -c - ...
+# `compose config` expands include:, inlines env_file: into environment:, and
+# interpolates ${...} from --env-file. See Makefile + README.md.
+#
+# Network segmentation (overlay for swarm; attachable so one-off exec utilities
+# and `docker run` helpers can join):
+#   edge        — public (nginx only publishes 80/443)
+#   internal    — nginx ↔ api ↔ frontend ↔ templates (internal:true, no egress)
+#   postgres_net— postgres + api/worker/beat + provisioners (internal:true)
+#   redis_net   — redis + api/worker/beat (internal:true)
+#   egress      — worker → Telegram/MTProto (NOT internal:true)
+
+include:
+  - compose/postgres.yml
+  - compose/redis.yml
+  - provisioning/pg_vector_provisioner/docker-compose.yml
+  - provisioning/migration_runner/docker-compose.yml
+  - compose/api.yml
+  - compose/worker.yml
+  - compose/beat.yml
+  - compose/frontend.yml
+  - compose/templates.yml
+  - compose/nginx.yml
+  # NOTE: compose/pg-backup.yml is intentionally NOT included here. Its services
+  # are one-shot backup/restore runners, not long-lived stack services — the
+  # Makefile `backup-now`/`restore-check` targets invoke that fragment standalone
+  # via `docker compose run` (it joins the live trendpulse_postgres_net overlay).
+
+networks:
+  edge:
+    driver: overlay
+    attachable: true
+  internal:
+    driver: overlay
+    attachable: true
+    internal: true
+  postgres_net:
+    driver: overlay
+    attachable: true
+    internal: true
+  redis_net:
+    driver: overlay
+    attachable: true
+    internal: true
+  # Egress for the Celery worker ONLY (collector → Telegram/MTProto needs the
+  # internet). NOT internal:true. api/postgres/redis stay isolated.
+  egress:
+    driver: overlay
+    attachable: true

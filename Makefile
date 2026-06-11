@@ -33,9 +33,12 @@ GEN_DUMP_ENV := JWT_SECRET=dump OAUTH_STATE_SECRET=dump GOOGLE_CLIENT_ID=dump GO
 # .vault-pass (gitignored dev vault password) resolve relative to it.
 ANSIBLE_DIR := ops/ansible
 TF_DIR      := ops/terraform
+# Prod inventory (gitignored; owner copies it from inventory/prod.example.yml).
+PROD_INVENTORY := $(ANSIBLE_DIR)/inventory/prod.yml
 
 .PHONY: help up dev-up dev-infra-up down build logs logs-once ps restart sh migrate \
         ansible-unpack tf-validate ansible-lint ansible-check \
+        deploy smoke \
         lint fmt typecheck test test-cov test-integration ci ci-fast \
         gen-openapi gen-types openapi-drift-check \
         backup backup-restore-check \
@@ -64,6 +67,9 @@ help:
 	@echo "    tf-validate      terraform init -backend=false + validate (ops/terraform/environments/{org,prod})"
 	@echo "    ansible-lint     ansible-lint over ops/ansible"
 	@echo "    ansible-check    ansible-playbook --syntax-check + --check (dry-run)"
+	@echo "  Prod deploy (TASK-057 — needs ops/ansible/inventory/prod.yml):"
+	@echo "    deploy           provision→TLS→swarm stack→migrations→showcase-init→smoke (one command)"
+	@echo "    smoke HOST=…     run the post-deploy smoke scenario against HOST"
 	@echo "  Dev / CI (uv run in backend/):"
 	@echo "    fmt              ruff format"
 	@echo "    lint             ruff check"
@@ -165,6 +171,26 @@ ansible-lint:
 ansible-check:
 	cd $(ANSIBLE_DIR) && ANSIBLE_CONFIG=ansible.cfg ansible-playbook site.yml --syntax-check --vault-password-file .vault-pass
 	cd $(ANSIBLE_DIR) && ANSIBLE_CONFIG=ansible.cfg ansible-playbook playbooks/unpack-env.yml --check --vault-password-file .vault-pass
+
+# --- Prod deploy (TASK-057) ---
+# One command: provision (Docker + swarm init + ufw) → deploy the release/ bundle
+# as a swarm stack → TLS → migrations (swarm jobs) → showcase-init → smoke.
+# Same ansible path the tag-CD workflow runs (Invariant: one logic, two triggers).
+# Owner entry point = a single file: ops/ansible/inventory/prod.yml (copy from the
+# committed prod.example.yml). The guard below fails early with that hint.
+deploy:
+	@if [ ! -f "$(PROD_INVENTORY)" ]; then \
+		echo "Нет $(PROD_INVENTORY)."; \
+		echo "Скопируй prod.example.yml и впиши IP/домен/ssh-ключ:"; \
+		echo "  cp $(ANSIBLE_DIR)/inventory/prod.example.yml $(PROD_INVENTORY)"; \
+		exit 1; \
+	fi
+	cd $(ANSIBLE_DIR) && ANSIBLE_HOST_KEY_CHECKING=True ANSIBLE_CONFIG=ansible.cfg ansible-playbook site.yml -l prod -i inventory/prod.yml --vault-password-file .vault-pass
+
+# Run the post-deploy smoke scenario against a host (register→login→watchlist→
+# /ready→/trending). Usage: make smoke HOST=https://foresignal.biz
+smoke:
+	HOST='$(HOST)' bash release/scripts/smoke.sh
 
 # --- Dev / CI ---
 fmt:

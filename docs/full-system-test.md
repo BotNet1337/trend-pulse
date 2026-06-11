@@ -280,14 +280,150 @@ make tf-validate          # terraform validate (офлайн, без кред)
 make ansible-lint         # ansible-lint ops/ansible
 make ansible-check        # ansible-playbook --syntax-check / --check
 ```
-Полный live-деплой (вне CI — нужен реальный DigitalOcean-токен + домен + VPS):
+Офлайн-валидация прод-бандла (TASK-057, без VPS):
 ```sh
-# terraform: настроить ops/terraform/terraform.tfvars (из *.example), TF_VAR_* / -backend-config с кредами
-terraform -chdir=ops/terraform init && terraform -chdir=ops/terraform plan   # затем apply вручную
-# ansible: реальный inventory prod-хоста + vault с реальными секретами
-ansible-playbook ops/ansible/site.yml          # provision + deploy (clone source + version.env + compose up)
+make -C release validate          # env-файлы есть, docker жив, swarm active (падает с подсказкой)
+make -C release render | docker compose -f - config -q   # рендер парсится (метод валидации; --dry-run у stack deploy нет)
+make deploy                       # без inventory/prod.yml → падает с «скопируй prod.example.yml»
 ```
-Firewall: только 443 (+80 redirect) + SSH-allowlist. `group_vars/prod.yml` ставит `auth_cookie_secure=true`.
+Полный live-деплой (вне CI — нужен реальный VPS + домен + заполненный vault):
+```sh
+# 1. terraform создаёт VPS (ops/terraform/environments/prod), отдаёт server_ip
+# 2. впиши IP/домен/ssh-ключ в inventory:
+cp ops/ansible/inventory/prod.example.yml ops/ansible/inventory/prod.yml   # → отредактировать
+# 3. одна команда: provision (Docker + swarm init + ufw) → release-бандл через
+#    docker stack deploy → миграции (swarm jobs) → TLS (certbot) → showcase-init → smoke
+make deploy                       # = ansible-playbook site.yml -l prod -i inventory/prod.yml
+# CD: то же самое по git-тегу — git tag vX.Y.Z && git push origin vX.Y.Z → deploy-tag.yml
+```
+Прод = swarm-стек `trendpulse`: `docker stack services trendpulse` (replicated running
++ jobs Complete), `docker stack ps trendpulse` (образы `:vX.Y.Z`). Повторный
+`make deploy` идемпотентен (декларативная сходимость, не re-up); rolling-update с
+автооткатом (`update_config: order: start-first` / `failure_action: rollback`).
+Firewall: только 22/80/443 (ufw). `group_vars/prod.yml` ставит `auth_cookie_secure=true`,
+`swagger_enable=false`. Smoke: `make smoke HOST=https://foresignal.biz` (или последняя
+таска playbook — фейл = фейл деплоя).
+
+---
+
+### C1. Внешний uptime-мониторинг (TASK-060)
+
+> **Предусловие: TASK-057 (живой домен foresignal.biz с HTTPS) должен быть выполнен.**
+> Создавать монитор до деплоя смысла нет — будет красным с первого дня.
+> Email-routing (Terraform) применяется сразу, независимо от 057.
+
+#### C1.1 Email Routing — применить Terraform
+
+```sh
+# 1. Заполнить ops/terraform/environments/org/terraform.tfvars (из *.example):
+#    email_routes = {
+#      support  = "owner@your-real-mailbox.com"
+#      privacy  = "owner@your-real-mailbox.com"
+#      abuse    = "owner@your-real-mailbox.com"
+#      security = "owner@your-real-mailbox.com"
+#    }
+#    email_catch_all_destination = "owner@your-real-mailbox.com"
+#    cloudflare_api_token  = "<token>"
+#    cloudflare_account_id = "<account_id>"
+#
+# 2. Применить:
+export PATH=/opt/homebrew/bin:$PATH
+cd ops/terraform/environments/org
+terraform init
+terraform plan   # убедиться: только additive (add), без destroy/change в существующих ресурсах
+terraform apply -target=module.email_routing
+
+# 3. После apply — подтвердить destination-адрес:
+#    Cloudflare Email Routing требует верификацию destination-адреса по email.
+#    Откройте почту владельца → найдите письмо от Cloudflare → нажмите "Verify email address".
+#    Без верификации routing не работает.
+
+# 4. Проверить идемпотентность:
+terraform plan   # Ожидаемо: "No changes."
+```
+
+#### C1.2 Создать монитор UptimeRobot
+
+> Выполняется один раз после TASK-057. Описание сохраняется как runbook для воспроизведения.
+
+```
+1. Зарегистрироваться / войти: https://uptimerobot.com
+2. Dashboard → "+ Add New Monitor"
+3. Monitor Type: HTTP(s)
+4. Friendly Name: foresignal.biz /api/ready
+5. URL: https://foresignal.biz/api/ready
+   (nginx strips /api/ → backend видит GET /ready; ответ 200 = all deps ok, 503 = degraded)
+6. Monitoring Interval: 5 minutes (free tier)
+7. Alert Contacts: добавить email владельца + Telegram (см. C1.3)
+8. Save → монитор должен перейти в "Up" (зелёный) в течение 5 мин.
+```
+
+#### C1.3 Alert contacts — email + Telegram
+
+```
+Email:
+  Dashboard → "Alert Contacts" → "+ Add Alert Contact"
+  → Type: E-mail → введите email владельца → Save → подтвердить письмо.
+
+Telegram:
+  Dashboard → "Alert Contacts" → "+ Add Alert Contact"
+  → Type: Telegram
+  → Следовать инструкции: найти @UptimeRobot в Telegram → /start → получить chat_id
+  → Ввести chat_id → Save.
+```
+
+#### C1.4 Тест down/recovery — AC1/AC2
+
+> Выполняется в окне деплоя (допустим кратковременный down).
+
+```sh
+# Контролируемый останов стека на прод-сервере:
+ssh deploy@foresignal.biz "cd /app && make -C release down"
+
+# Ожидаемо в течение ≤10 мин: алерт "DOWN" в Telegram и на email.
+
+# Поднять обратно:
+ssh deploy@foresignal.biz "cd /app && make -C release up"
+
+# Ожидаемо: алерт "UP (Recovery)" в Telegram и на email.
+```
+
+**AC2 — 503 (деградация зависимости):**
+```sh
+# Остановить Redis на сервере (контейнер):
+ssh deploy@foresignal.biz "docker stop \$(docker ps -qf name=redis)"
+
+# GET /api/ready → 503 → монитор считает down → алерт.
+# Восстановить:
+ssh deploy@foresignal.biz "docker start \$(docker ps -aqf name=redis)"
+```
+
+#### C1.5 Тест email-routing — AC3
+
+```sh
+# Отправить письмо с внешнего ящика (не owner@) на каждый адрес:
+#   support@foresignal.biz
+#   privacy@foresignal.biz
+#   abuse@foresignal.biz
+#   security@foresignal.biz
+#
+# Ожидаемо: письмо приходит на ящик владельца в течение ≤5 мин.
+# Если письмо не пришло — проверить шаг верификации destination (C1.1 п.3).
+```
+
+#### C1.6 Обновление destination-адреса владельца
+
+Если адрес назначения меняется:
+```sh
+# 1. Обновить ops/terraform/environments/org/terraform.tfvars:
+#    email_routes = { support = "new-owner@mailbox.com", ... }
+#    email_catch_all_destination = "new-owner@mailbox.com"
+# 2. terraform apply -target=module.email_routing  (только email-routing — additive)
+# 3. Подтвердить новый destination-адрес по email от Cloudflare (см. C1.1 п.3).
+```
+
+> **Заметка для TASK-032 (rate-limit):** `/api/ready` должен оставаться вне жёстких rate-limit правил
+> (UptimeRobot шлёт с пула IP; 1 запрос/5 мин — ничтожно против глобального лимита 120/min).
 
 ---
 

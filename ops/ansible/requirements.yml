@@ -6,3 +6,6 @@ collections:
     version: ">=3.0.0"
   - name: ansible.posix
     version: ">=1.5.0"
+  # community.general provides the `ufw` module used by provision.yml.
+  - name: community.general
+    version: ">=8.0.0"

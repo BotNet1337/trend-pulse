@@ -4,6 +4,7 @@ import { useAuth } from "@/app/providers/use-auth"
 import { useCurrentUser } from "@/entities/viewer/model"
 import { type PlanId, PLAN_FREE } from "@/entities/plan"
 import { Button } from "@/shared/components/button"
+import { SUPPORT_EMAIL } from "@/shared/config"
 import { DeliveryConfigForm } from "@/features/delivery-config/ui/delivery-config-form"
 import { useDeliveryConfig, useUpdateDeliveryConfig } from "@/features/delivery-config/model"
 import { DeleteAccountDialog } from "../../delete/ui/delete-account-dialog"
@@ -152,6 +153,24 @@ export const AccountSettingsView: React.FC = () => {
         ) : (
           <div className="py-4 text-sm text-muted-foreground">Loading delivery settings…</div>
         )}
+      </section>
+
+      <section
+        data-testid="account-support"
+        className="rounded-2xl border border-border bg-background p-6"
+      >
+        <header className="mb-3 flex flex-col gap-1">
+          <h3 className="m-0 text-base font-semibold">Help &amp; support</h3>
+        </header>
+        <p className="m-0 text-sm text-muted-foreground">
+          Need help?{" "}
+          <a
+            href={`mailto:${SUPPORT_EMAIL}`}
+            className="text-foreground underline underline-offset-2 hover:no-underline"
+          >
+            {SUPPORT_EMAIL}
+          </a>
+        </p>
       </section>
 
       <section

@@ -1,0 +1,165 @@
+name: Deploy (tag)
+
+# CD by git tag: push an annotated semver tag `vX.Y.Z` (or dispatch one manually)
+# → this workflow runs the SAME ansible path as the local `make deploy`
+# (Invariant: one deploy logic, two triggers — NO deploy logic lives in this YAML,
+# only environment prep: ssh keys, inventory, vault-pass).
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to (re)deploy, e.g. v1.2.3 (manual rollback channel)"
+        required: true
+        type: string
+
+# Least privilege: only read the repo. No job writes contents/packages here.
+permissions:
+  contents: read
+
+# Deploys run strictly serially. cancel-in-progress:false — never abort an
+# in-flight ansible run; a second tag queues behind the first.
+concurrency:
+  group: prod-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy ${{ github.event.inputs.tag || github.ref_name }} to prod
+    runs-on: ubuntu-latest
+    # Scopes the secrets + enables an optional required-reviewer gate before deploy.
+    environment: production
+    env:
+      DEPLOY_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - name: Check out the deploy tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+          fetch-depth: 0
+
+      # --------------------------------------------------------------------
+      # Gate: the tag must point at a commit reachable from main whose
+      # main-integration run is green. Poll up to 20 min (a tag pushed before
+      # main-integration finished is common); then fail with a clear hint.
+      # --------------------------------------------------------------------
+      - name: Gate — tag on a green main commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SHA="$(git rev-parse HEAD)"
+          echo "Deploy tag $DEPLOY_TAG → commit $SHA"
+
+          # 1. The commit must be reachable from origin/main.
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$SHA" origin/main; then
+            echo "::error::Tag $DEPLOY_TAG ($SHA) is NOT on main. Tag a main commit." >&2
+            exit 1
+          fi
+
+          # 2. main-integration on that commit must be green (poll up to 20 min).
+          DEADLINE=$(( $(date +%s) + 1200 ))
+          while :; do
+            # Conclusions of all check runs for the commit (empty if none yet).
+            RUNS="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/check-runs" \
+              --jq '.check_runs[] | select(.name|test("Integration|integration|E2E|e2e")) | .conclusion' \
+              2>/dev/null || true)"
+            if [ -n "$RUNS" ] && ! echo "$RUNS" | grep -qvE '^(success|skipped|neutral)$'; then
+              echo "main-integration is green on $SHA."
+              break
+            fi
+            if echo "$RUNS" | grep -qE '^(failure|cancelled|timed_out|action_required)$'; then
+              echo "::error::main-integration is RED on $SHA. Fix main, retag, or re-dispatch." >&2
+              exit 1
+            fi
+            if [ "$(date +%s)" -ge "$DEADLINE" ]; then
+              echo "::error::Timed out (20m) waiting for main-integration on $SHA. Re-run via workflow_dispatch once green." >&2
+              exit 1
+            fi
+            echo "Waiting for main-integration check-runs on $SHA..."
+            sleep 30
+          done
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Ansible + collections
+        run: |
+          python -m pip install --upgrade pip
+          pip install ansible
+          ansible-galaxy collection install -r ops/ansible/requirements.yml
+
+      # --------------------------------------------------------------------
+      # ssh-agent + strict known_hosts (NOT StrictHostKeyChecking=no). The deploy
+      # key is a dedicated key (revocable), never the owner's personal key.
+      # --------------------------------------------------------------------
+      - name: Start ssh-agent with the deploy key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Pin the VPS host key (strict)
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      # --------------------------------------------------------------------
+      # Render inventory/prod.yml from secrets — same schema as prod.example.yml.
+      # --------------------------------------------------------------------
+      - name: Render prod inventory from secrets
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_DOMAIN: ${{ secrets.PROD_DOMAIN }}
+          LETSENCRYPT_EMAIL: ${{ secrets.LETSENCRYPT_EMAIL }}
+        run: |
+          set -euo pipefail
+          cat > ops/ansible/inventory/prod.yml <<EOF
+          ---
+          all:
+            children:
+              prod:
+                hosts:
+                  trendpulse-prod:
+                    ansible_host: ${PROD_HOST}
+                    ansible_user: deploy
+                vars:
+                  app_version: "${DEPLOY_TAG}"
+                  prod_domain: "${PROD_DOMAIN}"
+                  letsencrypt_email: "${LETSENCRYPT_EMAIL}"
+                  tls_enabled: true
+          EOF
+
+      - name: Write the vault password to a tmpfile
+        env:
+          ANSIBLE_VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "${ANSIBLE_VAULT_PASSWORD}" > "${RUNNER_TEMP}/vault-pass"
+
+      # --------------------------------------------------------------------
+      # The actual deploy — the SAME playbook + the SAME -e app_version that the
+      # local `make deploy` runs. Smoke inside the playbook gates the result.
+      # --------------------------------------------------------------------
+      - name: Deploy
+        working-directory: ops/ansible
+        env:
+          ANSIBLE_CONFIG: ansible.cfg
+          ANSIBLE_HOST_KEY_CHECKING: "True"
+        run: |
+          ansible-playbook site.yml \
+            -l prod \
+            -i inventory/prod.yml \
+            -e app_version="${DEPLOY_TAG}" \
+            --vault-password-file "${RUNNER_TEMP}/vault-pass"
+
+      - name: Scrub the vault password
+        if: always()
+        run: rm -f "${RUNNER_TEMP}/vault-pass"

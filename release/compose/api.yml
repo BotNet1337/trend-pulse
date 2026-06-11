@@ -1,0 +1,71 @@
+# FastAPI service (prod swarm). Builds the shared app image (APP_IMAGE) that
+# worker/beat/migration_runner reuse. NOT in edge and NO published ports —
+# reachable only via nginx (network-design.md §2).
+#
+# Swarm ignores depends_on.condition: api may start before migrations finish.
+# restart_policy.condition: on-failure + the /health healthcheck keep it
+# restarting until the provisioner jobs complete and the DB is ready (Edge case
+# "depends_on не работает"). make deploy-wait gates convergence.
+services:
+  api:
+    image: ${APP_IMAGE}
+    build:
+      context: ../../backend
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION}
+        UV_VERSION: ${UV_VERSION}
+    # --proxy-headers so request.client.host reflects the real client IP from
+    # nginx's X-Forwarded-For (rate-limit IP keying). api is reachable ONLY via
+    # nginx on the internal net → trusting forwarded ips ("*") is safe.
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=*
+    env_file:
+      - ../env/deploy.env
+      - ../env/sensitive.env
+    networks:
+      - internal
+      - postgres_net
+      - redis_net
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import urllib.request,sys;
+          sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+      # Zero-downtime rolling update: bring the new task up healthy BEFORE
+      # stopping the old one; auto-rollback if the new task fails its healthcheck.
+      update_config:
+        order: start-first
+        failure_action: rollback
+        delay: 5s
+        monitor: 30s
+      rollback_config:
+        order: start-first
+      # on-failure: keep restarting until migrations/pgvector jobs converge.
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 0
+
+networks:
+  internal:
+    driver: overlay
+    attachable: true
+    internal: true
+  postgres_net:
+    driver: overlay
+    attachable: true
+    internal: true
+  redis_net:
+    driver: overlay
+    attachable: true
+    internal: true

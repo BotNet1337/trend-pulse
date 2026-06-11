@@ -1,0 +1,17 @@
+---
+# Role: tls — Let's Encrypt cert issuance + auto-renew for the prod nginx service.
+#
+# tls_enabled: master switch. true (default) = issue + serve TLS. Set false in the
+# inventory for a bare-IP smoke run before the domain resolves (the deploy then
+# serves plain HTTP and this whole role is skipped).
+tls_enabled: true
+# Domain to issue the cert for — set from the inventory `prod_domain`.
+tls_domain: "{{ prod_domain | default('') }}"
+# Registration / expiry-notice email.
+tls_email: "{{ letsencrypt_email | default('') }}"
+# Webroot used by certbot for http-01 challenges + nginx renewals. Lives under
+# /etc/letsencrypt so it is already inside the nginx bind-mount (/etc/letsencrypt:ro).
+tls_webroot: /etc/letsencrypt/webroot
+# The swarm service nginx runs as (stack-prefixed). The renew deploy-hook forces a
+# rolling restart so nginx re-reads the renewed cert.
+tls_nginx_service: trendpulse_nginx

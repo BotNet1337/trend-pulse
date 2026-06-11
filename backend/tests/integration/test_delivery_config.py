@@ -78,7 +78,11 @@ def client(db_engine: Engine) -> Iterator[TestClient]:
     app.dependency_overrides[get_async_session] = _async_override
     app.dependency_overrides[app_get_db_session] = _sync_override
     try:
-        with TestClient(app) as test_client:
+        # TASK-032: set a default Origin header so the CSRF/Origin middleware
+        # accepts cookie-auth mutations (PATCH /users/me/delivery-config etc.)
+        # from the test client. http://testserver is in the ALLOWED_ORIGINS env
+        # seeded in conftest.py.
+        with TestClient(app, headers={"Origin": "http://testserver"}) as test_client:
             yield test_client
     finally:
         app.dependency_overrides.pop(get_async_session, None)

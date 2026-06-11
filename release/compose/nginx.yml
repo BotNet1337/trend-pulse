@@ -1,0 +1,63 @@
+# Edge reverse-proxy (prod swarm). The ONLY service that publishes host ports
+# (network-design §1): 80 + 443 in `mode: host` so the real client IP reaches
+# the logs/rate-limiter (ingress mesh would SNAT it to a swarm-internal address).
+#
+# TLS: certbot issues certs on the HOST (ansible role `tls`); /etc/letsencrypt is
+# bind-mounted read-only. The official nginx image runs envsubst over
+# /etc/nginx/templates/*.template → ${NGINX_ENVSUBST_OUTPUT_DIR}, substituting
+# ${DOMAIN} from the environment before nginx starts.
+services:
+  nginx:
+    image: nginx:${NGINX_VERSION}
+    ports:
+      # mode: host — publish directly on the node's interface (real client IPs).
+      - target: 80
+        published: 80
+        mode: host
+      - target: 443
+        published: 443
+        mode: host
+    environment:
+      # Substituted into nginx.conf.template (server_name, ssl_certificate paths).
+      DOMAIN: ${DOMAIN:?DOMAIN is required for the prod nginx TLS config}
+      # Render templates into /etc/nginx (so nginx.conf is the substituted output).
+      NGINX_ENVSUBST_OUTPUT_DIR: /etc/nginx
+      # Only substitute ${DOMAIN}; leave nginx runtime vars ($host, $remote_addr…)
+      # untouched (they are not in the env, so envsubst would blank them otherwise).
+      NGINX_ENVSUBST_FILTER: "DOMAIN"
+    volumes:
+      - ../provisioning/nginx/templates:/etc/nginx/templates:ro
+      # Let's Encrypt live certs from the host (issued by the tls ansible role).
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    networks:
+      - edge
+      - internal
+    deploy:
+      replicas: 1
+      # Pin to the manager node — the cert bind-mount + published host ports live
+      # there (single-node prod; future multi-node keeps the edge on the manager).
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+      update_config:
+        order: start-first
+        failure_action: rollback
+        delay: 5s
+      rollback_config:
+        order: start-first
+      restart_policy:
+        condition: any
+        delay: 5s
+
+networks:
+  edge:
+    driver: overlay
+    attachable: true
+  internal:
+    driver: overlay
+    attachable: true
+    internal: true

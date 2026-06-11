@@ -6,12 +6,15 @@ cloudflare_account_id = "YOUR_ACCOUNT_ID"
 domain = "foresignal.biz"
 
 # Email routing — all addresses forward to your real mailbox
-email_catch_all_destination = "your-email@gmail.com"
-email_dmarc_rua             = "your-email@gmail.com"
+email_catch_all_destination = "owner@example.com"
+email_dmarc_rua             = "owner@example.com"
 email_dmarc_policy          = "none"
 
 email_routes = {
-  support = "your-email@gmail.com"
+  support  = "owner@example.com"
+  privacy  = "owner@example.com"
+  abuse    = "owner@example.com"
+  security = "owner@example.com"
 }
 
 # Resend SMTP (outbound email) — enable later, when SMTP creds are provisioned:

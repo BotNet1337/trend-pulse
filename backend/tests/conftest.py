@@ -25,6 +25,15 @@ os.environ.setdefault("GOOGLE_CLIENT_SECRET", "test-google-client-secret")
 # TestClient talks plain http → a Secure cookie would never be sent back, so the
 # auth flow test uses a non-Secure cookie (mirrors local dev; prod stays True).
 os.environ.setdefault("AUTH_COOKIE_SECURE", "false")
+# TASK-032: allow localhost Origin for CSRF middleware so existing integration tests
+# that send mutations (POST /v1/auth/register, POST /v1/auth/jwt/login) pass without
+# adding an Origin header everywhere. TestClient acts as a browser-like client;
+# login/register are unauthenticated (no session cookie) → CSRF is exempt anyway.
+# This also ensures the CSRF middleware allow-list includes localhost for test runs.
+os.environ.setdefault(
+    "ALLOWED_ORIGINS",
+    "http://localhost,http://localhost:3000,http://localhost:4000,http://testserver",
+)
 
 from config import get_settings
 from storage.models import Base

@@ -22,6 +22,14 @@ development/env/sensitive.env
 # never commit it (avoids two sources of truth). version.env stays committed.
 development/env/deploy.env
 
+# TASK-057: prod release bundle env (rendered by Ansible into release/env/, never
+# committed). Only deployment.example/*.example templates are committed.
+release/env/
+
+# TASK-057: real prod inventory (host IP + ssh key path + domain). Only the
+# committed prod.example.yml template ships; the filled-in prod.yml is private.
+ops/ansible/inventory/prod.yml
+
 # Ansible vault password (dev) — NEVER committed. The vault file itself is
 # committed only in encrypted form.
 ops/ansible/.vault-pass
