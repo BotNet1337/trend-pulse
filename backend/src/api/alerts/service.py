@@ -21,20 +21,37 @@ Cursor format (TASK-020):
 
 import base64
 import json
+import logging
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import literal, select, tuple_
 from sqlalchemy.orm import Session
 
+from alerts.feedback_tokens import VERDICT_DOWN, VERDICT_UP, sign_feedback_token
 from api.alerts.schemas import AlertListResponse, AlertRead
 from billing.plans import PLAN_LIMITS, Plan, Resource
+from config import get_settings
+from storage.models.alert_feedback import VERDICT_DOWN as VERDICT_DOWN_INT
+from storage.models.alert_feedback import VERDICT_UP as VERDICT_UP_INT
+from storage.models.alert_feedback import AlertFeedback
 from storage.models.alerts import Alert
 from storage.models.clusters import Cluster
 from storage.models.users import User
 
+logger = logging.getLogger(__name__)
+
 # Pagination constants (no magic literals, CONVENTIONS).
 DEFAULT_ALERTS_PAGE_SIZE: int = 20
 MAX_ALERTS_PAGE_SIZE: int = 100
+
+# Map the smallint verdict stored in `alert_feedback` to the string verdict
+# exposed in the API (and embedded in feedback tokens). Named constants only —
+# no magic literals (CONVENTIONS). VERDICT_UP/DOWN (int) come from the model;
+# VERDICT_UP/DOWN (str) come from alerts.feedback_tokens.
+_VERDICT_INT_TO_STR: dict[int, str] = {
+    VERDICT_UP_INT: VERDICT_UP,
+    VERDICT_DOWN_INT: VERDICT_DOWN,
+}
 
 # Bounds for a decoded cursor `id`: `alerts.id` is a positive Postgres int8 serial.
 # A crafted cursor carrying a huge/negative int would otherwise reach the DB and
@@ -199,6 +216,51 @@ def list_alerts(
     )
 
 
+def _current_verdict(session: Session, alert_id: int) -> str | None:
+    """Return the caller's current verdict for an alert as "up"/"down", or None.
+
+    Reads `alert_feedback` (one row per alert, UPSERT last-write-wins) and maps
+    the stored smallint to the API string verdict. None when no feedback row
+    exists, or when the stored verdict is unknown (defensive — never raise).
+    """
+    verdict_int = session.execute(
+        select(AlertFeedback.verdict).where(AlertFeedback.alert_id == alert_id)
+    ).scalar_one_or_none()
+    if verdict_int is None:
+        return None
+    return _VERDICT_INT_TO_STR.get(verdict_int)
+
+
+def _mint_feedback_tokens(alert_id: int) -> tuple[str | None, str | None]:
+    """Mint (token_up, token_down) feedback tokens for the web 👍/👎 buttons.
+
+    Graceful degradation (mirrors the Telegram-button path in
+    alerts/formatting.py): if `jwt_secret` is empty or minting raises, return
+    (None, None) so the detail response still succeeds and the buttons are
+    simply hidden client-side. Never propagate a minting failure to the caller.
+    """
+    settings = get_settings()
+    if not settings.jwt_secret:
+        return None, None
+    try:
+        token_up = sign_feedback_token(
+            alert_id=alert_id,
+            verdict=VERDICT_UP,
+            jwt_secret=settings.jwt_secret,
+            ttl_seconds=settings.feedback_token_ttl_seconds,
+        )
+        token_down = sign_feedback_token(
+            alert_id=alert_id,
+            verdict=VERDICT_DOWN,
+            jwt_secret=settings.jwt_secret,
+            ttl_seconds=settings.feedback_token_ttl_seconds,
+        )
+    except Exception:
+        logger.warning("get_alert: feedback token minting failed", exc_info=True)
+        return None, None
+    return token_up, token_down
+
+
 def get_alert(
     session: Session,
     *,
@@ -209,6 +271,11 @@ def get_alert(
 
     Tenant-scoped: filters by (id, user_id) so a foreign alert is indistinguishable
     from a missing one (no existence leak, ADR-002).
+
+    Detail-only feedback fields (TASK-064): the caller's current verdict from
+    `alert_feedback` plus two freshly-minted feedback tokens for the web 👍/👎
+    buttons. Tokens are only minted here (never in the list endpoint, AC4) and
+    only for the alert's owner (tenant-scoped 404 above guards cross-account use).
     """
     stmt = (
         select(Alert, Cluster.topic)
@@ -221,6 +288,8 @@ def get_alert(
     if row is None:
         return None
     alert, topic = row
+    verdict = _current_verdict(session, alert.id)
+    token_up, token_down = _mint_feedback_tokens(alert.id)
     return AlertRead(
         id=alert.id,
         score=alert.score,
@@ -228,4 +297,7 @@ def get_alert(
         first_seen=alert.first_seen,
         channels_count=alert.channels_count,
         delivery_status=alert.delivery_status,
+        feedback=verdict,
+        feedback_token_up=token_up,
+        feedback_token_down=token_down,
     )

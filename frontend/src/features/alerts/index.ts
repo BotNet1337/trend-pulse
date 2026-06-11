@@ -1,2 +1,3 @@
-export { useAlerts, useAlert } from './queries';
-export { listAlerts, getAlert } from './api';
+export { useAlerts, useAlert, useSendFeedback } from './queries';
+export type { FeedbackVerdict, SendFeedbackArgs } from './queries';
+export { listAlerts, getAlert, sendFeedback } from './api';

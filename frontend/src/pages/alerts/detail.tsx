@@ -9,7 +9,8 @@
 
 import React from 'react';
 import { Link, useParams } from '@tanstack/react-router';
-import { useAlert } from '@/features/alerts';
+import { useAlert, useSendFeedback } from '@/features/alerts';
+import type { FeedbackVerdict } from '@/features/alerts';
 import { Button } from '@/shared/components/button';
 import { BRAND_NAME } from '@/shared/config';
 import { useLogout } from '@/features/auth';
@@ -36,6 +37,82 @@ const STATUS_LABELS: Record<string, string> = {
   delivered: 'Delivered',
   failed: 'Failed',
   pending: 'Pending',
+};
+
+// Feedback button copy (EN — all UI strings are English per TASK-064).
+const FEEDBACK_UP_LABEL = 'Mark this alert as useful';
+const FEEDBACK_DOWN_LABEL = 'Mark this alert as not useful';
+const FEEDBACK_ERROR_MESSAGE = "Couldn't save your rating. Refresh the page and try again.";
+
+interface AlertFeedbackButtonsProps {
+  alertId: number;
+  feedback: string | null | undefined;
+  tokenUp: string | null | undefined;
+  tokenDown: string | null | undefined;
+}
+
+/**
+ * 👍/👎 feedback buttons for the alert detail page (TASK-064).
+ *
+ * Graceful degradation: rendered only when BOTH feedback tokens are present
+ * (the backend omits them when minting is unavailable). Buttons are disabled
+ * while a mutation is in flight; a re-tap of the active verdict still sends
+ * (idempotent UPSERT). On failure an EN error message is announced via role="alert".
+ */
+const AlertFeedbackButtons: React.FC<AlertFeedbackButtonsProps> = ({
+  alertId,
+  feedback,
+  tokenUp,
+  tokenDown,
+}) => {
+  const mutation = useSendFeedback(alertId);
+
+  // Graceful degradation: hide the buttons entirely when tokens are absent.
+  if (!tokenUp || !tokenDown) return null;
+
+  const rate = (token: string, verdict: FeedbackVerdict) => {
+    mutation.mutate({ token, verdict });
+  };
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          aria-pressed={feedback === 'up'}
+          aria-label={FEEDBACK_UP_LABEL}
+          disabled={mutation.isPending}
+          onClick={() => rate(tokenUp, 'up')}
+          className={`inline-flex items-center justify-center rounded-full border min-h-11 min-w-11 text-lg transition-colors disabled:opacity-50 ${
+            feedback === 'up'
+              ? 'border-primary bg-primary/10 text-primary'
+              : 'border-border text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <span aria-hidden="true">👍</span>
+        </button>
+        <button
+          type="button"
+          aria-pressed={feedback === 'down'}
+          aria-label={FEEDBACK_DOWN_LABEL}
+          disabled={mutation.isPending}
+          onClick={() => rate(tokenDown, 'down')}
+          className={`inline-flex items-center justify-center rounded-full border min-h-11 min-w-11 text-lg transition-colors disabled:opacity-50 ${
+            feedback === 'down'
+              ? 'border-primary bg-primary/10 text-primary'
+              : 'border-border text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <span aria-hidden="true">👎</span>
+        </button>
+      </div>
+      {mutation.isError && (
+        <p role="alert" className="text-xs text-destructive">
+          {FEEDBACK_ERROR_MESSAGE}
+        </p>
+      )}
+    </div>
+  );
 };
 
 export const AlertDetailPage: React.FC = () => {
@@ -105,7 +182,7 @@ export const AlertDetailPage: React.FC = () => {
         {/* Alert detail */}
         {!isLoading && alert && (
           <article className="flex flex-col gap-6">
-            <div className="flex items-start gap-4">
+            <div className="flex items-start gap-4 flex-wrap">
               {/* Score badge */}
               <span
                 className="inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-bold px-3 py-1.5 min-w-[3rem]"
@@ -129,6 +206,14 @@ export const AlertDetailPage: React.FC = () => {
                 {/* Text rendered as-is — JSX auto-escapes */}
                 {STATUS_LABELS[alert.delivery_status] ?? alert.delivery_status}
               </span>
+
+              {/* 👍/👎 feedback (TASK-064) — hidden when tokens absent */}
+              <AlertFeedbackButtons
+                alertId={alert.id}
+                feedback={alert.feedback}
+                tokenUp={alert.feedback_token_up}
+                tokenDown={alert.feedback_token_down}
+              />
             </div>
 
             <dl className="grid grid-cols-2 gap-4 border border-border rounded-lg p-4 text-sm">

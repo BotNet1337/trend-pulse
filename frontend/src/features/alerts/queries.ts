@@ -5,10 +5,32 @@
  * TASK-020: useAlerts migrated from offset/total to cursor (next_cursor) keyset pagination.
  */
 
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { listAlerts, getAlert } from './api';
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+  type UseMutationOptions,
+} from '@tanstack/react-query';
+import { listAlerts, getAlert, sendFeedback } from './api';
 import { ALERTS_QUERY_KEY, alertQueryKey } from '@/entities/alert/model';
-import type { AlertListResponse } from '@/entities/alert/model';
+import type { AlertListResponse, AlertRead } from '@/entities/alert/model';
+
+/** Web 👍/👎 verdict — matches the backend `feedback` string values. */
+export type FeedbackVerdict = 'up' | 'down';
+
+/** Arguments for a single feedback mutation: the bearer token + the verdict it
+ *  encodes (verdict drives the optimistic cache write). */
+export interface SendFeedbackArgs {
+  token: string;
+  verdict: FeedbackVerdict;
+}
+
+/** Optimistic-update rollback context: the alert snapshot before the mutation. */
+interface FeedbackMutationContext {
+  previous: AlertRead | undefined;
+}
 
 // Default page size for the feed — matches backend DEFAULT_ALERTS_PAGE_SIZE.
 const ALERTS_PAGE_SIZE = 20;
@@ -65,4 +87,59 @@ export function useAlert(id: number) {
       return failureCount < 2;
     },
   });
+}
+
+// ─── useSendFeedback — optimistic 👍/👎 mutation ──────────────────────────────
+
+/**
+ * Build the canonical optimistic-update mutation options for alert feedback.
+ *
+ * Extracted from the hook so the optimistic/rollback logic can be unit-tested
+ * against a real QueryClient (driven via a MutationObserver) without mounting
+ * React — the test exercises THESE options, not a copy.
+ *
+ * onMutate writes the new verdict into the `alertQueryKey(alertId)` cache
+ * immediately (after cancelling in-flight refetches and snapshotting the prior
+ * value); onError rolls back to the snapshot; onSettled invalidates so the cache
+ * always reconverges with the server (even on success).
+ */
+export function feedbackMutationOptions(
+  queryClient: QueryClient,
+  alertId: number,
+): UseMutationOptions<void, Error, SendFeedbackArgs, FeedbackMutationContext> {
+  const queryKey = alertQueryKey(alertId);
+  return {
+    mutationFn: ({ token }: SendFeedbackArgs) => sendFeedback(token),
+    onMutate: async ({ verdict }: SendFeedbackArgs) => {
+      // Cancel in-flight refetches so they don't clobber the optimistic write.
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<AlertRead>(queryKey);
+      if (previous) {
+        // Immutable update — new object, never mutate the cached one.
+        queryClient.setQueryData<AlertRead>(queryKey, { ...previous, feedback: verdict });
+      }
+      return { previous };
+    },
+    onError: (_error, _args, context) => {
+      // Roll back to the pre-mutation snapshot.
+      if (context) {
+        queryClient.setQueryData<AlertRead>(queryKey, context.previous);
+      }
+    },
+    onSettled: () => {
+      // Always reconcile with the server (refresh tokens + canonical verdict).
+      void queryClient.invalidateQueries({ queryKey });
+    },
+  };
+}
+
+/**
+ * Record alert feedback with a canonical TanStack optimistic update.
+ *
+ * The mutation is idempotent — re-tapping an already-active verdict still sends
+ * (the backend UPSERT is last-write-wins). See `feedbackMutationOptions`.
+ */
+export function useSendFeedback(alertId: number) {
+  const queryClient = useQueryClient();
+  return useMutation(feedbackMutationOptions(queryClient, alertId));
 }

@@ -729,12 +729,28 @@ export interface components {
         /**
          * AlertRead
          * @description Read-only projection of one alert row (with Cluster.topic join).
+         *
+         *     Feedback fields (`feedback`, `feedback_token_up`, `feedback_token_down`) are
+         *     populated ONLY in the detail endpoint (`get_alert`). The list endpoint
+         *     (`list_alerts`) leaves them at their `None` default — per-item feedback tokens
+         *     are not minted for a 20-row page (TASK-064 AC4). `feedback` is the caller's
+         *     current verdict ("up" | "down" | null) read from `alert_feedback`; the two
+         *     token fields are freshly-minted feedback tokens (reusable until TTL expiry —
+         *     the write-path UPSERT is idempotent) for the web 👍/👎 buttons. They are None
+         *     when token minting is unavailable (empty jwt_secret / mint failure — graceful
+         *     degradation, the buttons are then hidden client-side).
          */
         AlertRead: {
             /** Channels Count */
             channels_count: number;
             /** Delivery Status */
             delivery_status: string;
+            /** Feedback */
+            feedback?: string | null;
+            /** Feedback Token Down */
+            feedback_token_down?: string | null;
+            /** Feedback Token Up */
+            feedback_token_up?: string | null;
             /**
              * First Seen
              * Format: date-time

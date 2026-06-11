@@ -127,3 +127,26 @@ test("AC3 — nonexistent alert id shows not-found state", async ({ page }) => {
     page.getByRole("heading", { name: /alert not found/i }),
   ).toBeVisible({ timeout: 8_000 });
 });
+
+// ─── TASK-064 — feedback 👍/👎 (manual G2) ────────────────────────────────────
+//
+// Seeding a *delivered alert* in e2e requires running the scoring pipeline
+// against live Telegram data — out of reach for this spec (same constraint the
+// AC1 feed test documents above: no DB-level alert seeding). The feedback
+// buttons only render on a detail page for an alert the user owns, so we cannot
+// drive a real tap here without that seed.
+//
+// Backend round-trip (detail token → GET /feedback/{token} → re-fetch shows the
+// verdict) and the optimistic cache / rollback logic are covered by:
+//   - backend/tests/integration/test_alerts_api.py (TASK-064 detail tests)
+//   - frontend/tests/unit/alerts/alert-feedback.spec.tsx
+//
+// MANUAL G2 (on a stack with a seeded delivered alert):
+//   1. Open /alerts/:id → 👍/👎 buttons visible next to the status badge.
+//   2. Tap 👍 → button becomes active immediately (aria-pressed=true, optimistic).
+//   3. Reload → highlight persists (detail returns feedback="up").
+//   4. Tap 👎 → highlight switches (UPSERT last-write-wins).
+//   5. psql: SELECT verdict FROM alert_feedback WHERE alert_id=:id → matches.
+test.skip("TASK-064 — feedback tap persists (manual G2: requires seeded alert)", () => {
+  // Intentionally skipped — see the comment block above for the manual runbook.
+});

@@ -114,6 +114,8 @@ def free_user(db_session_committing: Session) -> User:
 
 @pytest.fixture
 def client(db_session_committing: Session, user: User) -> Iterator[TestClient]:
+    from api.feedback.router import get_db_session as feedback_get_db_session
+
     def _session_override() -> Iterator[Session]:
         yield db_session_committing
 
@@ -123,6 +125,10 @@ def client(db_session_committing: Session, user: User) -> Iterator[TestClient]:
     app.dependency_overrides[current_user] = lambda: user
     app.dependency_overrides[current_user_or_api_key] = lambda: user
     app.dependency_overrides[get_db_session] = _session_override
+    # TASK-064: the feedback write-path uses its own session dependency. Route it
+    # through the same committing test session so a feedback tap is visible to the
+    # subsequent detail read (shared transaction, same pattern as the alerts read).
+    app.dependency_overrides[feedback_get_db_session] = _session_override
     try:
         with TestClient(app) as test_client:
             yield test_client
@@ -130,6 +136,7 @@ def client(db_session_committing: Session, user: User) -> Iterator[TestClient]:
         app.dependency_overrides.pop(current_user, None)
         app.dependency_overrides.pop(current_user_or_api_key, None)
         app.dependency_overrides.pop(get_db_session, None)
+        app.dependency_overrides.pop(feedback_get_db_session, None)
 
 
 @pytest.fixture
@@ -512,3 +519,89 @@ def test_free_plan_history_unavailable(
     assert body["history_unavailable"] is True
     assert body["items"] == []
     assert body["next_cursor"] is None
+
+
+# ─── TASK-064 — detail feedback fields + token write-path round-trip ──────────
+
+
+def test_detail_feedback_null_with_valid_tokens(
+    client: TestClient, db_session_committing: Session, user: User
+) -> None:
+    """AC2 anchor: detail of an unrated alert → feedback=null + non-empty tokens
+    that verify back to the correct alert_id + verdict."""
+    from alerts.feedback_tokens import verify_feedback_token
+    from config import get_settings
+
+    cluster = _make_cluster(db_session_committing, user.id, topic="feedback-topic")
+    alert = _make_alert(db_session_committing, user.id, cluster.id, score=81.0)
+
+    resp = client.get(f"/v1/alerts/{alert.id}")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["feedback"] is None
+    assert body["feedback_token_up"], "expected a non-empty up token in detail"
+    assert body["feedback_token_down"], "expected a non-empty down token in detail"
+
+    jwt_secret = get_settings().jwt_secret
+    payload_up = verify_feedback_token(body["feedback_token_up"], jwt_secret=jwt_secret)
+    payload_down = verify_feedback_token(body["feedback_token_down"], jwt_secret=jwt_secret)
+    assert payload_up["alert_id"] == alert.id
+    assert payload_up["verdict"] == "up"
+    assert payload_down["alert_id"] == alert.id
+    assert payload_down["verdict"] == "down"
+
+
+def test_detail_token_records_feedback_then_reflects_verdict(
+    client: TestClient, db_session_committing: Session, user: User
+) -> None:
+    """AC1/AC2: detail token → GET /feedback/{token_up} → 200 → re-fetch detail
+    shows feedback="up"; then token_down → detail shows feedback="down"."""
+    cluster = _make_cluster(db_session_committing, user.id, topic="rate-me")
+    alert = _make_alert(db_session_committing, user.id, cluster.id, score=82.0)
+
+    # 1. Fetch detail → get tokens.
+    first = client.get(f"/v1/alerts/{alert.id}").json()
+    token_up = first["feedback_token_up"]
+    token_down = first["feedback_token_down"]
+    assert first["feedback"] is None
+
+    # 2. Tap up via the existing TASK-042 write-path → 200.
+    up_resp = client.get(f"/v1/feedback/{token_up}", follow_redirects=False)
+    assert up_resp.status_code == 200, up_resp.text
+
+    # 3. Re-fetch detail → feedback now "up".
+    after_up = client.get(f"/v1/alerts/{alert.id}").json()
+    assert after_up["feedback"] == "up"
+
+    # 4. Change to down (same UPSERT row, last-write-wins).
+    down_resp = client.get(f"/v1/feedback/{token_down}", follow_redirects=False)
+    assert down_resp.status_code == 200, down_resp.text
+    after_down = client.get(f"/v1/alerts/{alert.id}").json()
+    assert after_down["feedback"] == "down"
+
+
+def test_detail_foreign_alert_still_404_with_feedback_fields(
+    client: TestClient, db_session_committing: Session, user: User
+) -> None:
+    """Cross-account: a foreign alert id still → 404 (no tokens minted/leaked)."""
+    other = _make_user(db_session_committing, "fb-foreign@example.com")
+    other_cluster = _make_cluster(db_session_committing, other.id)
+    foreign_alert = _make_alert(db_session_committing, other.id, other_cluster.id)
+
+    resp = client.get(f"/v1/alerts/{foreign_alert.id}")
+    assert resp.status_code == 404, resp.text
+
+
+def test_list_items_carry_null_feedback_fields(
+    client: TestClient, db_session_committing: Session, user: User
+) -> None:
+    """AC4: list items expose feedback*-fields as null (no per-item token mint)."""
+    cluster = _make_cluster(db_session_committing, user.id, topic="list-fb")
+    _make_alert(db_session_committing, user.id, cluster.id)
+
+    resp = client.get("/v1/alerts")
+    assert resp.status_code == 200, resp.text
+    item = resp.json()["items"][0]
+    assert item["feedback"] is None
+    assert item["feedback_token_up"] is None
+    assert item["feedback_token_down"] is None

@@ -18,7 +18,18 @@ from pydantic import BaseModel, ConfigDict
 
 
 class AlertRead(BaseModel):
-    """Read-only projection of one alert row (with Cluster.topic join)."""
+    """Read-only projection of one alert row (with Cluster.topic join).
+
+    Feedback fields (`feedback`, `feedback_token_up`, `feedback_token_down`) are
+    populated ONLY in the detail endpoint (`get_alert`). The list endpoint
+    (`list_alerts`) leaves them at their `None` default — per-item feedback tokens
+    are not minted for a 20-row page (TASK-064 AC4). `feedback` is the caller's
+    current verdict ("up" | "down" | null) read from `alert_feedback`; the two
+    token fields are freshly-minted feedback tokens (reusable until TTL expiry —
+    the write-path UPSERT is idempotent) for the web 👍/👎 buttons. They are None
+    when token minting is unavailable (empty jwt_secret / mint failure — graceful
+    degradation, the buttons are then hidden client-side).
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -28,6 +39,9 @@ class AlertRead(BaseModel):
     first_seen: datetime
     channels_count: int
     delivery_status: str
+    feedback: str | None = None
+    feedback_token_up: str | None = None
+    feedback_token_down: str | None = None
 
 
 class AlertListResponse(BaseModel):
