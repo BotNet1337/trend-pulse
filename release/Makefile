@@ -147,11 +147,13 @@ deploy-wait: ## Poll until all services converge and all jobs Complete (timeout)
 					cur=$${replicas%%/*}; want=$${replicas##*/}; \
 					if [ "$$cur" != "$$want" ]; then not_ready=$$((not_ready+1)); fi ;; \
 				replicated-job) \
-					cur=$${replicas%%/*}; want=$${replicas##*/}; \
-					if [ "$$cur" != "$$want" ]; then \
-						if docker service ps --format '{{.CurrentState}}' "$$name" 2>/dev/null | grep -qi 'Failed'; then \
-							failed_job="$$name"; \
-						fi; \
+					comp=$$(printf '%s' "$$replicas" | sed -nE 's/.*\(([0-9]+)\/([0-9]+) completed\).*/\1 \2/p'); \
+					done_n=$${comp%% *}; want_n=$${comp##* }; \
+					if [ -n "$$comp" ] && [ "$$done_n" = "$$want_n" ]; then \
+						: ; \
+					elif docker service ps --format '{{.CurrentState}}' "$$name" 2>/dev/null | grep -qi 'Complete'; then \
+						: ; \
+					else \
 						not_ready=$$((not_ready+1)); \
 					fi ;; \
 			esac; \
