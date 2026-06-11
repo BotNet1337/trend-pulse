@@ -348,9 +348,7 @@ def test_persist_score_channels_count_real_and_upsert_updates(db_session: Sessio
     user = _seed_user(db_session, "chcount@example.com")
     channels = [_seed_channel(db_session, f"@chcount{i}") for i in range(4)]
     for ch in channels:
-        db_session.add(
-            Watchlist(user_id=user.id, channel_id=ch.id, topic="crypto", threshold=0.0)
-        )
+        db_session.add(Watchlist(user_id=user.id, channel_id=ch.id, topic="crypto", threshold=0.0))
     cluster = _seed_cluster(db_session, user_id=user.id, topic="crypto")
     # Posts from 3 distinct channels.
     for i, ch in enumerate(channels[:3]):

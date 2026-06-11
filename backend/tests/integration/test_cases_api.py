@@ -507,8 +507,7 @@ def test_fix_cases_persists_real_channels_count_from_score(
     row = db_session_committing.scalar(select(ShowcaseCase))
     assert row is not None
     assert row.channels_count == 5, (
-        f"Expected snapshot channels_count == 5 (real count from scores), "
-        f"got {row.channels_count}"
+        f"Expected snapshot channels_count == 5 (real count from scores), got {row.channels_count}"
     )
 
 
