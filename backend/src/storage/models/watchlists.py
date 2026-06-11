@@ -1,9 +1,11 @@
 """`watchlists` — user↔channel↔topic junction carrying alert config (overview §3)."""
 
-from sqlalchemy import Float, ForeignKey, Index, Integer, String, UniqueConstraint
+from datetime import datetime
+
+from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from storage.models.base import UserOwnedBase
+from storage.models.base import UserOwnedBase, utcnow
 
 _TOPIC_MAX = 255
 _LANG_MAX = 16
@@ -43,3 +45,12 @@ class Watchlist(UserOwnedBase):
     # Updated by the PATCH threshold path in api/watchlist/service.py so manual
     # user changes re-anchor the floor to the new intent value.
     threshold_floor: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+    # Creation timestamp (TASK-050): used by analytics aggregate to count packs_attached
+    # per day. Added in migration 0018; server_default=now() so existing rows get the
+    # migration timestamp (acceptable approximation — documented in task Discussion).
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utcnow,
+        server_default=text("now()"),
+    )

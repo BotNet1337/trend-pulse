@@ -8,6 +8,7 @@ a cycle; task *names* come from `pipeline.constants` (no `celery_app` import).
 """
 
 from alerts.constants import RESWEEP_PENDING_ALERTS_TASK
+from analytics.constants import AGGREGATE_BUSINESS_METRICS_TASK
 from billing.constants import CHECK_EXPIRING_SUBSCRIPTIONS_TASK
 from compliance.constants import PURGE_EXPIRED_RAW_CONTENT_TASK
 from config import get_settings
@@ -73,5 +74,14 @@ beat_schedule: dict[str, dict[str, object]] = {
     "showcase-autopost": {
         "task": SHOWCASE_AUTOPOST_TASK,
         "schedule": float(_settings.showcase_post_interval_seconds),
+    },
+    # Business-metrics daily aggregate (TASK-050): compute funnel counters
+    # (registrations, packs_attached, first_alerts_delivered, first_feedback,
+    # new_paid, churned, active_paid) from source-of-truth DB tables and upsert
+    # into business_metrics_daily. Default 86400s = once per day. Idempotent
+    # (ON CONFLICT upsert) — a double-tick or restart is always safe.
+    "aggregate-business-metrics": {
+        "task": AGGREGATE_BUSINESS_METRICS_TASK,
+        "schedule": float(_settings.business_metrics_interval_seconds),
     },
 }

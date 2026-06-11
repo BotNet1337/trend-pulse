@@ -113,6 +113,16 @@ def subscribe(
             savepoint.rollback()
             skipped += 1
 
+    # Funnel event (TASK-050): emit after at least one new row was created.
+    # Emitted once per subscribe call regardless of how many channels were added.
+    # No new DB queries — aggregate-only fields only (CONVENTIONS).
+    # Note: 'created' is a reserved LogRecord attr → use 'rows_created' instead.
+    if created > 0:
+        from analytics.constants import FUNNEL_PACK_ATTACHED
+        from observability.logging import log_event
+
+        log_event(FUNNEL_PACK_ATTACHED, user_id=user_id, pack_slug=pack_slug, rows_created=created)
+
     return SubscribeResult(created=created, skipped=skipped)
 
 

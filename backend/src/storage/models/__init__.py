@@ -9,6 +9,7 @@ from storage.models.alert_feedback import AlertFeedback
 from storage.models.alerts import Alert
 from storage.models.api_keys import ApiKey
 from storage.models.base import Base
+from storage.models.business_metrics import BusinessMetricsDaily
 from storage.models.channels import Channel, SourceKind
 from storage.models.clusters import EMBEDDING_DIM, Cluster
 from storage.models.posts import Post
@@ -27,6 +28,7 @@ __all__ = [
     "ApiKey",
     "Base",
     "BillingPayment",
+    "BusinessMetricsDaily",
     "Channel",
     "Cluster",
     "OAuthAccount",

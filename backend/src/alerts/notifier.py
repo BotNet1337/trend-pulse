@@ -167,6 +167,11 @@ def deliver(session: Session, alert: Alert) -> str:
     if any_success:
         alert.delivery_status = DELIVERY_STATUS_DELIVERED
         alert.delivered_at = utcnow()
+        # Funnel event (TASK-050): aggregate-only, no content. O(1), no DB query.
+        from analytics.constants import FUNNEL_ALERT_DELIVERED
+        from observability.logging import log_event
+
+        log_event(FUNNEL_ALERT_DELIVERED, alert_id=alert.id, user_id=alert.user_id)
         return DELIVERY_STATUS_DELIVERED
 
     if transient is not None:
