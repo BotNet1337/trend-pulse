@@ -58,3 +58,6 @@ pool_min_healthy: "3"
 # TASK-042: Alert feedback 👍/👎 button base URL. Empty = buttons disabled (dev default).
 # Prod overrides to the HTTPS domain in group_vars/prod.yml.
 public_base_url: ""
+
+# TASK-032 CSRF allow-list (origins permitted on cookie-auth mutations). Dev default.
+allowed_origins: "http://localhost,http://localhost:3000,http://localhost:4000"
