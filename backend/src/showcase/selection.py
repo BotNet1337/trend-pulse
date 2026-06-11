@@ -21,6 +21,7 @@ Design:
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Protocol, runtime_checkable
 
@@ -31,11 +32,23 @@ from typing import Protocol, runtime_checkable
 
 @runtime_checkable
 class ClusterLike(Protocol):
-    """Duck-typed cluster shape required by the selector."""
+    """Duck-typed cluster shape required by the selector.
 
-    id: int
-    viral_score: float
-    first_seen: datetime
+    Attributes are read-only (declared as properties) so that both mutable
+    ORM objects and immutable NamedTuples satisfy the Protocol in strict mypy.
+    """
+
+    @property
+    def id(self) -> int: ...
+
+    @property
+    def topic(self) -> str: ...
+
+    @property
+    def viral_score(self) -> float: ...
+
+    @property
+    def first_seen(self) -> datetime: ...
 
 
 @runtime_checkable
@@ -55,7 +68,7 @@ class SelectionSettings(Protocol):
 
 def pick_best_candidate(
     *,
-    clusters: list[ClusterLike],
+    clusters: Sequence[ClusterLike],
     posted_cluster_ids: set[int],
     posts_today: int,
     now: datetime,
@@ -68,7 +81,8 @@ def pick_best_candidate(
 
     Args:
         clusters:           All showcase-tenant clusters in the 24h window
-                            (caller queries from DB).
+                            (caller queries from DB). Accepts any Sequence of
+                            ClusterLike objects (list, tuple, etc.).
         posted_cluster_ids: Set of cluster_ids already in showcase_posts
                             (status=posted OR pending-fresh). Caller queries
                             from DB to fill this.

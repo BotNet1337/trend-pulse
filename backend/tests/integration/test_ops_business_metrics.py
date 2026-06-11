@@ -80,14 +80,14 @@ def client(db_engine: Any) -> Iterator[TestClient]:
 
 
 def _register(client: TestClient, email: str) -> dict[str, Any]:
-    resp = client.post("/auth/register", json={"email": email, "password": _TEST_PASSWORD})
+    resp = client.post("/v1/auth/register", json={"email": email, "password": _TEST_PASSWORD})
     assert resp.status_code == 201, resp.text
     return resp.json()  # type: ignore[no-any-return]
 
 
 def _login(client: TestClient, email: str) -> None:
     resp = client.post(
-        "/auth/jwt/login",
+        "/v1/auth/jwt/login",
         data={"username": email, "password": _TEST_PASSWORD},
     )
     assert resp.status_code in (200, 204), resp.text
@@ -175,7 +175,7 @@ def _seed_business_metrics_row(
 class TestAuthMatrix:
     def test_anonymous_gets_401(self, client: TestClient) -> None:
         """Anonymous request (no cookie) → 401."""
-        resp = client.get("/ops/business-metrics")
+        resp = client.get("/v1/ops/business-metrics")
         assert resp.status_code == 401
 
     def test_regular_user_gets_403(self, client: TestClient, db_session: Session) -> None:
@@ -183,7 +183,7 @@ class TestAuthMatrix:
         _register(client, _TEST_EMAIL_REGULAR)
         _login(client, _TEST_EMAIL_REGULAR)
 
-        resp = client.get("/ops/business-metrics")
+        resp = client.get("/v1/ops/business-metrics")
         assert resp.status_code == 403
 
     def test_superuser_gets_200(self, client: TestClient, db_session: Session) -> None:
@@ -200,7 +200,7 @@ class TestAuthMatrix:
 
         _login(client, _TEST_EMAIL_SUPER)
 
-        resp = client.get("/ops/business-metrics")
+        resp = client.get("/v1/ops/business-metrics")
         assert resp.status_code == 200, resp.text
 
     def test_response_contains_no_per_user_identifiers(
@@ -217,7 +217,7 @@ class TestAuthMatrix:
 
         _login(client, f"nopii-{_TEST_EMAIL_SUPER}")
 
-        resp = client.get("/ops/business-metrics")
+        resp = client.get("/v1/ops/business-metrics")
         assert resp.status_code == 200, resp.text
 
         body = resp.json()
@@ -306,7 +306,7 @@ class TestSeededNumbers:
         db_session.commit()
 
         _login(client, "ac1-super@example.com")
-        resp = client.get("/ops/business-metrics")
+        resp = client.get("/v1/ops/business-metrics")
         assert resp.status_code == 200, resp.text
 
         body = resp.json()
@@ -358,7 +358,7 @@ class TestFunnelWindow:
         db_session.commit()
 
         _login(client, "ac3-super@example.com")
-        resp = client.get("/ops/business-metrics")
+        resp = client.get("/v1/ops/business-metrics")
         assert resp.status_code == 200, resp.text
 
         body = resp.json()
