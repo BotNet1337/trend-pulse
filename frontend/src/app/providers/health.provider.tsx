@@ -13,7 +13,14 @@ const INITIAL_TIMEOUT_MS = 8_000
 
 const probe = async (signal: AbortSignal): Promise<boolean> => {
   try {
-    const response = await apiClient.get("/health", { signal, timeout: 6_000 })
+    // Ops probes (/health, /ready) are mounted UNVERSIONED at the API root, not
+    // under /v1 — override the client's '/api/v1' baseURL so this hits /api/health
+    // (otherwise '/api/v1/health' → 404 → the app shows the "temporarily down" screen).
+    const response = await apiClient.get("/health", {
+      baseURL: "/api",
+      signal,
+      timeout: 6_000,
+    })
     return response.status >= 200 && response.status < 500
   } catch {
     return false
