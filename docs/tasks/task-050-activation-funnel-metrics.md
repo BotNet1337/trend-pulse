@@ -1,10 +1,10 @@
 ---
 id: TASK-050
 title: Воронка активации — funnel-события (log_event) + ежедневный Beat-агрегат business_metrics_daily
-status: review              # planned → in-progress → review → done
+status: done                # planned → in-progress → review → done
 owner: backend
 created: 2026-06-11
-updated: 2026-06-11T18:00:00Z
+updated: 2026-06-11
 baseline_commit: "ceba8e4"
 branch: "gsd/phase-e6-funnel-metrics"
 tags: [epic-e6, backend, observability, metrics]
@@ -169,10 +169,10 @@ packs_attached, first_alerts_delivered, first_feedback, new_paid, churned, activ
 
 ## Checkpoints
 
-current_step: 7
+current_step: done
 baseline_commit: "ceba8e4"
 branch: "gsd/phase-e6-funnel-metrics"
-lock: "loop-2026-06-11-launch-gaps"
+lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [x] 3 do (TDD: failing test → minimal code)
@@ -180,7 +180,7 @@ lock: "loop-2026-06-11-launch-gaps"
 - [x] 5 review (auto, adversarial)
 - [x] 5.5 security (skip — подтверждено review: нет auth/input/secrets поверхностей)
 - [x] 6 ship (PR)
-- [ ] 7 learnings (auto)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details
