@@ -12,6 +12,7 @@ from analytics.constants import AGGREGATE_BUSINESS_METRICS_TASK
 from billing.constants import CHECK_EXPIRING_SUBSCRIPTIONS_TASK
 from compliance.constants import PURGE_EXPIRED_RAW_CONTENT_TASK
 from config import get_settings
+from notifications.constants import SEND_LIFECYCLE_EMAILS_TASK
 from observability.constants import EMIT_SIGNAL_LATENCY_TASK
 from pipeline.constants import ENQUEUE_BATCHES_TASK, SCORE_TICK_TASK
 from scorer.constants import ADAPT_THRESHOLDS_TASK
@@ -74,6 +75,15 @@ beat_schedule: dict[str, dict[str, object]] = {
     "showcase-autopost": {
         "task": SHOWCASE_AUTOPOST_TASK,
         "schedule": float(_settings.showcase_post_interval_seconds),
+    },
+    # Lifecycle emails (TASK-069): daily tick scanning verified, non-opted-out
+    # users for a due weekly digest / win-back. Due-selection is driven by
+    # per-user `digest_last_sent_at`/`winback_last_sent_at` DB state, so the
+    # tick is idempotent across restarts and interval drift (TASK-027 pattern).
+    # Unrouted → default `celery` queue the worker already consumes.
+    "lifecycle-emails-tick": {
+        "task": SEND_LIFECYCLE_EMAILS_TASK,
+        "schedule": float(_settings.lifecycle_email_interval_seconds),
     },
     # Business-metrics daily aggregate (TASK-050): compute funnel counters
     # (registrations, packs_attached, first_alerts_delivered, first_feedback,

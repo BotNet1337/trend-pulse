@@ -78,6 +78,7 @@ def send_email(
     subject: str,
     html: str,
     settings: Settings | None = None,
+    headers: dict[str, str] | None = None,
 ) -> None:
     """Send an HTML email via generic SMTP.
 
@@ -93,6 +94,8 @@ def send_email(
         subject:  Email subject line.
         html:     Full HTML body.
         settings: Override for dependency injection / tests.
+        headers:  Optional extra message headers (TASK-069: ``List-Unsubscribe``
+                  on lifecycle emails). ``None`` → behaviour unchanged.
 
     Raises:
         EmailSendError: If the SMTP server rejects the send.
@@ -103,6 +106,8 @@ def send_email(
     msg["From"] = cfg.smtp_from
     msg["To"] = to
     msg["Subject"] = subject
+    for name, value in (headers or {}).items():
+        msg[name] = value
     msg.set_content(html, subtype="html")
 
     try:
@@ -129,6 +134,7 @@ def send_templated_email(
     props: dict[str, object],
     subject: str,
     settings: Settings | None = None,
+    headers: dict[str, str] | None = None,
 ) -> None:
     """Render a template and send the resulting HTML via SMTP.
 
@@ -142,7 +148,9 @@ def send_templated_email(
         subject:  Email subject line (not taken from the render response, so
                   callers can override/localise it).
         settings: Override for dependency injection / tests.
+        headers:  Optional extra message headers (TASK-069: ``List-Unsubscribe``
+                  on lifecycle emails). ``None`` → behaviour unchanged.
     """
     cfg = settings or get_settings()
     html = render_email(template, props, settings=cfg)
-    send_email(to=to, subject=subject, html=html, settings=cfg)
+    send_email(to=to, subject=subject, html=html, settings=cfg, headers=headers)

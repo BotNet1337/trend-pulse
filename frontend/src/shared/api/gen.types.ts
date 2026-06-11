@@ -390,6 +390,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/email/unsubscribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Unsubscribe
+         * @description Verify the signed token and idempotently opt the user out.
+         *
+         *     Returns:
+         *         200: HTML confirmation (also on repeat clicks and deleted users —
+         *              idempotent, no enumeration).
+         *         400: Unified error-envelope for ANY invalid/expired/tampered token.
+         */
+        get: operations["unsubscribe_v1_email_unsubscribe_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/feedback/{token}": {
         parameters: {
             query?: never;
@@ -2008,6 +2033,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CasesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unsubscribe_v1_email_unsubscribe_get: {
+        parameters: {
+            query: {
+                token: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
                 };
             };
             /** @description Validation Error */

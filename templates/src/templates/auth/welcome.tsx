@@ -8,6 +8,8 @@ void React;
 export interface WelcomeEmailProps {
   userName: string;
   dashboardUrl: string;
+  /** Optional unsubscribe URL (TASK-069) — welcome is a lifecycle email. */
+  unsubscribeUrl?: string;
 }
 
 const content = { padding: '32px 36px 0' };
@@ -56,11 +58,12 @@ const link = {
   fontWeight: 500 as const,
 };
 
-export function WelcomeEmail({ userName, dashboardUrl }: WelcomeEmailProps) {
+export function WelcomeEmail({ userName, dashboardUrl, unsubscribeUrl }: WelcomeEmailProps) {
   return (
     <EmailLayout
       previewText={`Welcome to TrendPulse, ${userName}`}
       tagline="Viral content detector"
+      unsubscribeUrl={unsubscribeUrl}
     >
       <Section style={content}>
         <Heading style={heading}>Welcome, {userName}!</Heading>

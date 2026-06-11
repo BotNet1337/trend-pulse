@@ -38,6 +38,7 @@ celery_app = Celery(
         "scorer.adaptation",
         "showcase.tasks",
         "analytics.tasks",
+        "notifications.tasks",
     ],
 )
 celery_app.conf.task_serializer = "json"

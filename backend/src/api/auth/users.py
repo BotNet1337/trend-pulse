@@ -48,6 +48,9 @@ _RESET_PASSWORD_PATH = "/auth/password/reset"
 _VERIFY_SUBJECT = "Verify your TrendPulse email"
 _RESET_SUBJECT = "Reset your TrendPulse password"
 
+# Welcome email (TASK-069): template/subject/CTA-path constants live in
+# notifications.constants (single source for all lifecycle emails).
+
 # Display string for the token TTL shown in email bodies.
 # fastapi-users defaults: verification_token_lifetime_seconds=3600,
 # reset_password_token_lifetime_seconds=3600.
@@ -208,6 +211,42 @@ class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
             },
         )
 
+    async def on_after_verify(self, user: User, request: Request | None = None) -> None:
+        """Send the welcome email once, right after successful verification (TASK-069).
+
+        Exactly-once: fastapi-users raises UserAlreadyVerified on a repeat
+        verify, so this hook fires only on the actual transition (AC1).
+        Anti-spam: skipped when the user has opted out of lifecycle emails
+        (defensive — opt-out before the first lifecycle email is unusual but
+        possible via a digest/win-back link from a previous account state).
+        Best-effort: an SMTP/render failure never breaks the verify response.
+        """
+        if user.lifecycle_emails_opt_out:
+            logger.info("welcome email skipped (opt-out) for user id=%s", user.id)
+            return
+        from notifications.constants import (
+            _WELCOME_CTA_PATH,
+            _WELCOME_SUBJECT,
+            _WELCOME_TEMPLATE,
+        )
+        from notifications.lifecycle import build_unsubscribe_url, list_unsubscribe_headers
+
+        settings = get_settings()
+        dashboard_url = f"{settings.frontend_base_url}{_WELCOME_CTA_PATH}"
+        unsubscribe_url = build_unsubscribe_url(user.id, settings=settings)
+        await _send_email_best_effort(
+            user_id=user.id,
+            to=user.email,
+            template=_WELCOME_TEMPLATE,
+            subject=_WELCOME_SUBJECT,
+            props={
+                "userName": user.email,
+                "dashboardUrl": dashboard_url,
+                "unsubscribeUrl": unsubscribe_url,
+            },
+            headers=list_unsubscribe_headers(unsubscribe_url),
+        )
+
     async def on_after_forgot_password(
         self,
         user: User,
@@ -244,11 +283,14 @@ async def _send_email_best_effort(
     template: str,
     subject: str,
     props: dict[str, object],
+    headers: dict[str, str] | None = None,
 ) -> None:
     """Dispatch send_templated_email in a thread (sync I/O) — best-effort.
 
     Failures are caught and logged with only the user id (no email/token/URL
     in the log line) so the caller's flow is never blocked by email infra.
+    `headers` (TASK-069): optional extra headers, e.g. ``List-Unsubscribe``
+    on the lifecycle welcome email; ``None`` → behaviour unchanged.
     """
     try:
         await asyncio.to_thread(
@@ -257,6 +299,7 @@ async def _send_email_best_effort(
             template=template,
             props=props,
             subject=subject,
+            headers=headers,
         )
     except Exception:
         # Log only the user id — NEVER the token, email address, or full URL.

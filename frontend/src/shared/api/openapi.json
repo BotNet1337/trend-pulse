@@ -2338,6 +2338,50 @@
         ]
       }
     },
+    "/v1/email/unsubscribe": {
+      "get": {
+        "description": "Verify the signed token and idempotently opt the user out.\n\nReturns:\n    200: HTML confirmation (also on repeat clicks and deleted users —\n         idempotent, no enumeration).\n    400: Unified error-envelope for ANY invalid/expired/tampered token.",
+        "operationId": "unsubscribe_v1_email_unsubscribe_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Unsubscribe",
+        "tags": [
+          "email"
+        ]
+      }
+    },
     "/v1/feedback/{token}": {
       "get": {
         "description": "Verify signed token, UPSERT alert_feedback, return HTML 'спасибо'.\n\nRate-limited at ``feedback_rate_limit_per_minute`` (default 30/min,\nper-IP via ``rate_limit_key``).\n\nReturns:\n    200: Feedback recorded (or idempotent re-tap).\n    400: Invalid/tampered/expired token (uniform — no oracle).\n    404: Alert not found (FK gone — likely deleted by retention).\n    410: Same as 404 but signals the resource is intentionally gone.",

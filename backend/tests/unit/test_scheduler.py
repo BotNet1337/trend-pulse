@@ -36,6 +36,19 @@ def _fake_session() -> Iterator[MagicMock]:
     yield MagicMock(name="session")
 
 
+def test_lifecycle_emails_tick_entry_with_config_interval() -> None:
+    """TASK-069: daily lifecycle-emails tick is scheduled from settings."""
+    from notifications.constants import SEND_LIFECYCLE_EMAILS_TASK
+
+    settings = get_settings()
+    entry = beat_schedule["lifecycle-emails-tick"]
+
+    assert entry["task"] == SEND_LIFECYCLE_EMAILS_TASK
+    assert entry["schedule"] == float(settings.lifecycle_email_interval_seconds)
+    # Documented default: once per day (86400s), same cadence as renewal check.
+    assert settings.lifecycle_email_interval_seconds == 86_400
+
+
 def test_dispatcher_enqueues_one_batch_per_active_user() -> None:
     from pipeline import tasks
 

@@ -375,4 +375,77 @@ class TestSendTemplatedEmail:
             subject="Verify",
             html="<p>HTML</p>",
             settings=settings,
+            headers=None,
         )
+
+    def test_forwards_extra_headers(self) -> None:
+        """TASK-069: optional `headers` (List-Unsubscribe) reach send_email."""
+        from notifications import email as email_module
+
+        settings = _make_settings()
+        headers = {"List-Unsubscribe": "<https://x/api/v1/email/unsubscribe?token=t>"}
+
+        with (
+            patch.object(email_module, "render_email", return_value="<p>HTML</p>"),
+            patch.object(email_module, "send_email") as mock_send,
+        ):
+            email_module.send_templated_email(
+                to="user@example.com",
+                template="lifecycle/weekly-digest",
+                props={},
+                subject="Digest",
+                settings=settings,
+                headers=headers,
+            )
+
+        assert mock_send.call_args.kwargs["headers"] == headers
+
+
+class TestSendEmailHeaders:
+    """TASK-069: additive `headers` parameter on send_email."""
+
+    def test_headers_set_on_message(self) -> None:
+        from notifications.email import send_email
+
+        settings = _make_settings()
+        sent_messages: list[EmailMessage] = []
+
+        with patch("notifications.email.smtplib.SMTP") as mock_smtp_cls:
+            mock_smtp = MagicMock()
+            mock_smtp.__enter__ = MagicMock(return_value=mock_smtp)
+            mock_smtp.__exit__ = MagicMock(return_value=False)
+            mock_smtp_cls.return_value = mock_smtp
+            mock_smtp.send_message.side_effect = lambda msg: sent_messages.append(msg)
+
+            send_email(
+                to="recipient@example.com",
+                subject="Digest",
+                html="<p>Content</p>",
+                settings=settings,
+                headers={"List-Unsubscribe": "<https://x/u?token=t>"},
+            )
+
+        assert sent_messages[0]["List-Unsubscribe"] == "<https://x/u?token=t>"
+
+    def test_no_headers_keeps_legacy_behavior(self) -> None:
+        """Without the parameter the message carries no extra headers."""
+        from notifications.email import send_email
+
+        settings = _make_settings()
+        sent_messages: list[EmailMessage] = []
+
+        with patch("notifications.email.smtplib.SMTP") as mock_smtp_cls:
+            mock_smtp = MagicMock()
+            mock_smtp.__enter__ = MagicMock(return_value=mock_smtp)
+            mock_smtp.__exit__ = MagicMock(return_value=False)
+            mock_smtp_cls.return_value = mock_smtp
+            mock_smtp.send_message.side_effect = lambda msg: sent_messages.append(msg)
+
+            send_email(
+                to="recipient@example.com",
+                subject="Hello",
+                html="<p>Content</p>",
+                settings=settings,
+            )
+
+        assert sent_messages[0]["List-Unsubscribe"] is None
