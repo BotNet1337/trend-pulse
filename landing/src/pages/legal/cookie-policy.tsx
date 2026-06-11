@@ -57,7 +57,8 @@ export function CookiePolicyPage() {
                 </li>
                 <li>
                   <strong className="text-foreground">Analytics:</strong> understanding how the Service is used so we
-                  can improve it. Opt-in in the EEA and UK.
+                  can improve it. We use Plausible, a cookieless tool that sets no cookies and collects no personal
+                  data; you can opt out at any time via the cookie banner.
                 </li>
                 <li>
                   <strong className="text-foreground">Marketing:</strong> measuring the performance of our marketing
@@ -98,21 +99,19 @@ export function CookiePolicyPage() {
                       <td className="py-2 pr-4">12 months</td>
                       <td className="py-2">Light/dark theme</td>
                     </tr>
-                    <tr className="border-b border-border/50">
+                    <tr>
                       <td className="py-2 pr-4 font-mono text-xs">tp_locale</td>
                       <td className="py-2 pr-4">Functional</td>
                       <td className="py-2 pr-4">12 months</td>
                       <td className="py-2">Language preference</td>
                     </tr>
-                    <tr>
-                      <td className="py-2 pr-4 font-mono text-xs">_ga, _ga_*</td>
-                      <td className="py-2 pr-4">Analytics</td>
-                      <td className="py-2 pr-4">Up to 24 months</td>
-                      <td className="py-2">Google Analytics 4</td>
-                    </tr>
                   </tbody>
                 </table>
               </div>
+              <p className="mt-4">
+                Our web analytics tool, <strong>Plausible</strong>, is cookieless — it does not set any cookies and
+                does not collect personal data, so it does not appear in the table above.
+              </p>
               <p className="mt-4 text-sm text-muted-foreground">
                 The exact list may change as we add or remove tools. The most up-to-date list is shown in the cookie
                 banner.
@@ -128,7 +127,8 @@ export function CookiePolicyPage() {
               <p className="mb-3">Some of our third-party providers may set their own cookies when their scripts run on our site:</p>
               <ul className="space-y-2">
                 <li>
-                  <strong className="text-foreground">Google Analytics 4</strong> — usage analytics.
+                  <strong className="text-foreground">Plausible Analytics</strong> — privacy-first, cookieless usage
+                  analytics. Sets no cookies and collects no personal data.
                 </li>
                 <li>
                   <strong className="text-foreground">Sentry</strong> — error monitoring (may use localStorage).

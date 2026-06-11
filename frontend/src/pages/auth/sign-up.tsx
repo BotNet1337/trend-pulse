@@ -31,6 +31,25 @@ import { register } from '@/features/auth'
  */
 const REF_CODE_STORAGE_KEY = 'referrer_code'
 
+/**
+ * Plausible custom event for the sign-up funnel (TASK-068). Name must match the
+ * Plausible goal and the landing-side constant EVENT_SIGN_UP_CLICK.
+ */
+const SIGN_UP_CLICK_EVENT = 'sign_up_click'
+
+/**
+ * Fire-and-forget Plausible event (TASK-068). Single call-site, so this stays a
+ * local helper instead of a shared package. Guaranteed no-op when the analytics
+ * script is blocked or disabled — sign-up must never break on analytics.
+ */
+function trackSignUpClick(): void {
+  try {
+    ;(window as Window & { plausible?: (event: string) => void }).plausible?.(SIGN_UP_CLICK_EVENT)
+  } catch {
+    // Analytics must never affect the auth flow.
+  }
+}
+
 export const SignUpPage: React.FC = () => {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
@@ -57,6 +76,7 @@ export const SignUpPage: React.FC = () => {
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    trackSignUpClick()
     try {
       await registerMutation.mutateAsync()
       // Clear the stored referral code after successful registration (single-use).

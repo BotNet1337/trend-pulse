@@ -6,6 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link href="/src/app/app.css" rel="stylesheet">
     <title>Foresignal</title>
+    <!-- TASK-068: Plausible (cookieless, privacy-first). data-domain matches the
+         landing config so foresignal.biz + app.foresignal.biz aggregate into one
+         Plausible site. Opt-out: localStorage plausible_ignore = "true". -->
+    <script defer data-domain="foresignal.biz" src="https://plausible.io/js/script.js"></script>
     <script src="/theme-script.js"></script>
   </head>
   <body>

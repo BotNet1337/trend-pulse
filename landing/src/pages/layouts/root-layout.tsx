@@ -5,6 +5,7 @@ import { SITE } from '@/shared/site/constants';
 import { ThemeToggle } from '@/shared/components/theme-toggle';
 import { Menu, X } from 'lucide-react';
 import { useLocation } from '@tanstack/react-router';
+import { track, EVENT_SIGN_UP_CLICK } from '@/shared/analytics/track';
 
 export function RootLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
@@ -80,7 +81,12 @@ export function RootLayout() {
                 <Link to="/contact">Contact</Link>
               </Button>
               <Button asChild>
-                <a href={(SITE as { signupUrl?: string }).signupUrl ?? '/sign-up'}>{SITE.ctaText}</a>
+                <a
+                  href={(SITE as { signupUrl?: string }).signupUrl ?? '/sign-up'}
+                  onClick={() => track(EVENT_SIGN_UP_CLICK)}
+                >
+                  {SITE.ctaText}
+                </a>
               </Button>
             </div>
 
@@ -138,7 +144,10 @@ export function RootLayout() {
                   <Button asChild>
                     <a
                       href={(SITE as { signupUrl?: string }).signupUrl ?? '/sign-up'}
-                      onClick={() => setMobileMenuOpen(false)}
+                      onClick={() => {
+                        track(EVENT_SIGN_UP_CLICK);
+                        setMobileMenuOpen(false);
+                      }}
                     >
                       {SITE.ctaText}
                     </a>

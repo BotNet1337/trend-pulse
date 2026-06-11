@@ -1,6 +1,7 @@
 import { ArrowRight } from 'lucide-react';
 import { Button } from '@/shared/components/button';
 import { SITE } from '@/shared/site/constants';
+import { track, EVENT_SIGN_UP_CLICK } from '@/shared/analytics/track';
 
 export function FinalCtaSection() {
   const signupUrl = (SITE as { signupUrl?: string }).signupUrl ?? '/sign-up';
@@ -18,7 +19,7 @@ export function FinalCtaSection() {
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Button size="lg" asChild>
-              <a href={signupUrl}>
+              <a href={signupUrl} onClick={() => track(EVENT_SIGN_UP_CLICK)}>
                 {SITE.ctaText} <ArrowRight className="ml-2 h-4 w-4" />
               </a>
             </Button>

@@ -2,6 +2,7 @@ import { ArrowRight } from 'lucide-react';
 import { Button } from '@/shared/components/button';
 import { Badge } from '@/shared/components/badge';
 import { SITE } from '@/shared/site/constants';
+import { track, EVENT_SIGN_UP_CLICK } from '@/shared/analytics/track';
 
 export function HeroSection() {
   const signupUrl = (SITE as { signupUrl?: string }).signupUrl ?? '/sign-up';
@@ -26,7 +27,7 @@ export function HeroSection() {
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-10">
           <Button size="lg" className="w-full sm:w-auto" asChild>
-            <a href={signupUrl}>
+            <a href={signupUrl} onClick={() => track(EVENT_SIGN_UP_CLICK)}>
               {SITE.ctaText} <ArrowRight className="ml-2 h-4 w-4" />
             </a>
           </Button>
