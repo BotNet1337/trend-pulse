@@ -73,11 +73,14 @@ class _ClusterRow(NamedTuple):
 # ---------------------------------------------------------------------------
 
 
-def _run_tick_body(session: Session) -> None:
+def _run_tick_body(session: Session, *, now: datetime | None = None) -> None:
     """Core tick logic, extracted for testability (session is injected by caller).
 
     Separated from the Celery task decorator so unit tests can call this directly
-    with a mock/real session without going through Celery plumbing.
+    with a mock/real session without going through Celery plumbing. `now` is
+    injectable so tests pin the clock — the age cutoffs in pick_best_candidate are
+    relative to it, and a fixed fixture date must not drift out of the window as
+    real wall-clock advances.
 
     Invariant (TASK-045): fix_cases() runs unconditionally — fixation is independent
     of posting credentials.  The posting-creds guard only controls the posting path.
@@ -96,7 +99,8 @@ def _run_tick_body(session: Session) -> None:
     settings = get_settings()
     global _WARNED_NO_CREDS, _WARNED_NO_PUBLIC_BASE_URL
 
-    now = datetime.now(UTC)
+    if now is None:
+        now = datetime.now(UTC)
 
     # --- Fixate qualifying clusters as proof-of-speed cases (TASK-045) ---
     # Runs unconditionally — fixation is INDEPENDENT of posting credentials.
@@ -268,7 +272,7 @@ def _run_tick_body(session: Session) -> None:
 
     if sent:
         sp_row.status = STATUS_POSTED
-        sp_row.posted_at = datetime.now(UTC)
+        sp_row.posted_at = now
         session.flush()
         log_event(
             "showcase_post_delivered",

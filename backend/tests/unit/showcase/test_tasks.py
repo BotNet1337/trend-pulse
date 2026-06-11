@@ -212,7 +212,7 @@ class TestTickWithCandidate:
             patch("config.get_settings", return_value=settings),
             patch("showcase.tasks.send_showcase_post", side_effect=fake_send),
         ):
-            tasks._run_tick_body(session)
+            tasks._run_tick_body(session, now=_now())
 
         assert len(send_calls) == 1
         assert send_calls[0]["chat_id"] == settings.showcase_channel_chat_id
@@ -239,7 +239,7 @@ class TestTickWithCandidate:
             patch("config.get_settings", return_value=settings),
             patch("showcase.tasks.send_showcase_post", return_value=True),
         ):
-            tasks._run_tick_body(session)
+            tasks._run_tick_body(session, now=_now())
 
         assert fake_sp.status == "posted"
         assert fake_sp.posted_at is not None
@@ -327,7 +327,7 @@ class TestIdempotency:
                 side_effect=lambda **kw: send_calls.append(kw) or True,
             ),
         ):
-            tasks._run_tick_body(session)
+            tasks._run_tick_body(session, now=_now())
 
         assert len(send_calls) == 0, "Must not send when cluster is already in posted set"
 
@@ -350,7 +350,7 @@ class TestIdempotency:
             patch("config.get_settings", return_value=settings),
             patch("showcase.tasks.send_showcase_post", return_value=False),
         ):
-            tasks._run_tick_body(session)
+            tasks._run_tick_body(session, now=_now())
 
         assert fake_sp.status == "pending", "Status must remain pending after failed send"
         assert fake_sp.posted_at is None
@@ -374,7 +374,7 @@ class TestEmptyCredentials:
             caplog.at_level(logging.WARNING, logger="showcase.tasks"),
             patch("config.get_settings", return_value=settings),
         ):
-            tasks._run_tick_body(session)
+            tasks._run_tick_body(session, now=_now())
 
         # Must not have called execute / scalar (no DB queries after creds check)
         session.execute.assert_not_called()
@@ -393,7 +393,7 @@ class TestEmptyCredentials:
         session = MagicMock()
 
         with patch("config.get_settings", return_value=settings):
-            tasks._run_tick_body(session)
+            tasks._run_tick_body(session, now=_now())
 
         session.execute.assert_not_called()
 
@@ -409,8 +409,8 @@ class TestEmptyCredentials:
             caplog.at_level(logging.WARNING, logger="showcase.tasks"),
             patch("config.get_settings", return_value=settings),
         ):
-            tasks._run_tick_body(session)
-            tasks._run_tick_body(session)
+            tasks._run_tick_body(session, now=_now())
+            tasks._run_tick_body(session, now=_now())
 
         warning_count = sum(
             1
@@ -440,8 +440,8 @@ class TestEmptyCredentials:
                 side_effect=lambda **kw: send_calls.append(kw) or True,
             ),
         ):
-            tasks._run_tick_body(session)
-            tasks._run_tick_body(session)
+            tasks._run_tick_body(session, now=_now())
+            tasks._run_tick_body(session, now=_now())
 
         assert len(send_calls) == 0, "Must not send when public_base_url is empty"
         warning_count = sum(1 for r in caplog.records if "public_base_url" in r.message.lower())
