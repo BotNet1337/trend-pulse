@@ -1,7 +1,9 @@
+import * as React from 'react';
 import { Badge } from '@/shared/components/badge';
 import { Button } from '@/shared/components/button';
 import { Check } from 'lucide-react';
 import { SITE } from '@/shared/site/constants';
+import { track, EVENT_PRICING_VIEW } from '@/shared/analytics/track';
 
 type PricingPlan = {
   id: string;
@@ -24,6 +26,14 @@ export function PricingPage() {
   const paymentNote: string =
     siteAny.pricing?.paymentNote ?? 'Payments accepted via cryptocurrency (NOWPayments). No credit card required.';
   const signupUrl = siteAny.signupUrl ?? '/sign-up';
+
+  // TASK-068: pricing_view fires once per page visit (ref guards re-running effects/remounts).
+  const pricingViewFired = React.useRef(false);
+  React.useEffect(() => {
+    if (pricingViewFired.current) return;
+    pricingViewFired.current = true;
+    track(EVENT_PRICING_VIEW);
+  }, []);
 
   return (
     <div className="pt-24 pb-16">

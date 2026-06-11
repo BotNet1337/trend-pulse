@@ -1,4 +1,5 @@
 import { SITE } from '@/shared/site/constants';
+import { PLAUSIBLE_SCRIPT_URL } from '@/shared/analytics/track';
 
 function escapeHtml(s: string): string {
   return s
@@ -113,6 +114,15 @@ function buildJsonLd(pathname: string): string[] {
   return jsonlds.map((obj) => `<script type="application/ld+json">${escapeHtml(JSON.stringify(obj))}</script>`);
 }
 
+/**
+ * TASK-068: Plausible tag for every SSR page. Empty domain (config.json
+ * `plausibleDomain`) disables analytics entirely — no tag is rendered.
+ */
+export function buildPlausibleTag(domain: string): string | null {
+  if (!domain) return null;
+  return `<script defer data-domain="${escapeHtml(domain)}" src="${PLAUSIBLE_SCRIPT_URL}"></script>`;
+}
+
 export function buildHeadTags(path: string): string {
   const pathname = (() => {
     try {
@@ -125,6 +135,7 @@ export function buildHeadTags(path: string): string {
   const { title, description } = routeMeta(pathname);
   const canonical = canonicalFor(pathname);
   const ogImage = new URL('/og.svg', SITE.siteUrl).toString();
+  const plausibleTag = buildPlausibleTag((SITE as { plausibleDomain?: string }).plausibleDomain ?? '');
 
   const tags = [
     `<title>${escapeHtml(title)}</title>`,
@@ -142,6 +153,7 @@ export function buildHeadTags(path: string): string {
     `<meta name="twitter:description" content="${escapeHtml(description)}" />`,
     `<meta name="twitter:image" content="${escapeHtml(ogImage)}" />`,
     ...buildJsonLd(pathname),
+    ...(plausibleTag ? [plausibleTag] : []),
   ];
 
   return tags.join('\n');

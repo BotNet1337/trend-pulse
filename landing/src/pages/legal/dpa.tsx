@@ -173,9 +173,9 @@ export function DpaOverviewPage() {
                       <td className="py-2">EU regions</td>
                     </tr>
                     <tr className="border-b border-border/50">
-                      <td className="py-2 pr-4">Google LLC (GA4)</td>
-                      <td className="py-2 pr-4">Website analytics</td>
-                      <td className="py-2">US</td>
+                      <td className="py-2 pr-4">Plausible Insights OÜ</td>
+                      <td className="py-2 pr-4">Privacy-first web analytics (cookieless)</td>
+                      <td className="py-2">EU (Estonia)</td>
                     </tr>
                     <tr>
                       <td className="py-2 pr-4">Sentry, Inc.</td>

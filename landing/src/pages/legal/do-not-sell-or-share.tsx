@@ -47,8 +47,8 @@ export function DoNotSellOrSharePage() {
                   <strong className="text-foreground">Payment processors</strong> (e.g., NOWPayments).
                 </li>
                 <li>
-                  <strong className="text-foreground">Analytics providers</strong> (e.g., Google Analytics 4) — where
-                  you have given consent.
+                  <strong className="text-foreground">Analytics providers</strong> (e.g., Plausible Analytics —
+                  cookieless, collects no personal data; you can opt out at any time).
                 </li>
                 <li>
                   <strong className="text-foreground">Customer-support tooling.</strong>

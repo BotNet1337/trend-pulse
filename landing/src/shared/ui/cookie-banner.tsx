@@ -2,6 +2,7 @@ import * as React from 'react';
 import { X } from 'lucide-react';
 import { Button } from '@/shared/components/button';
 import { Switch } from '@/shared/components/switch';
+import { PLAUSIBLE_IGNORE_KEY } from '@/shared/analytics/track';
 
 type CookieConsent = 'all' | 'essential' | 'custom';
 type CookiePreferences = { essential: true; analytics: boolean; marketing: boolean };
@@ -27,6 +28,27 @@ function safeSet(key: string, value: string) {
   }
 }
 
+function safeRemove(key: string) {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * TASK-068: map the Analytics toggle onto the standard Plausible opt-out flag.
+ * Plausible is cookieless, so this is an honest opt-out rather than a consent
+ * gate — the script respects `plausible_ignore` natively.
+ */
+function setAnalyticsOptOut(optedOut: boolean) {
+  if (optedOut) {
+    safeSet(PLAUSIBLE_IGNORE_KEY, 'true');
+  } else {
+    safeRemove(PLAUSIBLE_IGNORE_KEY);
+  }
+}
+
 export function CookieBanner() {
   const [mounted, setMounted] = React.useState(false);
   const [isVisible, setIsVisible] = React.useState(false);
@@ -46,6 +68,12 @@ export function CookieBanner() {
     const storedPrefs = safeGet<CookiePreferences>(PREFS_KEY);
     if (storedPrefs) setPreferences({ ...storedPrefs, essential: true });
 
+    // TASK-068: retroactively honour choices saved before the Plausible opt-out
+    // existed — set-only, never clears an explicit opt-out (see task Details).
+    if (consent === 'essential' || (consent === 'custom' && storedPrefs && !storedPrefs.analytics)) {
+      setAnalyticsOptOut(true);
+    }
+
     const onOpen = () => setShowPreferences(true);
     window.addEventListener('open-cookie-preferences', onOpen as EventListener);
     return () => window.removeEventListener('open-cookie-preferences', onOpen as EventListener);
@@ -55,17 +83,20 @@ export function CookieBanner() {
 
   const acceptAll = () => {
     safeSet(CONSENT_KEY, 'all');
+    setAnalyticsOptOut(false);
     setIsVisible(false);
   };
 
   const rejectAll = () => {
     safeSet(CONSENT_KEY, 'essential');
+    setAnalyticsOptOut(true);
     setIsVisible(false);
   };
 
   const savePreferences = () => {
     safeSet(PREFS_KEY, JSON.stringify(preferences));
     safeSet(CONSENT_KEY, 'custom');
+    setAnalyticsOptOut(!preferences.analytics);
     setShowPreferences(false);
     setIsVisible(false);
   };
@@ -139,9 +170,10 @@ export function CookieBanner() {
 
                 <div className="flex items-start justify-between gap-4 pb-4 border-b border-border">
                   <div className="flex-1">
-                    <h4 className="mb-1">Analytics Cookies</h4>
+                    <h4 className="mb-1">Analytics</h4>
                     <p className="text-sm text-muted-foreground">
-                      Help us understand how visitors interact with our website by collecting anonymous information.
+                      We use Plausible, a cookieless analytics tool — it sets no cookies and collects only anonymous
+                      aggregate statistics. Turning this off opts you out of analytics entirely.
                     </p>
                   </div>
                   <Switch
