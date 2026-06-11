@@ -291,6 +291,127 @@ Firewall: только 443 (+80 redirect) + SSH-allowlist. `group_vars/prod.yml`
 
 ---
 
+### C1. Внешний uptime-мониторинг (TASK-060)
+
+> **Предусловие: TASK-057 (живой домен foresignal.biz с HTTPS) должен быть выполнен.**
+> Создавать монитор до деплоя смысла нет — будет красным с первого дня.
+> Email-routing (Terraform) применяется сразу, независимо от 057.
+
+#### C1.1 Email Routing — применить Terraform
+
+```sh
+# 1. Заполнить ops/terraform/environments/org/terraform.tfvars (из *.example):
+#    email_routes = {
+#      support  = "owner@your-real-mailbox.com"
+#      privacy  = "owner@your-real-mailbox.com"
+#      abuse    = "owner@your-real-mailbox.com"
+#      security = "owner@your-real-mailbox.com"
+#    }
+#    email_catch_all_destination = "owner@your-real-mailbox.com"
+#    cloudflare_api_token  = "<token>"
+#    cloudflare_account_id = "<account_id>"
+#
+# 2. Применить:
+export PATH=/opt/homebrew/bin:$PATH
+cd ops/terraform/environments/org
+terraform init
+terraform plan   # убедиться: только additive (add), без destroy/change в существующих ресурсах
+terraform apply -target=module.email_routing
+
+# 3. После apply — подтвердить destination-адрес:
+#    Cloudflare Email Routing требует верификацию destination-адреса по email.
+#    Откройте почту владельца → найдите письмо от Cloudflare → нажмите "Verify email address".
+#    Без верификации routing не работает.
+
+# 4. Проверить идемпотентность:
+terraform plan   # Ожидаемо: "No changes."
+```
+
+#### C1.2 Создать монитор UptimeRobot
+
+> Выполняется один раз после TASK-057. Описание сохраняется как runbook для воспроизведения.
+
+```
+1. Зарегистрироваться / войти: https://uptimerobot.com
+2. Dashboard → "+ Add New Monitor"
+3. Monitor Type: HTTP(s)
+4. Friendly Name: foresignal.biz /api/ready
+5. URL: https://foresignal.biz/api/ready
+   (nginx strips /api/ → backend видит GET /ready; ответ 200 = all deps ok, 503 = degraded)
+6. Monitoring Interval: 5 minutes (free tier)
+7. Alert Contacts: добавить email владельца + Telegram (см. C1.3)
+8. Save → монитор должен перейти в "Up" (зелёный) в течение 5 мин.
+```
+
+#### C1.3 Alert contacts — email + Telegram
+
+```
+Email:
+  Dashboard → "Alert Contacts" → "+ Add Alert Contact"
+  → Type: E-mail → введите email владельца → Save → подтвердить письмо.
+
+Telegram:
+  Dashboard → "Alert Contacts" → "+ Add Alert Contact"
+  → Type: Telegram
+  → Следовать инструкции: найти @UptimeRobot в Telegram → /start → получить chat_id
+  → Ввести chat_id → Save.
+```
+
+#### C1.4 Тест down/recovery — AC1/AC2
+
+> Выполняется в окне деплоя (допустим кратковременный down).
+
+```sh
+# Контролируемый останов стека на прод-сервере:
+ssh deploy@foresignal.biz "cd /app && make -C release down"
+
+# Ожидаемо в течение ≤10 мин: алерт "DOWN" в Telegram и на email.
+
+# Поднять обратно:
+ssh deploy@foresignal.biz "cd /app && make -C release up"
+
+# Ожидаемо: алерт "UP (Recovery)" в Telegram и на email.
+```
+
+**AC2 — 503 (деградация зависимости):**
+```sh
+# Остановить Redis на сервере (контейнер):
+ssh deploy@foresignal.biz "docker stop \$(docker ps -qf name=redis)"
+
+# GET /api/ready → 503 → монитор считает down → алерт.
+# Восстановить:
+ssh deploy@foresignal.biz "docker start \$(docker ps -aqf name=redis)"
+```
+
+#### C1.5 Тест email-routing — AC3
+
+```sh
+# Отправить письмо с внешнего ящика (не owner@) на каждый адрес:
+#   support@foresignal.biz
+#   privacy@foresignal.biz
+#   abuse@foresignal.biz
+#   security@foresignal.biz
+#
+# Ожидаемо: письмо приходит на ящик владельца в течение ≤5 мин.
+# Если письмо не пришло — проверить шаг верификации destination (C1.1 п.3).
+```
+
+#### C1.6 Обновление destination-адреса владельца
+
+Если адрес назначения меняется:
+```sh
+# 1. Обновить ops/terraform/environments/org/terraform.tfvars:
+#    email_routes = { support = "new-owner@mailbox.com", ... }
+#    email_catch_all_destination = "new-owner@mailbox.com"
+# 2. terraform apply -target=module.email_routing  (только email-routing — additive)
+# 3. Подтвердить новый destination-адрес по email от Cloudflare (см. C1.1 п.3).
+```
+
+> **Заметка для TASK-032 (rate-limit):** `/api/ready` должен оставаться вне жёстких rate-limit правил
+> (UptimeRobot шлёт с пула IP; 1 запрос/5 мин — ничтожно против глобального лимита 120/min).
+
+---
+
 ## Полный E2E-сценарий «один пользователь от регистрации до алерта»
 1. `make ansible-unpack && make dev-infra-up && make up` (+ ml-worker-образ для эмбеддинга).
 2. register → login (cookie).

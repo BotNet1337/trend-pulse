@@ -1,11 +1,11 @@
 ---
 id: TASK-060
 title: Внешний uptime-мониторинг /api/ready + канал поддержки (support@ routing, витрины)
-status: planned             # planned → in-progress → review → done
+status: in-progress         # planned → in-progress → review → done
 owner: infra
 created: 2026-06-11
 updated: 2026-06-11
-baseline_commit: "8bc0b462d1d6f0a2468b7b3dc1cf50b22c7dc15e"
+baseline_commit: "cce722a"
 branch: "gsd/phase-uptime-support"
 tags: [launch, ops, terraform, landing, frontend, p4]
 ---
@@ -155,17 +155,17 @@ SPA: страницы account/billing без support-контакта. SMTP from
 
 ## Checkpoints
 
-current_step: 3
-baseline_commit: "8bc0b462d1d6f0a2468b7b3dc1cf50b22c7dc15e"
+current_step: 7
+baseline_commit: "cce722a"
 branch: "gsd/phase-uptime-support"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TF + config + строка SPA + чек-лист)
-- [ ] 4 verify (G2 — down/recovery + почта + витрины)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (skip-кандидат — подтвердить на review)
-- [ ] 6 ship (PR)
+- [x] 3 do (TF + config + строка SPA + чек-лист)
+- [x] 4 verify (G2 = builds+validate+фактчек; live AC blocked)
+- [x] 5 review (auto, adversarial)
+- [x] 5.5 security (skip подтверждён — нет auth/input/secret-кода; личный email только в tfvars)
+- [x] 6 ship (TF/витрины-часть)
 - [ ] 7 learnings (auto)
 debug_runs: []
 
@@ -176,3 +176,50 @@ support-адрес на лендинге». Решения: UptimeRobot вруч
 one-time как GitHub Secrets в 057), email — IaC через существующий cloudflare/email-routing.
 Зависимости: 057 (живой домен) для финальных AC; TF и витрины — сразу. P4-прибор появляется;
 сам failover (managed DB/второй узел) — «потом», когда выручка покроет.)
+
+do-stage findings (2026-06-11):
+- ready-path: nginx /api/ → backend / (strip prefix) → GET /ready at root → публичный путь /api/ready.
+  Подтверждено: backend/src/api/main.py строка 5+351 («/ready stays at ROOT, unversioned»),
+  nginx.conf location /api/ → proxy_pass http://trendpulse_api/ (trailing slash strips prefix).
+  UptimeRobot URL: https://foresignal.biz/api/ready
+- TF email-routing: модуль уже принимает email_routes map; добавлены privacy/abuse/security
+  в tfvars.example (placeholder owner@example.com). Новый ресурс — только additive.
+- CF apply: ЗАБЛОКИРОВАН (CLOUDFLARE_API_TOKEN не установлен, terraform.tfvars отсутствует).
+  Шаг владельца: заполнить ops/terraform/environments/org/terraform.tfvars из *.example,
+  затем: terraform apply -target=module.email_routing (environments/org).
+  После apply: подтвердить destination-адрес по письму от Cloudflare (обязательно).
+- Blocked-список (финальные AC → после TASK-057 + owner-шаги):
+  * AC1 монитор down/recovery → создать UptimeRobot монитор по чек-листу §C1.2–C1.4
+  * AC2 503-ветка → тест с остановкой Redis (§C1.4)
+  * AC3 почтовый тест → после TF apply + верификация destination (§C1.5)
+  * terraform apply → owner (нужны CF-креды в tfvars)
+
+
+review-stage findings (2026-06-11, pass):
+- Scope: 9 файлов (на 1 больше заявленных 8) — лишний `landing/public/sitemap.xml`. Это
+  СГЕНЕРИРОВАННЫЙ артефакт (`npm run sitemap:gen` из `public/config.json`, источник домена
+  `SITE.siteUrl`). Раз config.json (sanctioned) сменил домен → регенерация sitemap —
+  корректное следствие, не scope creep. MEDIUM, не блокирует.
+- AC4 grep: `frontend/Dockerfile:20` ARG VITE_HELP_URL=https://trendpulse.app/docs остался —
+  но это pre-existing (есть на baseline cce722a), этим диффом НЕ менялся, и это build-default
+  override target (runtime-дефолт в brand.ts уже исправлен на foresignal.biz). LOW для полноты
+  AC4 («grep landing/ frontend/ = 0» формально не выполнен из-за Dockerfile ARG) — добавить в
+  ship/последующую правку, не блокирует review.
+- Terraform: fmt чисто (changed files), email_routes for_each консистентен модулю, только
+  плейсхолдеры owner@example.com — реального личного email в commited-файлах НЕТ.
+- Инвариант «личный ящик не на витринах»: config.json + frontend показывают только
+  @foresignal.biz role-адреса. OK.
+- Инвариант «маршруты только через terraform»: §C использует terraform apply; CF verify-email —
+  подтверждение destination, не создание маршрута в дашборде. OK.
+- Frontend: SUPPORT_EMAIL по env-override паттерну brand.ts, barrel-export через index.ts,
+  mailto как JSX-текст (нет dangerouslySetInnerHTML), &amp; экранирован. account-view diff минимален.
+- §C: исполним post-057, /api/ready подтверждён (main.py /ready root + nginx strip), down/recovery
+  + 503(redis) процедуры конкретны, UptimeRobot шаги полны (HTTP(s), keyword не нужен — статус-кода
+  достаточно per plan), destination-верификация (C1.1 п.3) присутствует.
+- security 5.5: skip подтверждён — нет auth/input/secret-кода; личный email только в tfvars (owner-шаг).
+
+ship-stage (2026-06-11, TF/витрины-часть):
+- Review LOW fix: frontend/Dockerfile ARG VITE_HELP_URL → https://foresignal.biz/docs (было trendpulse.app).
+- После merge blocked: (a) owner — terraform apply environments/org (CF token) + подтверждение
+  destination-адреса из письма Cloudflare; (b) после TASK-057 — монитор UptimeRobot по §C1,
+  down/recovery тест, проверка почты support@.

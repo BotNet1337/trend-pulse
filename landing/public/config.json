@@ -1,13 +1,13 @@
 {
   "brandName": "TrendPulse",
-  "siteUrl": "https://trendpulse.app",
-  "domainName": "trendpulse.app",
-  "contactEmail": "support@trendpulse.app",
+  "siteUrl": "https://foresignal.biz",
+  "domainName": "foresignal.biz",
+  "contactEmail": "support@foresignal.biz",
   "topic": "Viral content detection",
   "valueProp": "Detect viral Telegram content before it explodes",
   "ctaText": "Get started free",
   "signupUrl": "/sign-up",
-  "_signupUrlNote": "Relative path assumes landing and SPA are served from the same edge/domain (e.g., Cloudflare routing: /sign-up → SPA). To override for a separate SPA domain, set an absolute URL here, e.g. https://app.trendpulse.app/sign-up.",
+  "_signupUrlNote": "Relative path assumes landing and SPA are served from the same edge/domain (e.g., Cloudflare routing: /sign-up → SPA). To override for a separate SPA domain, set an absolute URL here, e.g. https://app.foresignal.biz/sign-up.",
   "compliance": {
     "dataRetentionHours": 48,
     "publicChannelsOnly": true,
@@ -74,8 +74,8 @@
     "governingLaw": "the laws of Ukraine",
     "courts": "the competent courts located in Ukraine",
     "effectiveDate": "June 9, 2026",
-    "privacyEmail": "privacy@trendpulse.app",
-    "abuseEmail": "abuse@trendpulse.app",
-    "securityEmail": "security@trendpulse.app"
+    "privacyEmail": "privacy@foresignal.biz",
+    "abuseEmail": "abuse@foresignal.biz",
+    "securityEmail": "security@foresignal.biz"
   }
 }
