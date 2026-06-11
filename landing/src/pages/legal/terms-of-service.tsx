@@ -150,8 +150,13 @@ export function TermsOfServicePage() {
                   current billing cycle.
                 </li>
                 <li>
-                  <strong className="text-foreground">Refunds.</strong> Except where required by law (including the EU
-                  consumer right of withdrawal where applicable), fees are non-refundable.
+                  <strong className="text-foreground">Refunds.</strong> Your first payment is covered by a 7-day
+                  money-back guarantee as described in our{' '}
+                  <Link to="/refund-policy" className="text-primary hover:underline">
+                    Refund Policy
+                  </Link>
+                  . Beyond that guarantee, and except where required by law (including the EU consumer right of
+                  withdrawal where applicable), fees are not refundable.
                 </li>
                 <li>
                   <strong className="text-foreground">Taxes.</strong> You are responsible for any VAT, sales tax, or

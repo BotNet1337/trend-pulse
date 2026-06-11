@@ -50,6 +50,11 @@ function routeMeta(pathname: string): { title: string; description: string } {
       };
     case '/terms-of-service':
       return { title: `${baseTitle} — Terms of Service`, description: `Terms of Service for ${SITE.brandName}.` };
+    case '/refund-policy':
+      return {
+        title: `${baseTitle} — Refund Policy`,
+        description: `Refund Policy for ${SITE.brandName}: 7-day money-back guarantee on your first payment, refunded manually in USDT.`,
+      };
     case '/cookie-policy':
       return { title: `${baseTitle} — Cookie Policy`, description: `Cookie Policy for ${SITE.brandName}.` };
     case '/acceptable-use-policy':
