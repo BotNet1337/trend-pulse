@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from api.main import app
@@ -49,18 +50,18 @@ def client(db_engine: Any) -> Iterator[TestClient]:
         app.dependency_overrides.pop(get_async_session, None)
 
 
-def _register_and_login(client: TestClient) -> dict[str, Any]:
+def _register_and_login(client: TestClient, email: str = _TEST_EMAIL) -> dict[str, Any]:
     """Register a fresh user and log in; returns the UserRead body from register."""
     reg = client.post(
         "/v1/auth/register",
-        json={"email": _TEST_EMAIL, "password": _TEST_PASSWORD},
+        json={"email": email, "password": _TEST_PASSWORD},
     )
     assert reg.status_code == 201, reg.text
     user: dict[str, Any] = reg.json()
 
     login = client.post(
         "/v1/auth/jwt/login",
-        data={"username": _TEST_EMAIL, "password": _TEST_PASSWORD},
+        data={"username": email, "password": _TEST_PASSWORD},
     )
     assert login.status_code in (200, 204), login.text
     assert "fastapiusersauth" in login.cookies
@@ -89,3 +90,25 @@ def test_get_users_me_authenticated(client: TestClient) -> None:
     assert body["plan"] == "free"
     # New users are not verified by default (fastapi-users default)
     assert body["is_verified"] is False
+    # TASK-063: client-side admin UX flag — present and False for a regular user.
+    assert body["is_superuser"] is False
+
+
+def test_get_users_me_superuser_flag_true(client: TestClient, db_engine: Any) -> None:
+    """TASK-063: is_superuser=True on the model is reflected in /users/me.
+
+    The flag is a UX hint only (the real gate is `current_superuser` on the
+    ops route); here we just verify the additive field round-trips.
+    """
+    email = "me-route-superuser@example.com"
+    _register_and_login(client, email=email)
+
+    with db_engine.begin() as conn:
+        conn.execute(
+            text("UPDATE users SET is_superuser = TRUE WHERE email = :email"),
+            {"email": email},
+        )
+
+    resp = client.get("/v1/users/me")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["is_superuser"] is True

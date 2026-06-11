@@ -1131,6 +1131,10 @@
             "title": "Id",
             "type": "integer"
           },
+          "is_superuser": {
+            "title": "Is Superuser",
+            "type": "boolean"
+          },
           "is_verified": {
             "title": "Is Verified",
             "type": "boolean"
@@ -1144,7 +1148,8 @@
           "id",
           "email",
           "plan",
-          "is_verified"
+          "is_verified",
+          "is_superuser"
         ],
         "title": "UserMeResponse",
         "type": "object"

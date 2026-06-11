@@ -28,6 +28,9 @@ class UserMeResponse(BaseModel):
     email: EmailStr
     plan: str
     is_verified: bool
+    # TASK-063: client-side admin UX flag (NOT a security boundary — the real
+    # gate is `current_superuser` on the ops routes, which returns 403).
+    is_superuser: bool
 
     model_config = {"from_attributes": True}
 
@@ -46,4 +49,5 @@ def get_users_me(user: User = Depends(current_user)) -> UserMeResponse:
         email=user.email,
         plan=plan_value,
         is_verified=user.is_verified,
+        is_superuser=user.is_superuser,
     )

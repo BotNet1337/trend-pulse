@@ -1,6 +1,9 @@
 export const paths = {
   home: '/',
   onboarding: '/onboarding',
+  admin: {
+    metrics: '/admin/metrics',
+  },
   account: {
     settings: '/account/settings',
     invite: '/account/invite',
