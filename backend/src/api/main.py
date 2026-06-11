@@ -52,6 +52,7 @@ from api.rate_limit import limiter, rate_limit_handler
 from api.referral import router as referral_router
 from api.routes import account_router, ops_router
 from api.routes.ops_business import router as ops_business_router
+from api.security.csrf import CSRFOriginMiddleware
 from api.trending.router import router as trending_router
 from api.watchlist import router as watchlist_router
 from billing.deps import BillingNotConfiguredError
@@ -109,6 +110,10 @@ def _docs_urls(swagger_enable: bool) -> _DocsUrls:
 configure_logging()
 # Sentry error-tracking (TASK-024): no-op when SENTRY_DSN is empty (dev default).
 init_sentry("api")
+# At-rest field encryption (TASK-032 Block C): EncryptedString resolves the key
+# lazily from get_settings() on each ORM operation — no explicit configure() call
+# needed. This ensures the Celery worker path also decrypts correctly without
+# importing api.main. Key is validated at Settings construction (validate_fernet_key).
 
 app = FastAPI(title="TrendPulse API", **_docs_urls(get_settings().swagger_enable))
 
@@ -122,6 +127,15 @@ app.add_middleware(SlowAPIMiddleware)
 # Request-logging middleware (aggregate-only: method/path/status/duration). Added
 # after SlowAPIMiddleware so it wraps the outermost request lifecycle.
 app.middleware("http")(log_requests)
+
+# CSRF/Origin-check middleware (TASK-032, Block B): enforces that state-changing
+# requests on cookie-auth sessions include an Origin/Referer from the allow-list.
+# Registered after SlowAPIMiddleware (rate-limit fires first) and before routers.
+# Exempt: safe methods, X-API-Key requests, /billing/ipn path, unauthenticated.
+app.add_middleware(
+    CSRFOriginMiddleware,
+    allowed_origins=get_settings().allowed_origins_set,
+)
 
 
 # ---------------------------------------------------------------------------

@@ -27,6 +27,7 @@ dependencies = [
     "python-json-logger>=3.1,<5",
     "slowapi>=0.1.9,<1",
     "sentry-sdk>=2,<3",
+    "cryptography>=42,<44",
 ]
 
 [build-system]
@@ -95,6 +96,8 @@ python_version = "3.12"
 # src only, tests excluded). `mypy_path = src` + `explicit_package_bases` make
 # src/ the import root so the flat top-level names resolve without a parent pkg.
 packages = ["analytics", "api", "alerts", "billing", "collector", "compliance", "observability", "pipeline", "referral", "scorer", "storage", "config", "celery_app", "scheduler"]
+# api.security is a sub-package of api (already covered by "api" above); no
+# separate entry needed. storage.encryption is part of "storage". Both are checked.
 mypy_path = "src"
 explicit_package_bases = true
 strict = true

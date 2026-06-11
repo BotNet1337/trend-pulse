@@ -1,11 +1,11 @@
 ---
 id: TASK-032
 title: Security hardening — per-route rate-limit (nginx) + CSRF/Origin на мутациях + at-rest шифрование (или accepted-risk)
-status: planned             # planned → in-progress → review → done
+status: review              # planned → in-progress → review → done
 owner: security
 created: 2026-06-09
-updated: 2026-06-09
-baseline_commit: ""
+updated: 2026-06-11
+baseline_commit: "4a456d1"
 branch: "gsd/phase-032-security-hardening"
 tags: [epic-d, security, nginx, ops]
 ---
@@ -107,20 +107,108 @@ Security-долги (learnings):
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
-baseline_commit: ""
+current_step: 7
+baseline_commit: "4a456d1"
 branch: "gsd/phase-032-security-hardening"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + real behavior через nginx/стек)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (если применимо)
-- [ ] 6 ship (PR, squash-merged)
-- [ ] 7 learnings (auto)
-debug_runs: []
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + real behavior через nginx/стек)
+- [x] 5 review (auto, adversarial)
+- [x] 5.5 security (если применимо)
+- [x] 6 ship (PR, squash-merged)
+- [x] 7 learnings (auto)
+debug_runs:
+  - id: debug-2026-06-11-review-security-fixes
+    trigger: review CRITICAL (worker key) + security HIGH (api-key exemption) findings
+    findings:
+      - severity: CRITICAL
+        where: storage/encryption.py + celery_app.py (worker bootstrap)
+        root_cause: >
+          EncryptedString._encryption_key (class var, default "") was set only via
+          EncryptedString.configure(key) called in api/main.py at module init.
+          The Celery worker bootstraps via celery_app.py and never imports api.main,
+          so _encryption_key stayed "" in worker → process_bind_param / process_result_value
+          raised RuntimeError at first ORM read/write of telegram_bot_token / webhook_url
+          (notifier alert/webhook delivery path).
+        fix: >
+          Removed configure() classmethod and _encryption_key class var from encryption.py.
+          TypeDecorator now resolves key LAZILY from get_settings().field_encryption_key
+          inside process_bind_param/process_result_value. get_settings() is lru_cached —
+          effectively a dict lookup after first call. Removed EncryptedString.configure()
+          call from api/main.py (import removed too). Removed autouse configure() fixture
+          from test_at_rest_encryption.py — tests now exercise real lazy wiring.
+          Added test_lazy_key_resolution_without_configure() integration test proving
+          the worker path works without importing api.main.
+      - severity: HIGH
+        where: src/api/security/csrf.py dispatch()
+        root_cause: >
+          X-API-Key exemption was gated only on header presence (step 3 in old dispatch()),
+          checked BEFORE the session-cookie check. This meant a request with BOTH a
+          session cookie AND X-API-Key would skip the Origin check entirely — a latent
+          CSRF bypass: an attacker could add X-API-Key to a forged browser request.
+        fix: >
+          Reordered exemption logic: session-cookie check is now step 3 (before api-key
+          check). A request without a session cookie exits early (not a browser CSRF target,
+          whether or not it has X-API-Key). A request WITH a session cookie proceeds to
+          Origin validation regardless of any X-API-Key header. Renamed
+          test_api_key_request_passes → test_api_key_cookieless_request_passes to test
+          the correct case (no cookie + api-key = exempt). Added
+          test_api_key_with_session_cookie_still_csrf_checked (new) asserting 403 for
+          cookie+api-key without Origin.
+      - severity: MEDIUM
+        where: src/api/security/csrf.py _has_session_cookie()
+        root_cause: >
+          Cookie name "fastapiusersauth" was hardcoded; if cookie_transport config
+          changes, the CSRF check silently fails open.
+        fix: >
+          Imported cookie_transport from api.auth.backend; _has_session_cookie() now
+          uses cookie_transport.cookie_name (same pattern as rate_limit.py). Matches
+          the actual cookie name at runtime.
+      - severity: LOW
+        where: src/api/security/csrf.py _extract_origin_host()
+        root_cause: >
+          Origin: null was parsed through urlparse() which returns netloc="" for "null",
+          causing the function to return None (treated same as absent Origin). This is
+          correct (null → rejected), but was implicit and not tested. RFC 6454 §7.3
+          sandboxed iframes can send Origin: null; an explicit rejection + test is
+          required to pin the behavior.
+        fix: >
+          Added explicit `if origin == "null": return None` before urlparse() in
+          _extract_origin_host(). Added test_null_origin_blocked() integration test:
+          cookie-auth mutation with Origin: null → 403 FORBIDDEN.
+    test_run: >
+      Ephemeral pg tp032f-pg port 15440. 20 integration tests in test_at_rest_encryption.py
+      (7 tests, incl. new lazy-resolution test) + test_csrf_origin.py (13 tests, incl.
+      new null-origin + cookie+apikey tests) + test_delivery_config.py (12 tests) —
+      all PASSED. Unit suite: 601 passed, 0 failed. ruff check: OK; ruff format: OK;
+      mypy: 160 files, 0 issues. Container cleaned up.
 
 ## Details
 <!-- executor appends iterative fixes + decisions here -->
 (initial — план по эталону [task-013](./task-013-frontend-foundation.md)/[task-017](./task-017-billing-account-ui.md) и реальному коду: edge-nginx (`development/provisioning/nginx/nginx.conf`) сейчас БЕЗ `limit_req_zone`/`limit_req` — только security-заголовки + `client_max_body_size 10m`; backend slowapi глобальный 120/min (`SlowAPIMiddleware`), per-route нет. Пользователь решил: per-route rate-limit — на EDGE-nginx (не slowapi). Security-долги (learnings): cookie SameSite=lax без CSRF-токена на мутациях (logout/delete/invoice/delivery-config PATCH — OAuth уже имеет csrf double-submit cookie, обычные мутации нет); prod cookie Secure (task-009 долг, флаг `auth_cookie_secure` есть); `users.telegram_bot_token`/`webhook_url` plaintext at-rest (в API маскируются task-017 `mask_bot_token`, в БД plaintext). nginx at-rest НЕ может (только транспорт) — app-level Fernet/pgcrypto. At-rest помечено ОПЦИОНАЛЬНЫМ: по умолчанию реализуем app-Fernet (ключ env), при сложности — явный accepted-risk в Details (НЕ молча). CSRF-подход: склоняемся к app-middleware Origin/Referer allow-list (переносимо, integration-тестируемо; внимание к SSR-origin task-029). prod cookie Secure env-driven. ОСТОРОЖНО: rate-limit разумный (e2e не ронять — AC6); Origin-check не блокирует SSR-server (task-029). Security 5.5 = суть задачи. deps: 011 (compliance/logging-hygiene), 012 (предполагаемая infra/secrets). locate+plan выполнены этим планированием — executor стартует с «3 do».)
+
+### Block A — nginx per-route rate-limit (2026-06-11)
+Реализовано: 5 named `limit_req_zone` зон (`auth_login:10r/m`, `auth_signup:5r/m`, `auth_forgot:5r/m`, `billing_inv:5r/m`, `api_keys:5r/m`) в `http{}`; `limit_req_status 429`; per-location `limit_req zone=... burst=N nodelay` на точных `location =` блоках для `/api/v1/auth/jwt/login`, `/api/v1/auth/register`, `/api/v1/auth/forgot-password`, `/api/v1/billing/invoice`, prefix-match `/api/v1/api-keys`; всё продублировано в закомментированный prod-443-блок. nginx -t валидация пройдена (docker run --rm nginx:1.27). `/billing/ipn` и `/ready` не лимитируются.
+
+### Block B — CSRF/Origin middleware (2026-06-11)
+Реализовано: `backend/src/api/security/csrf.py` — `CSRFOriginMiddleware(BaseHTTPMiddleware)`; блокирует state-changing методы (POST/PUT/PATCH/DELETE) на cookie-auth запросах где Origin/Referer отсутствует или не в allow-list → 403. Освобождения: safe-методы, `/billing/ipn`, X-API-Key header, нет сессионного cookie. `allowed_origins` в `config.py` из env `ALLOWED_ORIGINS`. Зарегистрирован после SlowAPIMiddleware в `api/main.py`. Integration-тесты `test_csrf_origin.py` — 10 сценариев (проходят). Фикс 3 существующих тестов (test_auth_flow.py, test_auth_reset.py, test_delivery_config.py) — добавлен `headers={"Origin": "http://testserver"}` в TestClient fixtures. conftest.py: `http://testserver` добавлен в ALLOWED_ORIGINS по умолчанию.
+
+### Block C — at-rest encryption (2026-06-11)
+Реализовано: P5 закрыт: at-rest шифрование реализовано. `backend/src/storage/encryption.py` — `EncryptedString(TypeDecorator[str])` + `encrypt_value`/`decrypt_value` на Fernet; `EncryptedString.configure(key)` classmethod. `config.py`: `field_encryption_key` (env `FIELD_ENCRYPTION_KEY`), `validate_fernet_key` validator (32-byte проверка), `allowed_origins_set` property. `storage/models/users.py`: `telegram_bot_token` и `webhook_url` переведены на `EncryptedString` (колонки расширены до 300/2300). Миграция `0019_field_encryption.py`: encrypt existing plaintext (идемпотентно: проверка `gAA` prefix), расширение колонок, обратимый downgrade. `ops/ansible/roles/env/templates/sensitive.env.j2`: `FIELD_ENCRYPTION_KEY={{ vault_field_encryption_key | default('') }}` добавлен. `EncryptedString.configure()` вызывается при старте `main.py`. Integration-тесты `test_at_rest_encryption.py` — 6 сценариев (проходят). `cryptography>=42,<44` добавлен в `pyproject.toml`.
+
+### Test run summary (2026-06-11, ephemeral pg tp032-pg:15438)
+- 216 passed, 6 failed (pre-existing: `test_ops_business_metrics.py` — route `/ops/business-metrics` vs `/v1/ops/business-metrics`, баг в тестах, существовал до TASK-032), 10 skipped (Redis недоступен, templates-service, telegram creds, ML deps)
+- ruff check: OK; ruff format: OK; mypy: OK (strict типы, без Any/# type: ignore)
+
+### Block D — debug fixes (review CRITICAL + security HIGH; 2026-06-11)
+review CRITICAL (worker key) + security HIGH (api-key exemption) исправлены.
+- FIX 1 CRITICAL: `storage/encryption.py` — lazy key resolution от `get_settings()`, убран `configure()` classmethod/class-var; `api/main.py` — убран вызов `EncryptedString.configure()` и импорт. Celery worker теперь расшифровывает без импорта api.main.
+- FIX 2 HIGH: `api/security/csrf.py` — порядок exemption-проверок: session-cookie check перенесён ДО api-key check; X-API-Key exemption работает ТОЛЬКО если нет session-cookie (cookieless = not CSRF target); запрос с обоими (cookie+api-key) → Origin-проверка.
+- FIX 3 MEDIUM: `api/security/csrf.py` — `_has_session_cookie()` использует `cookie_transport.cookie_name` вместо хардкода `"fastapiusersauth"`.
+- FIX 4 LOW: `api/security/csrf.py` — явная проверка `origin == "null"` → return None + интеграционный тест `test_null_origin_blocked`.
+- Tests: autouse `configure_encryption` fixture удалён из `test_at_rest_encryption.py`; добавлен `test_lazy_key_resolution_without_configure`; `test_api_key_request_passes` переименован и исправлен; добавлены `test_null_origin_blocked`, `test_api_key_with_session_cookie_still_csrf_checked`.
+
+### Block E — ship + learnings (2026-06-11)
+P5 at-rest закрыт; review CRITICAL (worker key→lazy) + security HIGH (api-key exemption→cookieless-only) исправлены и переревью пройдены. PR открыт, ADR-008 at-rest шифрование добавлен, learnings зафиксированы.

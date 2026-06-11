@@ -4,6 +4,7 @@ No magic literals: connection URLs and credentials come from the environment,
 materialized by `make ansible-unpack` into `development/env/*.env`.
 """
 
+import base64
 from functools import lru_cache
 
 from pydantic import ValidationInfo, field_validator
@@ -223,6 +224,38 @@ _DEFAULT_REFERRAL_REWARD_USDT: float = 10.0
 # One run per day computes yesterday (complete) + today (partial running total).
 # Override via env BUSINESS_METRICS_INTERVAL_SECONDS (e.g. 60 for dev/testing).
 _DEFAULT_BUSINESS_METRICS_INTERVAL_SECONDS: int = 86_400  # 24 hours
+
+# CSRF/Origin allow-list (TASK-032). Named, non-secret default — the list of
+# scheme+host values that are accepted as the `Origin` (or Referer fallback)
+# header on cookie-auth mutations (POST/PUT/PATCH/DELETE).
+# Dev default includes http://localhost (local compose SPA on :80/:3000) and
+# http://localhost:3000 (Vite HMR dev server) so local development works
+# without setting this env var. In production: override via ALLOWED_ORIGINS
+# (comma-separated, e.g. "https://app.foresignal.biz,https://foresignal.biz").
+_DEFAULT_ALLOWED_ORIGINS = "http://localhost,http://localhost:3000,http://localhost:4000"
+
+
+# Field encryption key (TASK-032, Block C — at-rest encryption).
+# A Fernet key: 32 random bytes, base64url-encoded (44 characters).
+# In production: supply via FIELD_ENCRYPTION_KEY in sensitive.env / vault.
+# Dev default: a deterministic valid Fernet key generated from a fixed seed
+# (safe for dev — never in production). The validator enforces Fernet format.
+# Key loss = data loss for encrypted columns (telegram_bot_token / webhook_url).
+# Keep in secret manager and plan for rotation (re-encrypt with new key).
+def _make_dev_fernet_key() -> str:
+    """Generate a deterministic dev Fernet key from a fixed seed.
+
+    This is a 32-byte key encoded as urlsafe-base64 (Fernet standard).
+    NEVER used in production — the validator ensures the env var is set for
+    non-localhost environments; this exists only so `uv run pytest -m 'not
+    integration'` works without setting FIELD_ENCRYPTION_KEY.
+    """
+    # Fixed 32-byte seed for dev reproducibility (not a secret — dev only).
+    seed = b"trendpulse-dev-field-enc-key-001"  # exactly 32 bytes
+    return base64.urlsafe_b64encode(seed).decode("ascii")
+
+
+_DEFAULT_FIELD_ENCRYPTION_KEY: str = _make_dev_fernet_key()
 
 # TG account pool health + ops self-alert (TASK-035). Named, non-secret defaults.
 # `pool_min_healthy` is the operational target: fewer healthy accounts = degraded
@@ -474,6 +507,18 @@ class Settings(BaseSettings):
     # Beat interval (seconds) for the aggregate_business_metrics task. Default 24h. ---
     business_metrics_interval_seconds: int = _DEFAULT_BUSINESS_METRICS_INTERVAL_SECONDS
 
+    # --- CSRF/Origin allow-list (TASK-032). Non-secret, settable; default above.
+    # Comma-separated scheme+host values accepted in the Origin (or Referer fallback)
+    # header for cookie-auth mutations. Override via env ALLOWED_ORIGINS in prod. ---
+    allowed_origins: str = _DEFAULT_ALLOWED_ORIGINS
+
+    # --- Field encryption key (TASK-032 Block C, at-rest encryption). Secret.
+    # Fernet key (32-byte urlsafe-base64, 44 chars). Supplied via sensitive.env /
+    # vault (FIELD_ENCRYPTION_KEY). Dev default: deterministic placeholder (above).
+    # WARNING: loss of this key = permanent loss of telegram_bot_token / webhook_url.
+    # Store in secret-manager; document rotation plan (re-encrypt with new key). ---
+    field_encryption_key: str = _DEFAULT_FIELD_ENCRYPTION_KEY
+
     # --- Observability — Sentry (TASK-024). DSN is a secret (sensitive.env); empty
     # default → Sentry off. Non-secret settings have named-constant defaults above.---
     # Secret — supplied via sensitive.env / vault; NEVER logged or hardcoded.
@@ -571,6 +616,39 @@ class Settings(BaseSettings):
             f"public_base_url must be empty, start with 'https://', or start with "
             f"'http://' for localhost/127.0.0.1 (got: {url!r})."
         )
+
+    @field_validator("field_encryption_key")
+    @classmethod
+    def validate_fernet_key(cls, v: str) -> str:
+        """Fail fast if field_encryption_key is not a valid Fernet key.
+
+        A Fernet key must be exactly 32 bytes when base64url-decoded (44 chars
+        with padding). We validate at startup so a misconfigured key is caught
+        immediately, not at first encrypt/decrypt.
+        """
+        try:
+            decoded = base64.urlsafe_b64decode(v.encode("ascii") + b"==")
+        except Exception as exc:
+            raise ValueError(
+                "FIELD_ENCRYPTION_KEY must be a valid base64url-encoded string (Fernet key format)."
+            ) from exc
+        if len(decoded) != 32:
+            raise ValueError(
+                f"FIELD_ENCRYPTION_KEY must decode to exactly 32 bytes "
+                f"(got {len(decoded)} bytes). "
+                'Generate with: python -c "from cryptography.fernet import Fernet; '
+                'print(Fernet.generate_key().decode())"'
+            )
+        return v
+
+    @property
+    def allowed_origins_set(self) -> frozenset[str]:
+        """Parse the comma-separated allowed_origins string into a frozenset.
+
+        Strips whitespace from each entry; ignores empty entries. Used by
+        CSRFOriginMiddleware at startup (constructed once, not per-request).
+        """
+        return frozenset(o.strip() for o in self.allowed_origins.split(",") if o.strip())
 
     @property
     def database_url(self) -> str:
