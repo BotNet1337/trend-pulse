@@ -1,5 +1,5 @@
 {
-  "brandName": "TrendPulse",
+  "brandName": "Foresignal",
   "siteUrl": "https://foresignal.biz",
   "domainName": "foresignal.biz",
   "contactEmail": "support@foresignal.biz",
@@ -11,7 +11,7 @@
   "compliance": {
     "dataRetentionHours": 48,
     "publicChannelsOnly": true,
-    "publicChannelsNote": "TrendPulse monitors only public Telegram channels (@username). Private channels are not accessible.",
+    "publicChannelsNote": "Foresignal monitors only public Telegram channels (@username). Private channels are not accessible.",
     "retentionNote": "Raw message content is not stored beyond 48 hours. Only metadata and trend signals are retained."
   },
   "pricing": {

@@ -1,7 +1,7 @@
 /**
  * OnboardingPage — /onboarding (TASK-039)
  *
- * Flow: pick a pack → see live trending data → CTA «Подключить набор» subscribes
+ * Flow: pick a pack → see live trending data → CTA «Connect pack» subscribes
  * → navigate to /watchlists.
  *
  * Decision (task doc §Discussion):
@@ -50,7 +50,7 @@ export const OnboardingPage: React.FC = () => {
       // Read envelope message first (TASK-030 unified format), fall back to legacy {detail}.
       const detail = e.response?.data?.error?.message ?? e.response?.data?.detail;
       setSubscribeError(
-        detail ? `Ошибка: ${detail}` : 'Не удалось подключить набор. Попробуйте ещё раз.',
+        detail ? `Error: ${detail}` : 'Failed to connect the pack. Please try again.',
       );
     }
   };
@@ -66,24 +66,24 @@ export const OnboardingPage: React.FC = () => {
       <main className="flex-1 container max-w-2xl mx-auto px-4 py-10">
         {/* Step header */}
         <div className="mb-8">
-          <h1 className="text-2xl font-bold">Добро пожаловать!</h1>
+          <h1 className="text-2xl font-bold">Welcome!</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Выберите тему — и увидите, что завирусилось за последние 24 часа.
+            Pick a topic — and see what went viral in the last 24 hours.
           </p>
         </div>
 
         {/* Pack selector */}
         <section aria-labelledby="pack-selector-heading" className="mb-6">
           <h2 id="pack-selector-heading" className="text-sm font-semibold mb-2 uppercase tracking-wide text-muted-foreground">
-            Шаг 1 — Выберите набор
+            Step 1 — Pick a pack
           </h2>
 
           {packsLoading && (
-            <p className="text-sm text-muted-foreground">Загрузка наборов…</p>
+            <p className="text-sm text-muted-foreground">Loading packs…</p>
           )}
 
           {!packsLoading && packs && (
-            <div className="flex flex-wrap gap-2" role="group" aria-label="Выбор пака">
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Pack selection">
               {packs.map((pack) => {
                 const isActive = pack.slug === effectiveSlug;
                 return (
@@ -111,7 +111,7 @@ export const OnboardingPage: React.FC = () => {
         {effectiveSlug && (
           <section aria-labelledby="trending-heading" className="mb-8">
             <h2 id="trending-heading" className="text-sm font-semibold mb-3 uppercase tracking-wide text-muted-foreground">
-              Шаг 2 — Вирусное за 24 часа
+              Step 2 — Viral in the last 24 hours
               {selectedPack && (
                 <span className="normal-case ml-1 font-normal">
                   · {selectedPack.title}
@@ -131,11 +131,11 @@ export const OnboardingPage: React.FC = () => {
         {/* CTA */}
         <section aria-labelledby="cta-heading">
           <h2 id="cta-heading" className="text-sm font-semibold mb-3 uppercase tracking-wide text-muted-foreground">
-            Шаг 3 — Подключите набор
+            Step 3 — Connect a pack
           </h2>
           <p className="text-sm text-muted-foreground mb-4">
-            Подключите набор, чтобы получать персональные сигналы, когда темы из него начнут
-            вирусно распространяться в Telegram.
+            Connect a pack to get personal signals when its topics start spreading virally
+            on Telegram.
           </p>
 
           {subscribeError && (
@@ -151,15 +151,15 @@ export const OnboardingPage: React.FC = () => {
               onClick={() => void handleSubscribe()}
               aria-label={
                 effectiveSlug
-                  ? `Подключить набор ${selectedPack?.title ?? effectiveSlug}`
-                  : 'Выберите набор'
+                  ? `Connect pack ${selectedPack?.title ?? effectiveSlug}`
+                  : 'Pick a pack'
               }
             >
               {subscribeMutation.isPending
-                ? 'Подключение…'
+                ? 'Connecting…'
                 : subscribed
-                  ? 'Подключено!'
-                  : 'Подключить набор'}
+                  ? 'Connected!'
+                  : 'Connect pack'}
             </Button>
 
             <Button
@@ -167,7 +167,7 @@ export const OnboardingPage: React.FC = () => {
               variant="ghost"
               onClick={() => void navigate({ to: paths.watchlists.list })}
             >
-              Пропустить
+              Skip
             </Button>
           </div>
         </section>

@@ -8,6 +8,7 @@ import { ModalDialog } from "@/shared/components/modal-dialog"
 import { Trash2 } from "@/shared/images"
 
 import { useDeleteAccount } from "../model"
+import { DELETE_ACCOUNT_DESCRIPTION } from "./copy"
 
 export interface DeleteAccountDialogProps {
   open: boolean
@@ -16,10 +17,6 @@ export interface DeleteAccountDialogProps {
   userId: string
   /** Email used for confirmation phrase. */
   email: string
-  /** Number of workspaces the user owns — surfaced so the warning is concrete. */
-  ownedWorkspacesCount: number
-  /** Number of active posts the user authored — same rationale. */
-  ownedPostsCount: number
 }
 
 export const DeleteAccountDialog: React.FC<DeleteAccountDialogProps> = ({
@@ -28,8 +25,6 @@ export const DeleteAccountDialog: React.FC<DeleteAccountDialogProps> = ({
   // userId kept in props for future use (task-014)
   userId: _userId,
   email,
-  ownedWorkspacesCount,
-  ownedPostsCount,
 }) => {
   const [confirmText, setConfirmText] = React.useState("")
 
@@ -61,15 +56,7 @@ export const DeleteAccountDialog: React.FC<DeleteAccountDialogProps> = ({
       width="confirm"
       dangerHeader={{ icon: <Trash2 /> }}
       title="Delete account?"
-      description={
-        <>
-          Removes your account, <b>{ownedWorkspacesCount}</b>{" "}
-          {ownedWorkspacesCount === 1 ? "workspace" : "workspaces"} you own and{" "}
-          <b>{ownedPostsCount}</b> {ownedPostsCount === 1 ? "post" : "posts"}.
-          Workspaces you've been invited to will continue without you. This
-          cannot be undone.
-        </>
-      }
+      description={DELETE_ACCOUNT_DESCRIPTION}
     >
       <div data-testid="delete-account-dialog" className="flex flex-col gap-5">
         <div className="space-y-2">

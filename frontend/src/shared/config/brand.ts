@@ -1,12 +1,12 @@
 /**
  * Brand configuration. Override via Vite env at build time:
- *   VITE_BRAND_NAME=TrendPulse
+ *   VITE_BRAND_NAME=Foresignal
  *   VITE_HELP_URL=https://...
  *   VITE_SUPPORT_EMAIL=support@foresignal.biz
  *
  * Falls back to defaults when env is not set.
  */
-const DEFAULT_BRAND_NAME = "TrendPulse"
+const DEFAULT_BRAND_NAME = "Foresignal"
 const DEFAULT_HELP_URL = "https://foresignal.biz/docs"
 const DEFAULT_SUPPORT_EMAIL = "support@foresignal.biz"
 

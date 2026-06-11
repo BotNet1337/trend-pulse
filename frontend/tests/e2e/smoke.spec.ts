@@ -5,18 +5,18 @@
  * baseURL is set in playwright.config.ts → HTTP_PORT (default :80).
  *
  * RED: will FAIL until:
- *   - brand is changed to TrendPulse
+ *   - brand is changed to Foresignal
  *   - frontend compose-service is behind nginx
  */
 
 import { test, expect } from '@playwright/test';
 
-// AC1 — приложение грузится, виден бренд TrendPulse (не PostBolt)
-test('AC1 — app loads and shows TrendPulse brand', async ({ page }) => {
+// AC1 — приложение грузится, виден бренд Foresignal (не PostBolt)
+test('AC1 — app loads and shows Foresignal brand', async ({ page }) => {
   await page.goto('/');
 
   // Page title must be TrendPulse
-  await expect(page).toHaveTitle(/TrendPulse/i);
+  await expect(page).toHaveTitle(/Foresignal/i);
 
   // No PostBolt in page content
   const body = await page.locator('body').innerText();

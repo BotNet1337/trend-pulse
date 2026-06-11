@@ -9,7 +9,7 @@ services:
       context: ../../frontend
       args:
         NODE_VERSION: ${NODE_VERSION}
-        VITE_BRAND_NAME: ${VITE_BRAND_NAME:-TrendPulse}
+        VITE_BRAND_NAME: ${VITE_BRAND_NAME:-Foresignal}
         VITE_HELP_URL: ${VITE_HELP_URL:-https://trendpulse.app/docs}
     networks:
       - internal

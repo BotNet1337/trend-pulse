@@ -115,7 +115,9 @@ init_sentry("api")
 # needed. This ensures the Celery worker path also decrypts correctly without
 # importing api.main. Key is validated at Settings construction (validate_fernet_key).
 
-app = FastAPI(title="TrendPulse API", **_docs_urls(get_settings().swagger_enable))
+# Public brand name (TASK-072): user-facing docs show «Foresignal»; internal
+# package/env identifiers remain `trendpulse`.
+app = FastAPI(title="Foresignal API", **_docs_urls(get_settings().swagger_enable))
 
 # --- Rate limiting (task-011): Redis-backed slowapi, key = user_id|IP, default
 # limit from settings. The limiter is attached to app.state (slowapi contract),

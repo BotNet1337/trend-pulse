@@ -18,7 +18,7 @@ export function trendingQueryKey(pack: string, limit?: number) {
  *
  * Enabled only when `pack` is non-empty. The response includes
  * `warming_up=true` when the showcase tenant is not yet warmed;
- * consumers should render the "собираем сигналы…" placeholder in that case.
+ * consumers should render the "Collecting signals…" placeholder in that case.
  *
  * staleTime: 30s — trending is live data but doesn't need to refresh every render.
  */

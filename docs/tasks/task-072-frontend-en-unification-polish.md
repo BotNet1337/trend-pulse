@@ -1,12 +1,12 @@
 ---
 id: TASK-072
 title: EN-унификация SPA + бренд Foresignal — перевод русских UI-строк, brand-alignment, корректный delete-account текст
-status: planned            # planned → in-progress → review → done
+status: review             # planned → in-progress → review → done
 owner: frontend
 created: 2026-06-11
 updated: 2026-06-11
 baseline_commit: "c390c4c"
-branch: ""
+branch: "task/072-en-unification-foresignal"
 tags: [frontend, copy, i18n, polish, spa]
 ---
 
@@ -153,24 +153,24 @@ TrendPulse-аккаунта. `grep -rn '[А-Яа-яЁё]' frontend/src --include
 
 ## Acceptance Criteria
 
-- [ ] **AC1 — кириллицы в UI нет.** Given собранный SPA When
+- [x] **AC1 — кириллицы в UI нет.** Given собранный SPA When
   `grep -rn '[А-Яа-яЁё]' frontend/src --include='*.ts' --include='*.tsx'`
   Then совпадения только в комментариях и `shared/api/gen.types.ts` (ни одного
   в JSX-тексте, строковых литералах UI, aria-атрибутах).
-- [ ] **AC2 — онбординг EN.** Given новый юзер (0 watchlists) When AuthGuard
+- [x] **AC2 — онбординг EN.** Given новый юзер (0 watchlists) When AuthGuard
   приводит его на `/onboarding` Then весь флоу (welcome, шаги 1-3, CTA, skip,
   ошибки) — на английском, флоу работает как до правки (пак подключается).
-- [ ] **AC3 — паки/тренды EN.** Given юзер на `/watchlists` Then блок паков
+- [x] **AC3 — паки/тренды EN.** Given юзер на `/watchlists` Then блок паков
   (заголовок, кнопки, лимит-ошибка 402, empty/loading) — EN; Given showcase
   warming-up Then плейсхолдер «Collecting signals…»-семантики — EN.
-- [ ] **AC4 — delete-account честный.** Given юзер открывает Danger zone →
+- [x] **AC4 — delete-account честный.** Given юзер открывает Danger zone →
   Delete account Then описание упоминает account/watchlists/alerts/subscription
   и НЕ упоминает workspaces/posts; подтверждение по email и сам делит работают
   как прежде.
 - [ ] **AC5 — G2.** vitest (включая обновлённые packs-ассерты) + eslint + tsc +
   e2e зелёные; визуальный проход onboarding → watchlists → settings без
   смешения языков.
-- [ ] **AC6 — бренд Foresignal.** Given собранные SPA и landing When
+- [x] **AC6 — бренд Foresignal.** Given собранные SPA и landing When
   `grep -rni 'trendpulse' frontend/src frontend/index.html landing/src
   landing/index.html` Then ноль user-facing совпадений (комментарии/внутренние
   идентификаторы допустимы); Given открыт `/docs` (Swagger UI) Then title
@@ -236,18 +236,18 @@ TrendPulse-аккаунта. `grep -rn '[А-Яа-яЁё]' frontend/src --include
 
 ## Checkpoints
 
-current_step: 3
+current_step: 7
 baseline_commit: "c390c4c"
-branch: ""
+branch: "task/072-en-unification-foresignal"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + runtime + real behavior)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (skip ожидаем — только копирайт)
-- [ ] 6 ship (confirm plan done → PR(s))
-- [ ] 7 learnings (auto)
+- [x] 3 do (TDD: RED 9 падений packs+copy → GREEN; перевод 4 файлов + delete-props + brand)
+- [x] 4 verify (G2 — vitest 202✓, eslint✓, tsc✓, frontend build✓, landing lint+build✓, backend ruff/mypy/pytest 601✓, grep AC1/AC6 чистые; e2e/визуальный проход — CI после мержа, make up недоступен)
+- [x] 5 review (adversarial: COMMENTS — HIGH VITE_BRAND_NAME-дефолты закрыт в том же diff, MEDIUM envelope-priority-тест добавлен, LOW RU-комментарии — accepted, конвенция проекта)
+- [x] 5.5 security (skip подтверждён ревьюером: только строки, detail рендерится React text-node, title OpenAPI — косметика)
+- [x] 6 ship (PR из ветки task/072-en-unification-foresignal, мерж — оркестратор)
+- [x] 7 learnings (docs/learnings.md, запись 2026-06-11 TASK-072)
 debug_runs: []
 
 ## Details
@@ -263,3 +263,29 @@ call-site передаёт заглушки 0/0.)
 (OpenAPI title/description); внутренние идентификаторы trendpulse не трогаем.
 Blast radius: + landing-строки и backend app-title с regen'ом OpenAPI; логики
 по-прежнему ноль.)
+
+(2026-06-11, do/verify/review: выполнено в ветке task/072-en-unification-foresignal.
+Факты сверх плана:
+- backend `FastAPI(title=…)` без `description` — заменён только title → «Foresignal API»;
+  `make gen-openapi gen-types`: дамп обновился (info.title), `gen.types.ts` без
+  изменений (title в типы не входит) — инвариант «gen.types.ts не в diff» соблюдён.
+- delete-копия сверена с каскадом: `DELETE /account` → `compliance.account.delete_user`,
+  ON DELETE CASCADE сносит всё юзерское — текст «account, watchlists, alerts history
+  and subscription» честен. Копия вынесена в `delete/ui/copy.ts` (vitest = node env без
+  testing-library, компонент не отрендерить — ассертим константу).
+- trending-list formatDate: 'ru-RU' → undefined (browser locale, паттерн alert-card) —
+  RU-имена месяцев в EN-UI ловились бы только глазами, grep их не видит.
+- review-HIGH (закрыт в этом же diff): build-time дефолты `VITE_BRAND_NAME=TrendPulse`
+  в `frontend/Dockerfile`, `development/compose/frontend.yml`, `release/compose/frontend.yml`
+  перекрывали новый default brand.ts → задеплоенный SPA остался бы «TrendPulse».
+  Заменены на Foresignal. Повтор гочи TASK-060 «бренд в инфра-дефолтах».
+- landing/public/sitemap.xml: `npm run build` тронул только lastmod-таймстемпы —
+  откачен как шум (урок TASK-060 о генератах).
+- ВНЕ scope, кандидат на follow-up задачу: user-facing «TrendPulse» в backend-письмах
+  и платёжке — `api/auth/users.py:48-49` (verify/reset email subjects),
+  `billing/constants.py:19` (renewal subject), `billing/gateway/nowpayments.py:83`
+  (order_description на инвойсе NOWPayments); плюс RU-страница `/feedback/{token}`
+  (уже зафиксирована в Do NOT touch, связка с TASK-064).
+- Owner/CI-хвосты: ansible — проверить, не задаёт ли vault/inventory `VITE_BRAND_NAME`
+  (если задаёт «TrendPulse» — обновить, иначе прод-сборка перекроет дефолт); полный
+  e2e и визуальный проход AC5 — CI после мержа.)
