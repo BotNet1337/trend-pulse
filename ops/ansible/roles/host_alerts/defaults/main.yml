@@ -1,0 +1,27 @@
+---
+# Role: host_alerts — defaults for the host→Telegram alert script + cron (TASK-061).
+# Override in group_vars/prod.yml if needed. No magic literals in the script:
+# every threshold/path/window renders from here.
+
+# Alert when `df -P /` used% exceeds this percentage.
+host_alerts_disk_pct: 85
+# Alert when /proc/meminfo MemAvailable falls below this % of MemTotal.
+host_alerts_mem_available_pct: 10
+# Cron minute spec for the periodic disk/memory check (every 15 minutes).
+host_alerts_check_minute: "*/15"
+# Per-reason throttle window (seconds): at most 1 alert per reason per window
+# (6h — mirrors the backend notify_ops pattern, TASK-035; no Redis at host level).
+host_alerts_throttle_seconds: 21600
+# curl timeout for the Telegram Bot API call (seconds).
+host_alerts_curl_timeout_seconds: 10
+# Rendered secrets file holding OPS_TELEGRAM_BOT_TOKEN / OPS_TELEGRAM_CHAT_ID
+# (env role, mode 0600, root-readable). Missing file / empty creds → silent no-op.
+host_alerts_env_file: "{{ (env_dir | default('/opt/trendpulse/release/env')) ~ '/sensitive.env' }}"
+# Per-reason throttle state files live here (one mtime-stamped file per reason).
+host_alerts_state_dir: /var/lib/trendpulse/alerts
+# Install path of the alert script — the single host→TG channel; the backup
+# role's cron fail-hooks reference this same variable (host_alerts runs first).
+host_alerts_script_path: /usr/local/bin/trendpulse-host-alert.sh
+# Diagnostics log (send failures, throttle hits). Same file as the backup cron
+# log — one ops audit trail, already under logrotate (backup role, TASK-061).
+host_alerts_log: /var/log/trendpulse-backup.log

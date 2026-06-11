@@ -10,6 +10,17 @@
     # Preflight minimums (warning-only; a small VPS without swap is risky).
     preflight_min_ram_mb: 3500
     preflight_min_disk_gb: 15
+    # Docker json-file log rotation (TASK-061): per-container cap = max_size x max_file.
+    docker_log_max_size: "10m"
+    docker_log_max_file: "3"
+  handlers:
+    # Fires only when daemon.json content changes (first rollout / threshold edits).
+    # NB: restarting dockerd restarts EVERY container on the node (~1-2 min window);
+    # swarm re-converges the services on its own. Run inside a deploy window.
+    - name: Restart docker
+      ansible.builtin.service:
+        name: docker
+        state: restarted
   tasks:
     # ------------------------------------------------------------------ preflight
     - name: Preflight — assert enough RAM (warn, not hard-fail)
@@ -68,6 +79,37 @@
         state: present
       when: docker_preinstalled.rc != 0
 
+    # ------------------------------------------------------------- log rotation
+    # TASK-061: without this, json-file logs grow unbounded and fill the disk.
+    # Daemon-level (not per-service compose `logging:`) so future one-shot
+    # containers (restore-check, builds) are covered too. Written wholesale via
+    # copy — neither TF cloud-init nor ansible creates daemon.json today; if an
+    # operator ever hand-adds keys there, they must be merged into this content
+    # first (ADR-005: the host is ansible-managed, no manual edits).
+    - name: Ensure /etc/docker config directory exists
+      ansible.builtin.file:
+        path: /etc/docker
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Configure Docker daemon log rotation (json-file, size-capped)
+      ansible.builtin.copy:
+        dest: /etc/docker/daemon.json
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          {
+            "log-driver": "json-file",
+            "log-opts": {
+              "max-size": "{{ docker_log_max_size }}",
+              "max-file": "{{ docker_log_max_file }}"
+            }
+          }
+      notify: Restart docker
+
     - name: Ensure Docker service is running and enabled
       ansible.builtin.service:
         name: docker
@@ -121,3 +163,21 @@
     - name: UFW — enable the firewall
       community.general.ufw:
         state: enabled
+
+    # ------------------------------------------------------------------ fail2ban
+    # TASK-061: TF cloud-init installs fail2ban on first boot, but the ansible
+    # path (`make deploy` against an already-live or non-TF host) did not
+    # guarantee it. Deliberate overlap: on a TF-provisioned host both tasks are
+    # 0-changed. Default sshd jail is sufficient (port 22 is key-only, TASK-057);
+    # no custom jails. Default bantime is 10 min — a fat-fingered owner login is
+    # never a permanent lockout.
+    - name: Install fail2ban (SSH brute-force protection)
+      ansible.builtin.package:
+        name: fail2ban
+        state: present
+
+    - name: Ensure fail2ban service is running and enabled
+      ansible.builtin.service:
+        name: fail2ban
+        state: started
+        enabled: true
