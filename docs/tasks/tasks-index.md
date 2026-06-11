@@ -55,7 +55,7 @@ Roadmap: [`../architecture/roadmap.md`](../architecture/roadmap.md). Epic A = Ba
 | [TASK-046](./task-046-referral-program-usdt.md) | Реферальная программа USDT — ref_code + начисление при первой оплате + «Пригласи» | E3 | done | backend | 003, 010 | 2026-06-10 |
 | [TASK-049](./task-049-pricing-rework.md) | Pricing rework — Free=воронка (паки+задержка), Pro $29, Trader $99 (API), grandfathering | E5 | done | backend | 010, 038, 040 | 2026-06-11 |
 | [TASK-050](./task-050-activation-funnel-metrics.md) | Воронка активации — funnel log_event-события + дневной Beat-агрегат `business_metrics_daily` | E6 | done | backend | 038, 042, 010 | 2026-06-11 |
-| [TASK-051](./task-051-money-dashboard.md) | Дашборд «деньги» — GET /ops/business-metrics (superuser): MRR/подписки/чек/воронка/retention | E6 | review | backend | 050, 049 | 2026-06-11 |
+| [TASK-051](./task-051-money-dashboard.md) | Дашборд «деньги» — GET /ops/business-metrics (superuser): MRR/подписки/чек/воронка/retention | E6 | done | backend | 050, 049 | 2026-06-11 |
 | [TASK-056](./task-056-hetzner-object-storage-infra.md) | Hetzner Object Storage infra — terraform-порт с DO (minio-провайдер, бакет, lifecycle) + S3-env в Ansible | E0 | done | infra | 012 | 2026-06-09 |
 | [TASK-057](./task-057-prod-launch-vps.md) | Прод-запуск на VPS — make deploy (provision→TLS→stack→showcase-init→smoke) одной командой | — | planned | infra | 012, 034, 039 | 2026-06-10 |
 | [TASK-058](./task-058-billing-live-verification.md) | Боевая проверка платёжного пути — NOWPayments live IPN, raw-HMAC fallback, тестовый платёж | — | planned | backend | 010, 057, 049 | 2026-06-11 |

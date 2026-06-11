@@ -1,10 +1,10 @@
 ---
 id: TASK-051
 title: Дашборд «деньги» — GET /ops/business-metrics (superuser): MRR, подписки, чек, воронка, retention
-status: review              # planned → in-progress → review → done
+status: done                # planned → in-progress → review → done
 owner: backend
 created: 2026-06-11
-updated: 2026-06-11  # ship
+updated: 2026-06-11  # learnings
 baseline_commit: "e2c0355"
 branch: "gsd/phase-e6-money-dashboard"
 tags: [epic-e6, backend, metrics, ops]
@@ -143,10 +143,10 @@ DoD = AC.
 
 ## Checkpoints
 
-current_step: 7
+current_step: done
 baseline_commit: "e2c0355"
 branch: "gsd/phase-e6-money-dashboard"
-lock: "loop-2026-06-11-launch-gaps"
+lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [x] 3 do (TDD: failing test → minimal code)
@@ -154,7 +154,7 @@ lock: "loop-2026-06-11-launch-gaps"
 - [x] 5 review (auto, adversarial)
 - [x] 5.5 security (REQUIRED — привилегированный роут, PII, error-гигиена)
 - [x] 6 ship (PR)
-- [ ] 7 learnings (auto)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details
