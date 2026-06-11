@@ -25,13 +25,13 @@
 
 | Подэпик | Суть | Задачи | Когда |
 |---------|------|--------|-------|
-| [E0](../product/epics/epic-e0-survival-ops.md) | Выживание: Hetzner-бакет (056), бэкапы, пул, latency-метрика, embed-кэш | 056, 034–037 (planned, доки готовы) | сейчас |
-| [E1](../product/epics/epic-e1-first-value.md) | Первая польза за 30 секунд: паки, instant value, free-delay | 038–040 (planned, доки готовы) | сейчас |
-| [E2](../product/epics/epic-e2-signal-quality.md) | Качество сигнала: историч. baseline, 👍/👎, адаптивный порог | 041–043 | сейчас |
-| [E3](../product/epics/epic-e3-showcase-channel.md) | Витрина-канал: авто-постинг, proof-of-speed, рефералка | 044–046 | сейчас |
+| [E0](../product/epics/epic-e0-survival-ops.md) | Выживание: Hetzner-бакет (056), бэкапы, пул, latency-метрика, embed-кэш | 056, 034–037 — **done** | done (2026-06-10) |
+| [E1](../product/epics/epic-e1-first-value.md) | Первая польза за 30 секунд: паки, instant value, free-delay | 038–040 — **done** | done (2026-06-10) |
+| [E2](../product/epics/epic-e2-signal-quality.md) | Качество сигнала: историч. baseline, 👍/👎, адаптивный порог | 041–043 — **done** | done (2026-06-10/11) |
+| [E3](../product/epics/epic-e3-showcase-channel.md) | Витрина-канал: авто-постинг, proof-of-speed, рефералка | 044–046 — **done** | done (2026-06-11) |
 | [E4](../product/epics/epic-e4-frictionless-money.md) | Деньги без трения: год/квартал, one-click renewal, grace | 047–048 | после E1–E3 |
-| [E5](../product/epics/epic-e5-pricing-packaging.md) | Цены и упаковка: Pro $29–39, API-тариф $99–149, Free=воронка | 049 (+030) | после E3 |
-| [E6](../product/epics/epic-e6-business-metrics.md) | Бизнес-метрики: воронка, конверсия, MRR-дашборд | 050–051 (+036) | после E4 |
+| [E5](../product/epics/epic-e5-pricing-packaging.md) | Цены и упаковка: Pro $29 / Trader $99, Free=воронка | 049 (+030) — **done** | done (2026-06-11) |
+| [E6](../product/epics/epic-e6-business-metrics.md) | Бизнес-метрики: воронка, конверсия, MRR-дашборд | 050 — **done**; 051 in-progress | сейчас |
 | [E7](../product/epics/epic-e7-cost-and-scale.md) | Масштаб: глобальный pipeline, событийный скоринг, fallback-источник | 052–055 | после E6 |
 | [E8](../product/epics/epic-e8-new-sources-markets.md) | Новые источники/рынки: Twitter (031), B2B fiat, white-label | 031 + future | после $2k MRR |
 
@@ -42,7 +42,7 @@ E0–E3 параллелятся; включать платное продвиж
 ## Хвост Epic D
 
 - task-029 SSR — in-progress (взят до волны E); после него фокус строго на E0/E1 — деньги важнее DX.
-- task-030 API hardening — вместе с E5 (предпосылка продажи API-тарифа).
+- task-030 API hardening — **done** (2026-06-11, ADR-007: error-envelope + /api/v1; предпосылка продажи API-тарифа закрыта).
 - task-031 Twitter — триггер $2k MRR (E8).
 - task-032 security (at-rest, P5-навсегда) — перед публичным запуском / первым B2B.
 - task-033 GDPR export — compliance-бэклог.

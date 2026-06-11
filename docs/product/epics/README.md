@@ -20,13 +20,13 @@
 
 | Эпик | Название | Волна | Задачи | Статус |
 |------|----------|-------|--------|--------|
-| [E0](./epic-e0-survival-ops.md) | Выживание и ops-фундамент (P1/P2/P3/P4/P7/P8) | СЕЙЧАС | TASK-056, 034…037 | planned (доки готовы) |
-| [E1](./epic-e1-first-value.md) | Первая польза за 30 секунд | СЕЙЧАС | TASK-038…040 | planned (доки готовы) |
-| [E2](./epic-e2-signal-quality.md) | Качество сигнала = удержание | СЕЙЧАС | TASK-041…043 | planned (доки готовы) |
-| [E3](./epic-e3-showcase-channel.md) | Витрина-канал в Telegram | СЕЙЧАС | TASK-044…046 | planned (доки готовы) |
+| [E0](./epic-e0-survival-ops.md) | Выживание и ops-фундамент (P1/P2/P3/P4/P7/P8) | done | TASK-056, 034…037 | **done** (2026-06-10) |
+| [E1](./epic-e1-first-value.md) | Первая польза за 30 секунд | done | TASK-038…040 | **done** (2026-06-10) |
+| [E2](./epic-e2-signal-quality.md) | Качество сигнала = удержание | done | TASK-041…043 | **done** (2026-06-10/11) |
+| [E3](./epic-e3-showcase-channel.md) | Витрина-канал в Telegram | done | TASK-044…046 | **done** (2026-06-11) |
 | [E4](./epic-e4-frictionless-money.md) | Деньги без трения | после E1–E3 | TASK-047…048 | defined |
-| [E5](./epic-e5-pricing-packaging.md) | Упаковка и цены | после E3 | TASK-049 (+030) | planned (доки готовы) |
-| [E6](./epic-e6-business-metrics.md) | Бизнес-метрики | после E4 | TASK-050…051 (+036) | planned (доки готовы) |
+| [E5](./epic-e5-pricing-packaging.md) | Упаковка и цены | done | TASK-049 (+030) | **done** (2026-06-11; Pro $29 / Trader $99) |
+| [E6](./epic-e6-business-metrics.md) | Бизнес-метрики | СЕЙЧАС | TASK-050…051 (+036) | 050 done; 051 in-progress |
 | [E7](./epic-e7-cost-and-scale.md) | Стоимость и масштаб | после E6 | TASK-052…055 | defined |
 | [E8](./epic-e8-new-sources-markets.md) | Новые источники и рынки | после $2k MRR | TASK-031 + future | defined |
 
