@@ -87,7 +87,7 @@ def _run_tick_body(session: Session) -> None:
 
     from config import get_settings
     from showcase.formatting import build_showcase_post, sanitize_topic
-    from showcase.selection import pick_best_candidate
+    from showcase.selection import ClusterLike, pick_best_candidate
     from storage.models.clusters import Cluster
     from storage.models.scores import Score
     from storage.models.showcase_posts import STATUS_PENDING, STATUS_POSTED, ShowcasePost
@@ -162,8 +162,9 @@ def _run_tick_body(session: Session) -> None:
     )
     raw_rows = session.execute(stmt).all()
 
-    # Build typed NamedTuple projections — no type: ignore needed.
-    clusters: list[_ClusterRow] = [
+    # Build typed projections conforming to ClusterLike — annotated explicitly so
+    # mypy's strict mode accepts the list at the pick_best_candidate call site.
+    clusters: list[ClusterLike] = [
         _ClusterRow(
             id=int(r.id),
             topic=str(r.topic),
