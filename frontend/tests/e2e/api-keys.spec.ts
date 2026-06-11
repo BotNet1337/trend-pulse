@@ -9,6 +9,10 @@
  *
  * SECURITY: no screenshots/snapshots are taken in these tests — the created-key
  * modal contains a plaintext secret and must never land in test artifacts.
+ * NOTE for future paid-plan e2e: playwright.config.ts sets trace/video/screenshot
+ * to retain-on-failure GLOBALLY. Any test that opens CreatedKeyModal must add
+ * test.use({ video: 'off', screenshot: 'off', trace: 'off' }) so a failure on
+ * the modal step cannot record the plaintext key into test-results.
  *
  * Runs against the full nginx-backed stack (make up), pattern:
  * tests/e2e/billing-account.spec.ts.
