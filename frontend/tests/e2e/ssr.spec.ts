@@ -144,27 +144,31 @@ test('AC3 — authenticated SSR: __INITIAL_STATE__ contains user data', async ({
     const rawJson = stateMatch[1]
       .replace(/<\\\/script>/g, '</script>')
       .replace(/<\\!--/g, '<!--');
+    // Парсим в try, ассертим СНАРУЖИ — иначе catch глотает ошибку expect()
+    // и маскирует реальный фейл под «Failed to parse JSON» (так было в CI:
+    // валидный {"user":null,"queries":[]} репортился как parse-ошибка).
+    let state: {
+      user?: { userId?: string; email?: string } | null;
+      queries?: unknown[];
+    };
     try {
-      const state = JSON.parse(rawJson) as {
-        user?: { userId?: string; email?: string } | null;
-        queries?: unknown[];
-      };
-      // При авторизованном SSR user не должен быть null.
-      // (viewer/model.ts: CURRENT_USER_QUERY_KEY = ['viewer', 'me'])
-      // Либо user из /users/me, либо queries содержат запись viewer/me.
-      const hasUser = state.user !== null && state.user !== undefined;
-      const hasViewerQuery =
-        Array.isArray(state.queries) &&
-        state.queries.some((q) => {
-          const entry = q as { key?: unknown[] };
-          return Array.isArray(entry.key) && entry.key[0] === 'viewer';
-        });
-      expect(hasUser || hasViewerQuery).toBe(true);
+      state = JSON.parse(rawJson) as typeof state;
     } catch {
       // JSON parse failed — state malformed (likely not SSR yet)
       // Report as failure but with context
       throw new Error(`Failed to parse __INITIAL_STATE__ JSON: ${stateMatch[1].slice(0, 200)}`);
     }
+    // При авторизованном SSR user не должен быть null.
+    // (viewer/model.ts: CURRENT_USER_QUERY_KEY = ['viewer', 'me'])
+    // Либо user из /users/me, либо queries содержат запись viewer/me.
+    const hasUser = state.user !== null && state.user !== undefined;
+    const hasViewerQuery =
+      Array.isArray(state.queries) &&
+      state.queries.some((q) => {
+        const entry = q as { key?: unknown[] };
+        return Array.isArray(entry.key) && entry.key[0] === 'viewer';
+      });
+    expect(hasUser || hasViewerQuery).toBe(true);
   } else {
     // __INITIAL_STATE__ present but pattern not matched — structure changed?
     // At minimum the string is in the HTML, checked above.
