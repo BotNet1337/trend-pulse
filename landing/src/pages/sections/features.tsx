@@ -24,7 +24,7 @@ export function FeaturesSection() {
       icon: Clock,
       title: '30-day trend history',
       description:
-        'Pro and Team plans retain trend signals for up to 30 or 90 days so you can spot recurring patterns and seasonal spikes.',
+        'Pro and Trader plans retain trend signals for up to 30 or 90 days so you can spot recurring patterns and seasonal spikes.',
     },
     {
       icon: Webhook,

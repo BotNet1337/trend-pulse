@@ -76,12 +76,19 @@ export function PricingPage() {
                   </div>
 
                   <ul className="space-y-3 mb-8 flex-1">
-                    <li className="flex items-start gap-2">
-                      <Check className="h-5 w-5 text-primary shrink-0 mt-0.5" aria-hidden="true" />
-                      <span className="text-sm">
-                        {plan.channels === -1 ? 'Unlimited' : plan.channels} channels
-                      </span>
-                    </li>
+                    {plan.channels === 0 ? (
+                      <li className="flex items-start gap-2">
+                        <Check className="h-5 w-5 text-primary shrink-0 mt-0.5" aria-hidden="true" />
+                        <span className="text-sm">Curated channel packs</span>
+                      </li>
+                    ) : (
+                      <li className="flex items-start gap-2">
+                        <Check className="h-5 w-5 text-primary shrink-0 mt-0.5" aria-hidden="true" />
+                        <span className="text-sm">
+                          {plan.channels === -1 ? 'Unlimited' : plan.channels} channels
+                        </span>
+                      </li>
+                    )}
                     <li className="flex items-start gap-2">
                       <Check className="h-5 w-5 text-primary shrink-0 mt-0.5" aria-hidden="true" />
                       <span className="text-sm">
@@ -92,6 +99,7 @@ export function PricingPage() {
                       <Check className="h-5 w-5 text-primary shrink-0 mt-0.5" aria-hidden="true" />
                       <span className="text-sm">
                         {plan.alertsPerDay === -1 ? 'Unlimited' : `${plan.alertsPerDay}/day`} alerts
+                        {plan.channels === 0 ? ' (30 min delay)' : ''}
                       </span>
                     </li>
                     <li className="flex items-start gap-2">

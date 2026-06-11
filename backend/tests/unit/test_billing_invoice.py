@@ -51,12 +51,12 @@ def test_create_invoice_maps_response(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert invoice.payment_url == "https://nowpayments.io/payment/?iid=abc"
     assert invoice.order_id == "tp-order-1"
-    assert invoice.amount == Decimal("19")
+    assert invoice.amount == Decimal("29")
     assert invoice.currency == "usd"
     assert captured["url"] == "http://np/v1/invoice"
     # The API key rides in the x-api-key header (never logged).
     assert captured["headers"]["x-api-key"] == "key"  # type: ignore[index]
-    assert captured["json"]["price_amount"] == "19"  # type: ignore[index]
+    assert captured["json"]["price_amount"] == "29"  # type: ignore[index]
 
 
 def test_create_invoice_missing_url_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -86,13 +86,14 @@ def test_service_create_invoice_persists_pending_and_delegates() -> None:
     persisted = session.add.call_args.args[0]
     assert persisted.plan == "pro"
     assert persisted.status == "pending"
-    assert persisted.amount == Decimal("19")
+    assert persisted.amount == Decimal("29")
     gateway.create_invoice.assert_called_once()
     assert gateway.create_invoice.call_args.kwargs["order_id"] == persisted.order_id
 
 
-def test_service_pro_price_is_19() -> None:
+def test_service_pro_price_is_29() -> None:
+    """AC1 (TASK-049): new price grid — Pro $29, Trader/Team $99."""
     from billing.plans import price_for
 
-    assert price_for(Plan.PRO) == Decimal("19")
-    assert price_for(Plan.TEAM) == Decimal("79")
+    assert price_for(Plan.PRO) == Decimal("29")
+    assert price_for(Plan.TEAM) == Decimal("99")

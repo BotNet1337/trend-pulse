@@ -1,7 +1,11 @@
 /**
- * PlanComparison — table/card view comparing Free / Pro / Team tiers (TASK-017).
+ * PlanComparison — table/card view comparing Free / Pro / Trader tiers (TASK-017).
  *
- * Calls onUpgrade(plan) when the user clicks an upgrade button.
+ * TASK-049: updated feature copy per new price grid.
+ * - Free: curated packs + delayed alerts (no "own channels" claim)
+ * - Pro $29: own channels + real-time + webhook
+ * - Trader $99 (internal: team): API keys + real-time + webhook + 90d history + 500 channels
+ *
  * Numbers come from entities/plan constants — NOT inline magic numbers.
  */
 
@@ -14,6 +18,7 @@ import {
   PLAN_MAX_WATCHLISTS,
   PLAN_PRICE_USD,
   PLAN_PRO,
+  PLAN_TEAM,
   PLAN_TIERS,
   PLAN_WEBHOOK_DELIVERY,
   type PlanId,
@@ -34,9 +39,40 @@ const formatHistory = (days: number): string => {
   return `${days} days`;
 };
 
-const formatWatchlists = (max: number | null): string => {
-  if (max === null) return 'Unlimited';
-  return String(max);
+/** Feature rows shown per plan tier (TASK-049: only implemented features). */
+const planFeatures = (plan: PlanId): ReadonlyArray<{ label: string; enabled: boolean }> => {
+  const maxChannels = PLAN_MAX_WATCHLISTS[plan];
+  const historyDays = PLAN_HISTORY_DAYS[plan];
+  const webhookDelivery = PLAN_WEBHOOK_DELIVERY[plan];
+
+  if (plan === PLAN_FREE) {
+    return [
+      { label: 'Curated packs (1 pack)', enabled: true },
+      { label: 'Alerts delayed 30 min', enabled: true },
+      { label: 'Real-time alerts', enabled: false },
+      { label: 'Own channels', enabled: false },
+      { label: 'Webhook delivery', enabled: false },
+    ];
+  }
+
+  if (plan === PLAN_TEAM) {
+    return [
+      { label: `${maxChannels} channels`, enabled: true },
+      { label: 'Real-time alerts', enabled: true },
+      { label: `Alert history: ${formatHistory(historyDays)}`, enabled: true },
+      { label: 'Webhook delivery', enabled: webhookDelivery },
+      { label: 'API keys', enabled: true },
+    ];
+  }
+
+  // Pro
+  return [
+    { label: `${maxChannels} channels`, enabled: true },
+    { label: 'Real-time alerts', enabled: true },
+    { label: `Alert history: ${formatHistory(historyDays)}`, enabled: true },
+    { label: 'Webhook delivery', enabled: webhookDelivery },
+    { label: 'API keys', enabled: false },
+  ];
 };
 
 export const PlanComparison: React.FC<PlanComparisonProps> = ({
@@ -53,10 +89,8 @@ export const PlanComparison: React.FC<PlanComparisonProps> = ({
         const isCurrent = plan === currentPlan;
         const isFree = plan === PLAN_FREE;
         const price = PLAN_PRICE_USD[plan];
-        const historyDays = PLAN_HISTORY_DAYS[plan];
-        const maxWatchlists = PLAN_MAX_WATCHLISTS[plan];
-        const webhookDelivery = PLAN_WEBHOOK_DELIVERY[plan];
         const displayName = PLAN_DISPLAY_NAME[plan];
+        const features = planFeatures(plan);
 
         return (
           <div
@@ -84,35 +118,22 @@ export const PlanComparison: React.FC<PlanComparisonProps> = ({
             </div>
 
             <ul className="flex flex-col gap-2 text-sm flex-1">
-              <li className="flex items-center gap-2">
-                <span className="w-4 text-center text-muted-foreground" aria-hidden="true">
-                  ◆
-                </span>
-                <span>
-                  {formatWatchlists(maxWatchlists)}{' '}
-                  {maxWatchlists === 1 ? 'watchlist' : 'watchlists'}
-                </span>
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="w-4 text-center text-muted-foreground" aria-hidden="true">◆</span>
-                <span>Alert history: {formatHistory(historyDays)}</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <span
-                  className={[
-                    'w-4 text-center',
-                    webhookDelivery ? 'text-green-600' : 'text-muted-foreground/40',
-                  ].join(' ')}
-                  aria-hidden="true"
-                >
-                  {webhookDelivery ? '✓' : '✗'}
-                </span>
-                <span
-                  className={webhookDelivery ? '' : 'text-muted-foreground/60'}
-                >
-                  Webhook delivery
-                </span>
-              </li>
+              {features.map(({ label, enabled }) => (
+                <li key={label} className="flex items-center gap-2">
+                  <span
+                    className={[
+                      'w-4 text-center',
+                      enabled ? 'text-green-600' : 'text-muted-foreground/40',
+                    ].join(' ')}
+                    aria-hidden="true"
+                  >
+                    {enabled ? '✓' : '✗'}
+                  </span>
+                  <span className={enabled ? '' : 'text-muted-foreground/60'}>
+                    {label}
+                  </span>
+                </li>
+              ))}
             </ul>
 
             {isCurrent ? (

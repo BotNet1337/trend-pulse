@@ -178,3 +178,54 @@ def test_partially_paid_no_activation(
     refreshed = db_session_committing.get(User, user.id)
     assert refreshed is not None
     assert refreshed.plan == "free"
+
+
+def test_old_price_invoice_activates_after_price_bump(
+    client: TestClient, db_session_committing: Session, user: User
+) -> None:
+    """AC4 (TASK-049): grandfathering — invoice created at OLD price ($19) activates
+    when the matching finished IPN arrives, even after constants changed to $29.
+
+    The IPN handler matches by order_id against the stored billing_payments row;
+    activation is based on the INVOICE amount, not the new price constant.
+    This test uses the same fixture pattern as `invoice` but constructs a $19 row
+    inline to make the grandfathering intent explicit.
+    """
+    # Create a pending invoice at the old $19 price (pre-TASK-049).
+    old_invoice = BillingPayment(
+        user_id=user.id,
+        order_id="order-grandfa-1",
+        payment_id=None,
+        plan="pro",
+        period="month",
+        amount=Decimal("19"),  # old price — constants are now 29
+        currency="usd",
+        status="pending",
+    )
+    db_session_committing.add(old_invoice)
+    db_session_committing.flush()
+
+    ipn_body = {
+        "payment_id": "np-grandfa-1",
+        "order_id": "order-grandfa-1",
+        "payment_status": "finished",
+        "price_amount": "19",
+        "price_currency": "usd",
+    }
+    raw, sig = _sign(ipn_body)
+    resp = client.post("/billing/ipn", content=raw, headers={_SIG_HEADER: sig})
+    assert resp.status_code == 200, resp.text
+
+    db_session_committing.expire_all()
+    refreshed = db_session_committing.get(User, user.id)
+    assert refreshed is not None
+    assert refreshed.plan == "pro", (
+        "Old-price invoice must activate plan (grandfathering): "
+        "IPN activation compares against invoice row, not new constant"
+    )
+    sub = db_session_committing.scalars(
+        select(Subscription).where(Subscription.user_id == user.id)
+    ).one_or_none()
+    assert sub is not None
+    assert sub.expires_at is not None
+    assert sub.expires_at > utcnow()

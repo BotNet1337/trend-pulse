@@ -1,11 +1,12 @@
 /**
- * Unit tests: entities/plan constants and isPlanAtLeast (TASK-017).
+ * Unit tests: entities/plan constants and isPlanAtLeast (TASK-017, updated TASK-049).
  *
  * Coverage:
- * - PLAN_PRICE_USD values correct per overview §6
+ * - PLAN_PRICE_USD values correct per overview §6 (TASK-049: Pro $29, Trader/Team $99)
+ * - PLAN_DISPLAY_NAME: "Trader" for team tier (TASK-049 display-only rename)
  * - PLAN_HISTORY_DAYS reflects backend limits
  * - PLAN_WEBHOOK_DELIVERY feature flag
- * - PLAN_MAX_WATCHLISTS per tier
+ * - PLAN_MAX_WATCHLISTS per tier (TASK-049: Free=0, Pro=100, Team=500 — synced to backend CHANNELS)
  * - isPlanAtLeast ordering
  */
 
@@ -35,12 +36,12 @@ describe('plan constants', () => {
       expect(PLAN_PRICE_USD[PLAN_FREE]).toBe(0);
     });
 
-    it('pro plan has $19/month price', () => {
-      expect(PLAN_PRICE_USD[PLAN_PRO]).toBe(19);
+    it('pro plan has $29/month price (TASK-049: overview §6 / backend plans.py)', () => {
+      expect(PLAN_PRICE_USD[PLAN_PRO]).toBe(29);
     });
 
-    it('team plan has $79/month price (overview §6 / backend plans.py)', () => {
-      expect(PLAN_PRICE_USD[PLAN_TEAM]).toBe(79);
+    it('team/Trader plan has $99/month price (TASK-049: overview §6 / backend plans.py)', () => {
+      expect(PLAN_PRICE_USD[PLAN_TEAM]).toBe(99);
     });
 
     it('all tiers have a price defined', () => {
@@ -79,16 +80,18 @@ describe('plan constants', () => {
   });
 
   describe('PLAN_MAX_WATCHLISTS', () => {
-    it('free plan has 3 watchlists', () => {
-      expect(PLAN_MAX_WATCHLISTS[PLAN_FREE]).toBe(3);
+    // TASK-049: synced to backend CHANNELS limits (Free=0, Pro=100, Team=500).
+    // Free=0: own channels blocked; curated packs are the Free value prop.
+    it('free plan has 0 own channels (TASK-049: Free = funnel)', () => {
+      expect(PLAN_MAX_WATCHLISTS[PLAN_FREE]).toBe(0);
     });
 
-    it('pro plan has 25 watchlists', () => {
-      expect(PLAN_MAX_WATCHLISTS[PLAN_PRO]).toBe(25);
+    it('pro plan has 100 channels (synced to backend CHANNELS limit)', () => {
+      expect(PLAN_MAX_WATCHLISTS[PLAN_PRO]).toBe(100);
     });
 
-    it('team plan has unlimited watchlists (null)', () => {
-      expect(PLAN_MAX_WATCHLISTS[PLAN_TEAM]).toBeNull();
+    it('team/Trader plan has 500 channels (synced to backend CHANNELS limit)', () => {
+      expect(PLAN_MAX_WATCHLISTS[PLAN_TEAM]).toBe(500);
     });
   });
 
@@ -101,8 +104,8 @@ describe('plan constants', () => {
       expect(PLAN_DISPLAY_NAME[PLAN_PRO]).toBe('Pro');
     });
 
-    it('team displays as "Team"', () => {
-      expect(PLAN_DISPLAY_NAME[PLAN_TEAM]).toBe('Team');
+    it('team displays as "Trader" (TASK-049: display-only rename; enum value stays "team")', () => {
+      expect(PLAN_DISPLAY_NAME[PLAN_TEAM]).toBe('Trader');
     });
   });
 
