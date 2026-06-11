@@ -23,3 +23,6 @@ pool_min_healthy: "1"
 # TASK-042: Production public URL for 👍/👎 feedback buttons in Telegram alerts.
 # Must use HTTPS. Matches the Cloudflare-proxied domain provisioned in TF (ADR-005).
 public_base_url: "https://foresignal.biz"
+
+# Deployment env tag (Sentry release env / ENVIRONMENT). Prod override.
+app_environment: "prod"
