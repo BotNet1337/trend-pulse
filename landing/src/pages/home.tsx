@@ -1,5 +1,6 @@
 import { HeroSection } from './sections/hero';
 import { SocialProofSection } from './sections/social-proof';
+import { ProofOfSpeedSection } from './sections/proof-of-speed';
 import { FeaturesSection } from './sections/features';
 import { HowItWorksSection } from './sections/how-it-works';
 import { SecurityPrivacySection } from './sections/security-privacy';
@@ -12,6 +13,7 @@ export function HomePage() {
     <>
       <HeroSection />
       <SocialProofSection />
+      <ProofOfSpeedSection />
       <FeaturesSection />
       <HowItWorksSection />
       <SecurityPrivacySection />

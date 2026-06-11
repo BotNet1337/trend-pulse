@@ -7,6 +7,7 @@ import { createServer as createViteServer } from 'vite';
 import { buildHtml } from './html';
 import type { RenderFn, RenderFnInput, RenderPayload } from './ssr.types.ts';
 import { loadConfig } from '../config.js';
+import { createCasesService, type CasesService } from '../cases.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,11 +29,19 @@ export class SsrFactory {
   private server?: ViteDevServer;
   private prodAssets?: ProdAssets;
   private logger?: FastifyBaseLogger;
+  private readonly casesService: CasesService;
 
   constructor(config: AppConfig, logger?: FastifyBaseLogger) {
     this.config = config;
     this.isProd = this.config.NODE_ENV === 'production';
     this.logger = logger;
+    // TASK-067: proof-of-speed cases — SSR-side fetch with in-memory cache.
+    this.casesService = createCasesService({
+      apiUrl: this.config.CASES_API_URL,
+      cacheTtlSeconds: this.config.CASES_CACHE_TTL_SECONDS,
+      fetchTimeoutMs: this.config.CASES_FETCH_TIMEOUT_MS,
+      logger,
+    });
   }
 
   async setup(app: FastifyInstance): Promise<void> {
@@ -125,11 +134,15 @@ export class SsrFactory {
     try {
       const { template, render } = await this.selectAssets(url);
 
+      // Never throws: cases.ts catches every failure and yields [] (section hidden).
+      const cases = await this.casesService.getCases();
+
       const renderPayload: RenderFnInput = {
         url,
         ctx: {
           requestId: req.id,
         },
+        cases,
       };
 
       const payload: RenderPayload = await render(renderPayload);

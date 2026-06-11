@@ -9,6 +9,8 @@ import { useLocation } from '@tanstack/react-router';
 export function RootLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const pathname = useLocation({ select: (l) => l.pathname });
+  // TASK-067: rendered only when the showcase channel exists (owner fills after TASK-070).
+  const showcaseTelegramUrl = (SITE as { showcaseTelegramUrl?: string }).showcaseTelegramUrl ?? '';
 
   React.useEffect(() => {
     const enabled = pathname === '/';
@@ -175,6 +177,18 @@ export function RootLayout() {
                 <li><Link to="/pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Pricing</Link></li>
                 <li><Link to="/" hash="faq" className="text-sm text-muted-foreground hover:text-foreground transition-colors">FAQ</Link></li>
                 <li><a href="#docs" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Documentation</a></li>
+                {showcaseTelegramUrl ? (
+                  <li>
+                    <a
+                      href={showcaseTelegramUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Telegram showcase
+                    </a>
+                  </li>
+                ) : null}
               </ul>
             </div>
 
