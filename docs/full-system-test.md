@@ -108,16 +108,156 @@ docker exec development-api-1 python -c "from pipeline.tasks import run_user_bat
 make logs   # worker: run_user_batch start … succeeded
 ```
 
-### B4. Billing — живой NOWPayments invoice (опц.)
-Нужно: реальные `NOWPAYMENTS_API_KEY` + `NOWPAYMENTS_IPN_SECRET`.
+### B4. Billing — живой NOWPayments IPN + боевой платёж
+
+> **Статус:** sandbox- и live-шаги выполняются владельцем после TASK-057 (HTTPS).
+> Код-страховка (dual-verify + диагностика) реализована и покрыта тестами в рамках TASK-058.
+> Шаги ниже — операционный runbook для владельца.
+
+#### Предусловия
+
+- TASK-057 выполнен: домен `foresignal.biz` с HTTPS, nginx проксирует `/api/billing/ipn`.
+- Vault-пароль доступен в `ops/ansible/.vault-pass`.
+- Vault-ключи уже объявлены: `vault_nowpayments_api_key`, `vault_nowpayments_ipn_secret`
+  (`ops/ansible/roles/env/templates/sensitive.env.j2`).
+
+#### Шаг 1. Создать NOWPayments-аккаунт и получить ключи
+
+1. Зарегистрироваться на <https://nowpayments.io> (или <https://sandbox.nowpayments.io> для sandbox).
+2. В дашборде: **Settings → API Keys** → создать API key → скопировать.
+3. **Settings → IPN → IPN Secret** → создать/скопировать IPN secret.
+4. IPN Callback URL: `https://foresignal.biz/api/v1/billing/ipn`
+   (путь фиксирован: `/api` — nginx-префикс, `/v1/billing/ipn` — FastAPI-router).
+   > **Найти IPN**: поддерживает ли `create_invoice`-payload поле `ipn_callback_url`?
+   > По API-доке NOWPayments v1 (`/v1/invoice`) такого поля нет — callback задаётся
+   > глобально в дашборде **Settings → IPN**. Если в будущем NOWPayments добавит
+   > per-invoice callback — передавать через `nowpayments_ipn_callback_url` в settings.
+5. KYC/верификация: при необходимости — пройти (может занять 1–2 дня).
+
+#### Шаг 2. Записать секреты в Ansible Vault
+
 ```sh
-# создать invoice (за current_user)
-curl -s -b $JAR -X POST http://localhost/billing/invoice -H 'Content-Type: application/json' -d '{"plan":"pro","period":"month"}'
-# → payment/redirect URL; оплатить тестовой криптой; NOWPayments пришлёт IPN на POST /billing/ipn
-#   (IPN-эндпоинт должен быть достижим извне — за nginx/публичным доменом; локально — туннель)
-# Проверить: после finished-IPN user.plan=pro, subscriptions.expires_at выставлен; повтор payment_id → без двойного продления.
+# Редактировать vault (вводить vault-пароль из .vault-pass):
+ansible-vault edit ops/ansible/group_vars/prod/vault.yml \
+  --vault-password-file ops/ansible/.vault-pass
+
+# Внутри файла — добавить/обновить (no_log: значения не печатать в логах!):
+#   vault_nowpayments_api_key: "<api_key_из_dashboard>"
+#   vault_nowpayments_ipn_secret: "<ipn_secret_из_dashboard>"
+
+# Сохранить файл и выйти. Vault переписывает файл в зашифрованном виде.
 ```
-HMAC-верификация IPN и idempotency покрыты integration-тестом (тест-секрет) в A2; живой прогон проверяет реальную доставку IPN от NOWPayments.
+
+> **no_log дисциплина**: никогда не echo/print секретов в терминале.
+> Если случайно вывел — считать скомпрометированным, ротировать в дашборде.
+
+#### Шаг 3. Задеплоить новые секреты на прод
+
+```sh
+make deploy
+# или: ansible-playbook ops/ansible/site.yml --vault-password-file ops/ansible/.vault-pass
+# Ansible рендерит sensitive.env.j2 → /app/sensitive.env на сервере, перезапускает api/worker.
+```
+
+Проверить, что переменные попали в контейнер (БЕЗ вывода значений):
+
+```sh
+ssh deploy@foresignal.biz "docker exec \$(docker ps -qf name=api) env | grep -c NOWPAYMENTS"
+# Ожидаем: 2 (NOWPAYMENTS_API_KEY + NOWPAYMENTS_IPN_SECRET)
+```
+
+#### Шаг 4. Sandbox-прогон (без реальных денег)
+
+> **выполняется владельцем после TASK-057** — нужен HTTPS для IPN-доставки.
+
+```sh
+# 4.1 Временно переключить nowpayments_base_url на sandbox в vault:
+#     vault_nowpayments_base_url: "https://api-sandbox.nowpayments.io/v1"
+# (или передать через переменную окружения, если settings.py поддерживает override)
+
+# 4.2 Залогиниться и создать invoice:
+JAR=$(mktemp)
+curl -s -X POST https://foresignal.biz/auth/jwt/login \
+  -d "username=<email>&password=<pass>" -c $JAR
+curl -s -b $JAR -X POST https://foresignal.biz/api/v1/billing/invoice \
+  -H 'Content-Type: application/json' -d '{"plan":"pro","period":"month"}' | jq .
+
+# 4.3 Перейти по payment_url → оплатить sandbox-монетой (NOWPayments sandbox UI).
+# 4.4 В дашборде sandbox можно имитировать смену статуса: waiting → confirming → finished.
+
+# 4.5 Смотреть: логи на сервере
+ssh deploy@foresignal.biz "docker logs --since=5m \$(docker ps -qf name=api) | grep billing"
+# Ожидаем: billing.ipn_received, (опц.) billing.ipn_canonical_mismatch, billing.plan_activated.
+
+# 4.6 Проверить активацию:
+curl -s -b $JAR https://foresignal.biz/api/v1/users/me | jq '{plan:.plan}'
+# Ожидаем: {"plan":"pro"}
+
+# 4.7 Replay — повторный finished IPN: 200, expires_at не меняется (idempotency).
+```
+
+#### Шаг 5. Боевой платёж
+
+> **выполняется владельцем после TASK-057** — нужен HTTPS + боевой аккаунт NOWPayments.
+
+```sh
+# 5.1 Переключить vault_nowpayments_base_url обратно на prod:
+#     vault_nowpayments_base_url: "https://api.nowpayments.io/v1"
+# make deploy
+
+# 5.2 Создать боевой invoice (оплатит реальной криптой — деньги придут на payout-кошелёк):
+curl -s -b $JAR -X POST https://foresignal.biz/api/v1/billing/invoice \
+  -H 'Content-Type: application/json' -d '{"plan":"pro","period":"month"}' | jq .
+
+# 5.3 Перейти по payment_url, оплатить. Ожидать последовательность IPN:
+#     waiting → confirming → finished (может занять 1–30 мин в зависимости от сети/монеты).
+
+# 5.4 Что смотреть:
+#   Логи (структурированный JSON):
+ssh deploy@foresignal.biz "docker logs --follow --since=0m \$(docker ps -qf name=api) 2>&1 | grep -E 'billing\.(ipn|plan)'"
+#   Sentry: Events → billing.ipn_canonical_mismatch (должен отсутствовать ИЛИ присутствовать — норма).
+#   БД:
+ssh deploy@foresignal.biz "docker exec \$(docker ps -qf name=postgres) psql -U trendpulse -c \
+  \"SELECT u.email, u.plan, s.expires_at, bp.status FROM users u \
+    LEFT JOIN subscriptions s ON s.user_id=u.id \
+    LEFT JOIN billing_payments bp ON bp.user_id=u.id \
+    ORDER BY bp.created_at DESC LIMIT 5;\""
+
+# 5.5 Replay idempotency: повторно POST того же IPN-тела с той же подписью:
+#     Результат: 200, expires_at не изменился.
+```
+
+#### Шаг 6. Снятие redacted IPN-сэмпла (для AC4 / byte-fixture)
+
+> **выполняется владельцем после боевого платежа** — нужны точные байты реального IPN.
+
+```sh
+# 6.1 В nginx access-логе или через sidecar-dump (tcpdump) перехватить тело POST /api/v1/billing/ipn.
+# Или добавить временный debug-дамп в receive_ipn (ТОЛЬКО в dev-ветке, НЕ на проде без ревью):
+#   logger.debug("raw_ipn_hex=%s", raw_body.hex())  — только hex, не base64, чтобы не было printable секретов
+
+# 6.2 Redact: заменить чувствительные значения:
+#   - payment_id: оставить структуру, заменить значение → "redacted-payment-id"
+#   - order_id: оставить → значение реальное (наш internal id)
+#   - адреса кошельков (pay_address, payin_extra_id): → "REDACTED"
+#   - суммы price_amount/pay_amount: ОСТАВИТЬ (нужны для byte-fixture)
+#   - payment_status: ОСТАВИТЬ ("finished")
+
+# 6.3 Сохранить ТОЧНЫЕ байты (не re-dump!) в:
+#   backend/tests/fixtures/nowpayments_ipn_finished.json
+# Проверить, что sha256 совпадает с sha256 из canonical_mismatch-события в логах (если было).
+
+# 6.4 Добавить integration-тест в test_billing_ipn_route.py:
+#   def test_byte_fixture_ipn_accepted(client, ...):
+#       raw = (FIXTURE_PATH / "nowpayments_ipn_finished.json").read_bytes()
+#       sig = <подпись из реального IPN-запроса, также redacted-сохранить>
+#       resp = client.post("/v1/billing/ipn", content=raw, headers={SIG_HEADER: sig})
+#       assert resp.status_code == 200
+# Если сигнатура canonical-path → тест зелёный; если fallback-path → тест зелёный И
+# в логах billing.ipn_canonical_mismatch — документируем фактуру в Details TASK-058.
+```
+
+> **Все live-шаги (4–6) заблокированы: ждут NOWPayments-аккаунт владельца + прод (TASK-057).**
 
 ### B5. Google OAuth (живой) — опц.
 Нужно: реальные `GOOGLE_CLIENT_ID/SECRET` + зарегистрированный redirect `…/auth/google/callback`. Flow в тестах замокан (A2); живой — браузером: `GET /auth/google/authorize` → Google → callback линкует/создаёт юзера.
