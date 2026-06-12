@@ -39,7 +39,10 @@ services:
       rollback_config:
         order: start-first
       restart_policy:
-        condition: on-failure
+        # `any` (not on-failure): long-running service must survive CLEAN exits too —
+        # daemon restart sends SIGTERM, graceful exit 0 = task "Complete", and
+        # on-failure never reschedules it (frontend stayed 0/1 in the 2026-06-12 incident).
+        condition: any
         delay: 5s
         max_attempts: 0
 
