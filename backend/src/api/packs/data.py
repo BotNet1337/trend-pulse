@@ -9,9 +9,10 @@ handles (e.g. @wired, @startups) were rejected. Handles follow the format
 validated by `TELEGRAM_HANDLE_PATTERN` (watchlist/schemas.py): '@' + 4-32 of
 [A-Za-z0-9_]. Dead handles are silently skipped by the collector (ADR-001).
 
-Two packs are required by TASK-038 as a baseline:
+Two packs are required by TASK-038 as a baseline, a third added 2026-06-12:
   - crypto-ru  (~8 handles): Russian-language crypto / DeFi channels
   - tech-en    (~6 handles): English-language tech / startup channels
+  - crypto-en  (~8 handles): English-language crypto / on-chain channels
 
 Known limitation (by design, task doc §Discussion): subscribing a pack snapshot
 the current handle list; if a pack is updated later, users must unsubscribe and
@@ -80,6 +81,19 @@ _TECH_EN_CHANNELS: tuple[PackChannel, ...] = (
     PackChannel("@producthunt"),  # Venture Capital — startup/VC news, hourly
 )
 
+_CRYPTO_EN_CHANNELS: tuple[PackChannel, ...] = (
+    # English-language crypto / on-chain / market channels (verified 2026-06-12
+    # via t.me/s previews: live title + post within the last day, subs noted)
+    PackChannel("@WatcherGuru"),  # Watcher Guru — breaking crypto/finance news, 628K
+    PackChannel("@cointelegraph"),  # Cointelegraph — crypto news media, 366K
+    PackChannel("@wublockchainenglish"),  # Wu Blockchain News — Asia/global crypto news, 291K
+    PackChannel("@binance_announcements"),  # Binance Announcements — listings/official, 4M
+    PackChannel("@CoinMarketCapAnnouncements"),  # CoinMarketCap Announcements, 259K
+    PackChannel("@bitcoin"),  # Bitcoin — BTC community channel, 196K
+    PackChannel("@unfolded"),  # unfolded. — charts/data-driven crypto, 121K
+    PackChannel("@glassnode"),  # Glassnode — on-chain analytics, 44.5K
+)
+
 # The catalog is a frozen tuple — immutable at runtime (CONVENTIONS: no mutable globals).
 PACK_CATALOG: tuple[PackDef, ...] = (
     PackDef(
@@ -93,6 +107,12 @@ PACK_CATALOG: tuple[PackDef, ...] = (
         title="Tech EN",
         topic="tech",
         channels=_TECH_EN_CHANNELS,
+    ),
+    PackDef(
+        slug="crypto-en",
+        title="Crypto EN",
+        topic="crypto",
+        channels=_CRYPTO_EN_CHANNELS,
     ),
 )
 
