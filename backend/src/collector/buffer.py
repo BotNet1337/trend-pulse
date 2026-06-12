@@ -27,11 +27,17 @@ _KEY_PREFIX = "raw"
 
 
 class _RedisLike(Protocol):
-    """Minimal Redis surface the buffer uses (sync redis-py client / fakeredis)."""
+    """Minimal Redis surface the buffer uses (sync redis-py client / fakeredis).
 
-    def rpush(self, name: str, *values: str) -> int: ...
+    Return types are `object` (the buffer ignores them): redis-py's stubs type
+    these methods as `Awaitable[...] | ...` unions, which would otherwise fail
+    to match a narrower `int`/`bool` protocol when a concrete `Redis` client is
+    passed (as the collect-tick producer does).
+    """
 
-    def expire(self, name: str, time: int) -> bool: ...
+    def rpush(self, name: str, *values: str) -> object: ...
+
+    def expire(self, name: str, time: int) -> object: ...
 
 
 def buffer_key(kind: SourceKind, handle: str) -> str:

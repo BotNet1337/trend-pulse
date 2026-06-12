@@ -20,3 +20,14 @@ POOL_MAX: Final = 10
 
 # Small courtesy delay between per-channel requests to stay under rate limits.
 INTER_REQUEST_SLEEP_SECONDS: Final = 0.5
+
+# --- collect-tick (beat ingest task) — import-cycle-free contract constants. ---
+# Celery task name for the collect tick. Lives here (not in collector.tasks,
+# which imports celery_app) so `scheduler` can reference it without a circular
+# import — same pattern as alerts/compliance/observability constants. The task
+# is unrouted → it lands on the default `celery` queue the worker consumes.
+COLLECT_TICK_TASK: Final = "collector.tasks.collect_tick"
+# Redis key holding the start time (UTC ISO) of the last successful collect
+# pass — the next tick's `since` lower bound, so the same window is not
+# re-read forever (buffer+pipeline dedup handles the residual overlap).
+COLLECT_LAST_TICK_KEY: Final = "collect:last_tick_at"

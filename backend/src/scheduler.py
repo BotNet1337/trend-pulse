@@ -10,6 +10,7 @@ a cycle; task *names* come from `pipeline.constants` (no `celery_app` import).
 from alerts.constants import RESWEEP_PENDING_ALERTS_TASK
 from analytics.constants import AGGREGATE_BUSINESS_METRICS_TASK
 from billing.constants import CHECK_EXPIRING_SUBSCRIPTIONS_TASK
+from collector.constants import COLLECT_TICK_TASK
 from compliance.constants import PURGE_EXPIRED_RAW_CONTENT_TASK
 from config import get_settings
 from notifications.constants import SEND_LIFECYCLE_EMAILS_TASK
@@ -24,6 +25,16 @@ _settings = get_settings()
 # heterogeneous (schedule float/seconds, task name, args/kwargs), so the value
 # type is `dict[str, object]` rather than a bare `Any`.
 beat_schedule: dict[str, dict[str, object]] = {
+    # Ingest tick (launch-blocker fix): read every watched source via the
+    # collector registry into the by-source raw buffer the per-user batch
+    # drains. MUST tick at least as often as the batch (config validator) —
+    # without this entry every batch is a `no-op (empty buffer)` and trending
+    # stays `warming_up` forever. Overlap is prevented by the global Redis
+    # collect lock (max_instances=1 — one Telethon pool, FLOOD_WAIT safety).
+    "collect-tick": {
+        "task": COLLECT_TICK_TASK,
+        "schedule": float(_settings.collect_interval_seconds),
+    },
     "enqueue-active-user-batches": {
         "task": ENQUEUE_BATCHES_TASK,
         "schedule": float(_settings.batch_interval_seconds),

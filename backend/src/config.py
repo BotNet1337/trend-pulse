@@ -33,6 +33,20 @@ _DEFAULT_BATCH_INTERVAL_SECONDS = 60
 _DEFAULT_SCORER_INTERVAL_SECONDS = 300
 _DEFAULT_BATCH_LOCK_TTL_SECONDS = 600
 
+# Collector ingest tick (collect-tick). Named, non-secret defaults; time in
+# SECONDS (CONVENTIONS). INVARIANT: the collect tick MUST run at least as often
+# as the batch tick (collect_interval_seconds <= batch_interval_seconds) — the
+# per-user batch only DRAINS the raw buffer, so a slower collect starves every
+# batch into a `no-op (empty buffer)`. Default == batch interval (60s).
+# `collect_lookback_seconds` bounds the FIRST tick's read window when no
+# last-tick marker exists yet (a small recent window, never full history);
+# subsequent ticks read since the previous tick's start time.
+# `collect_lock_ttl_seconds` bounds a crashed worker's GLOBAL collect lock so it
+# cannot deadlock ingest forever (mirrors the per-user batch lock TTL).
+_DEFAULT_COLLECT_INTERVAL_SECONDS = 60
+_DEFAULT_COLLECT_LOOKBACK_SECONDS = 600
+_DEFAULT_COLLECT_LOCK_TTL_SECONDS = 600
+
 # Pipeline thresholds + embedding model (task-007). Named, non-secret defaults —
 # never magic literals at the call site (CONVENTIONS). The embedding model is the
 # single source for its name (its vector dim MUST equal storage `EMBEDDING_DIM`,
@@ -323,6 +337,14 @@ class Settings(BaseSettings):
     scorer_interval_seconds: int = _DEFAULT_SCORER_INTERVAL_SECONDS
     batch_lock_ttl_seconds: int = _DEFAULT_BATCH_LOCK_TTL_SECONDS
 
+    # --- Collector ingest tick (collect-tick). Non-secret, settable; defaults
+    # above. Env names follow the UPPERCASE field-name pattern:
+    # COLLECT_INTERVAL_SECONDS / COLLECT_LOOKBACK_SECONDS / COLLECT_LOCK_TTL_SECONDS.
+    # INVARIANT (validator below): collect must tick at least as often as batch. ---
+    collect_interval_seconds: int = _DEFAULT_COLLECT_INTERVAL_SECONDS
+    collect_lookback_seconds: int = _DEFAULT_COLLECT_LOOKBACK_SECONDS
+    collect_lock_ttl_seconds: int = _DEFAULT_COLLECT_LOCK_TTL_SECONDS
+
     # --- Pipeline (task-007). Non-secret, settable; defaults above. ---
     embedding_model_name: str = _DEFAULT_EMBEDDING_MODEL_NAME
     dedup_similarity_threshold: float = _DEFAULT_DEDUP_SIMILARITY_THRESHOLD
@@ -557,6 +579,32 @@ class Settings(BaseSettings):
     environment: str = _DEFAULT_ENVIRONMENT
     # Non-secret: release tag (git sha / image tag injected at build time).
     release: str = _DEFAULT_RELEASE
+
+    @field_validator("collect_interval_seconds")
+    @classmethod
+    def validate_collect_interval_invariant(cls, v: int, info: ValidationInfo) -> int:
+        """Enforce: collect_interval_seconds <= batch_interval_seconds.
+
+        The per-user batch only DRAINS the raw buffer the collect tick fills; a
+        collect that ticks slower than batch starves every batch into a clean
+        no-op (`empty buffer`) — exactly the launch-blocker this setting exists
+        to prevent. `batch_interval_seconds` is declared BEFORE this field in the
+        class body so `info.data` carries its value (pydantic-settings v2).
+        """
+        batch = info.data.get("batch_interval_seconds")
+        if not isinstance(batch, int):
+            raise ValueError(
+                "Cannot validate collect_interval_seconds: batch_interval_seconds "
+                "is absent from validation context. Ensure batch_interval_seconds "
+                "is declared before collect_interval_seconds in the Settings body."
+            )
+        if v > batch:
+            raise ValueError(
+                f"collect_interval_seconds ({v}s) must not exceed "
+                f"batch_interval_seconds ({batch}s): the batch drains what the "
+                "collect tick wrote, so collect must tick at least as often."
+            )
+        return v
 
     @field_validator("showcase_post_delay_seconds")
     @classmethod
