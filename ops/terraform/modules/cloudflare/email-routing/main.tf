@@ -7,8 +7,17 @@ terraform {
   }
 }
 
-# MX records and Email Routing settings are managed by Cloudflare automatically
-# when Email Routing is enabled via the dashboard. Do NOT manage them in terraform.
+# Zone-level Email Routing enablement + Cloudflare-managed MX records:
+# `cloudflare_email_routing_dns` calls the enable-DNS endpoint, which provisions
+# the route1/2/3.mx.cloudflare.net MX set and flips the zone's routing status to
+# Enabled (2026-06-12: routing was never enabled — rules existed but every mail
+# was dropped; the old comment claimed this is dashboard-only, provider v5 can).
+# Destination address VERIFICATION stays manual (confirmation e-mail click).
+
+resource "cloudflare_email_routing_dns" "routing" {
+  zone_id = var.zone_id
+  name    = var.domain
+}
 
 # --- SPF record (root domain) ---
 # Includes Cloudflare for email routing. Resend uses a "send" subdomain for SPF.
