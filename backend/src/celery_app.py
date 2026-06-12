@@ -30,6 +30,7 @@ celery_app = Celery(
     # land on the default `celery` queue the worker already consumes (no compose
     # change).
     include=[
+        "collector.tasks",
         "pipeline.tasks",
         "alerts.tasks",
         "compliance.tasks",
