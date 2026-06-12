@@ -44,11 +44,15 @@ services:
           cpus: "0.5"
           memory: 256M
       update_config:
-        order: start-first
+        # stop-first is MANDATORY with mode:host ports — start-first deadlocks:
+        # the replacement task can't bind 80/443 while the old task holds them
+        # ("no suitable node: host-mode port already in use"), pends forever, and
+        # any daemon restart then kills the old task leaving the edge DOWN.
+        order: stop-first
         failure_action: rollback
         delay: 5s
       rollback_config:
-        order: start-first
+        order: stop-first
       restart_policy:
         condition: any
         delay: 5s
