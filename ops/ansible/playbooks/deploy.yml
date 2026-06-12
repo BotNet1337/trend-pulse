@@ -119,6 +119,24 @@
       register: showcase_init
       changed_when: showcase_init.rc == 0
 
+    # Image GC: sha-tagged releases accumulate (~9.4 GB per release with the ML
+    # image) and filled the 38 GB disk to 71% after 4 releases. Keep the 2 newest
+    # tags per app repo (current + previous for manual rollback), remove older;
+    # in-use images are protected by docker itself (rmi fails → `|| true`).
+    - name: Prune old release images (keep current + previous per repo)
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail;
+          for repo in trendpulse-backend trendpulse-backend-ml trendpulse-frontend
+          trendpulse-landing trendpulse-templates; do
+          docker images --format '{{ "{{" }}.Tag{{ "}}" }} {{ "{{" }}.CreatedAt{{ "}}" }}' "$repo"
+          | sort -rk2 | awk 'NR>2 {print $1}'
+          | xargs -r -I{} docker rmi "$repo:{}" 2>/dev/null || true;
+          done; docker image prune -f >/dev/null; df -h / | tail -1
+        executable: /bin/bash
+      register: image_gc
+      changed_when: false
+
     # Smoke is the LAST task: a non-zero exit fails the deploy (AC4). Swarm has
     # already auto-rolled-back any unhealthy rolling update by this point.
     - name: Smoke test (register → login → watchlist → /ready → /trending)
