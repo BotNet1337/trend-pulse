@@ -21,6 +21,16 @@ POOL_MAX: Final = 10
 # Small courtesy delay between per-channel requests to stay under rate limits.
 INTER_REQUEST_SLEEP_SECONDS: Final = 0.5
 
+# Max FLOOD_WAIT the reader is allowed to sleep INSIDE one read (seconds).
+# Telethon already auto-sleeps short flood waits internally (its
+# `flood_sleep_threshold`); a hint that reaches the reader can be huge
+# (minutes..hours). Sleeping it in-task parked the collect-tick coroutine for
+# the FLOOD_WAIT's lifetime and held a celery slot (prod hang, pool=1:
+# "rotation" lands on the same cooling account). Above the cap the ref is
+# aborted via `AllAccountsFloodWaitError` — the tick skips it with a warning
+# and a later tick retries once the account's cooldown has elapsed.
+FLOOD_WAIT_INLINE_CAP_SECONDS: Final = 60
+
 # --- collect-tick (beat ingest task) — import-cycle-free contract constants. ---
 # Celery task name for the collect tick. Lives here (not in collector.tasks,
 # which imports celery_app) so `scheduler` can reference it without a circular
@@ -31,3 +41,9 @@ COLLECT_TICK_TASK: Final = "collector.tasks.collect_tick"
 # pass — the next tick's `since` lower bound, so the same window is not
 # re-read forever (buffer+pipeline dedup handles the residual overlap).
 COLLECT_LAST_TICK_KEY: Final = "collect:last_tick_at"
+# Hard time-limit grace over the soft limit for collect_tick (seconds). The
+# soft limit equals `collect_lock_ttl_seconds` (a tick may use its whole lock
+# window; SoftTimeLimitExceeded = valid partial run, buffered posts kept); the
+# hard limit fires this much later and recycles the worker process if even the
+# soft-limit cleanup wedges — a hung read can never hold a celery slot forever.
+COLLECT_TICK_HARD_LIMIT_GRACE_SECONDS: Final = 30

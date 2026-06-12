@@ -131,6 +131,47 @@ def test_collect_tick_task_is_registered_on_celery_app() -> None:
     assert "collector.tasks" in celery_app.conf.include
 
 
+def test_collect_tick_has_soft_and_hard_time_limits() -> None:
+    # Safety net for the pool=1 prod hang: a wedged read must free the celery
+    # slot — soft limit = the lock TTL (a tick may use its whole lock window),
+    # hard limit = soft + a small grace so even a stuck cleanup is recycled.
+    import collector.tasks  # noqa: F401  (import for registration side effect)
+    from celery_app import celery_app
+    from collector.constants import (
+        COLLECT_TICK_HARD_LIMIT_GRACE_SECONDS,
+        COLLECT_TICK_TASK,
+    )
+
+    settings = get_settings()
+    task = celery_app.tasks[COLLECT_TICK_TASK]
+    assert task.soft_time_limit == settings.collect_lock_ttl_seconds
+    assert task.time_limit == (
+        settings.collect_lock_ttl_seconds + COLLECT_TICK_HARD_LIMIT_GRACE_SECONDS
+    )
+
+
+def test_collect_tick_soft_time_limit_is_partial_run_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # SoftTimeLimitExceeded mid-read is a VALID partial tick (already-buffered
+    # posts stay buffered) — warn specifically, never crash beat.
+    from celery.exceptions import SoftTimeLimitExceeded
+
+    @contextmanager
+    def _acquired(*_args: object, **_kwargs: object) -> Iterator[bool]:
+        yield True
+
+    with (
+        patch.object(tasks, "get_redis_client", return_value=MagicMock()),
+        patch.object(tasks, "collect_tick_lock", _acquired),
+        patch.object(tasks, "collect_watched_sources", side_effect=SoftTimeLimitExceeded()),
+        caplog.at_level(logging.WARNING),
+    ):
+        tasks.collect_tick()  # must not raise
+
+    assert any("soft time limit" in r.message for r in caplog.records)
+
+
 # ---------------------------------------------------------------------------
 # DISTINCT ref gathering
 # ---------------------------------------------------------------------------

@@ -37,6 +37,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, cast
 
+from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -46,6 +47,7 @@ from collector.base import SourceCollector, SourceKind, SourceRef
 from collector.buffer import write_post
 from collector.constants import (
     COLLECT_LAST_TICK_KEY,
+    COLLECT_TICK_HARD_LIMIT_GRACE_SECONDS,
     COLLECT_TICK_TASK,
     RAW_POST_TTL_SECONDS,
 )
@@ -233,7 +235,17 @@ def collect_watched_sources(redis: "Redis", *, now: datetime | None = None) -> i
     return written
 
 
-@celery_app.task(name=COLLECT_TICK_TASK)
+# Soft limit = the lock TTL: a tick may use its whole lock window, never more
+# (after the TTL another tick could start — two ticks must not share the pool).
+# Resolved once at import, same as `celery_app`'s own `get_settings()` wiring.
+_TICK_SOFT_TIME_LIMIT_SECONDS = get_settings().collect_lock_ttl_seconds
+
+
+@celery_app.task(
+    name=COLLECT_TICK_TASK,
+    soft_time_limit=_TICK_SOFT_TIME_LIMIT_SECONDS,
+    time_limit=_TICK_SOFT_TIME_LIMIT_SECONDS + COLLECT_TICK_HARD_LIMIT_GRACE_SECONDS,
+)
 def collect_tick() -> None:
     """Beat ingest tick: read watched sources into the raw buffer (global lock).
 
@@ -241,6 +253,12 @@ def collect_tick() -> None:
     reads can never overlap on the single Telethon pool (`max_instances=1`,
     mirrors `run_user_batch`). Best-effort body: any unexpected error is logged
     and suppressed — beat must never crash (showcase-tick invariant).
+
+    Time limits are the safety net under the FLOOD_WAIT inline cap (reader): a
+    read wedged past the lock TTL gets SoftTimeLimitExceeded — a VALID partial
+    tick (posts buffered before the cut stay buffered; the lock is released by
+    the context manager) — and the hard limit recycles the worker process if
+    even that cleanup hangs, so a stuck read can never pin a celery slot.
     """
     redis = get_redis_client()
     with collect_tick_lock(redis) as acquired:
@@ -249,6 +267,12 @@ def collect_tick() -> None:
             return
         try:
             collect_watched_sources(redis)
+        except SoftTimeLimitExceeded:
+            logger.warning(
+                "collect_tick soft time limit hit (%ds) — partial tick kept "
+                "(already-buffered posts remain valid)",
+                _TICK_SOFT_TIME_LIMIT_SECONDS,
+            )
         except Exception as exc:
             logger.warning(
                 "collect_tick unexpected error — suppressed",

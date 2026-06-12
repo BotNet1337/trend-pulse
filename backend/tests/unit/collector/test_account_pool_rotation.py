@@ -1,8 +1,13 @@
 """AC4 — FLOOD_WAIT -> backoff + rotation; all-flood -> AllAccountsFloodWaitError."""
 
+from collections.abc import AsyncIterator, Awaitable, Callable
+from datetime import datetime
+from types import SimpleNamespace
+
 import pytest
 
-from collector.constants import POOL_MAX, POOL_MIN
+from collector.base import SourceKind, SourceRef
+from collector.constants import FLOOD_WAIT_INLINE_CAP_SECONDS, POOL_MAX, POOL_MIN
 from collector.errors import AllAccountsFloodWaitError, PoolConfigError
 from collector.telegram.account_pool import AccountPool
 from collector.telegram.reader import TelegramCollector
@@ -118,3 +123,115 @@ async def test_reader_rotates_on_flood_and_completes() -> None:
     assert 1 in slept
     # Rotation happened: the healthy (second) client served the read.
     assert healthy.iter_calls == 1
+
+
+# ---------------------------------------------------------------------------
+# Prod hang regression (pool=1): a FLOOD_WAIT above the inline cap must abort
+# the ref (AllAccountsFloodWaitError -> collect_tick skips it with a warning)
+# instead of parking the coroutine on `await sleep(<server hint>)` for the
+# task's lifetime ("User is already connected!" then silence, celery slot held).
+# ---------------------------------------------------------------------------
+
+
+class _Clock2:
+    """Manually advanced monotonic clock shared by the pool and fake sleep."""
+
+    def __init__(self) -> None:
+        self.t = 0.0
+
+    def __call__(self) -> float:
+        return self.t
+
+    def advance(self, seconds: float) -> None:
+        self.t += seconds
+
+
+def _pool_of(clients: list[FakeClient], clock: _Clock2) -> AccountPool:
+    pool = make_pool(clients)
+    pool._now = clock
+    return pool
+
+
+def _clock_sleep(clock: _Clock2, slept: list[float]) -> Callable[[float], Awaitable[None]]:
+    async def _sleep(seconds: float) -> None:
+        slept.append(seconds)
+        clock.advance(seconds)
+
+    return _sleep
+
+
+class _FloodOnceClient(FakeClient):
+    """FakeClient that floods exactly once on iter, then yields its messages."""
+
+    def __init__(self, wait_seconds: int) -> None:
+        super().__init__(messages=[make_message(5)])
+        self._flood: Exception | None = FakeFloodWaitError(wait_seconds)
+
+    async def iter_messages(
+        self, entity: object, *, offset_date: datetime | None
+    ) -> AsyncIterator[SimpleNamespace]:
+        self.iter_calls += 1
+        if self._flood is not None:
+            error, self._flood = self._flood, None
+            raise error
+        for msg in self._messages:
+            yield msg
+
+
+_REF = SourceRef(SourceKind.TELEGRAM, "@news")
+
+
+@pytest.mark.asyncio
+async def test_pool1_long_flood_aborts_ref_instead_of_sleeping() -> None:
+    # Pool of ONE account: "rotation" lands on the same cooling account. A wait
+    # above the inline cap must surface AllAccountsFloodWaitError (ref skipped),
+    # never an in-task sleep of the full server hint.
+    clock = _Clock2()
+    long_wait = FLOOD_WAIT_INLINE_CAP_SECONDS + 1
+    client = FakeClient(raise_on_iter=FakeFloodWaitError(long_wait))
+    pool = _pool_of([client], clock)
+    slept: list[float] = []
+    collector = TelegramCollector(pool, sleep=_clock_sleep(clock, slept))
+
+    with pytest.raises(AllAccountsFloodWaitError):
+        _ = [post async for post in collector.read([_REF], since=None)]
+
+    # The long server hint was never slept inside the task.
+    assert all(seconds < long_wait for seconds in slept)
+
+
+@pytest.mark.asyncio
+async def test_pool1_short_flood_retries_without_reconnecting() -> None:
+    # A short hint (<= cap) still waits it out and finishes the read — but the
+    # already-connected client must NOT be reconnected ("User is already
+    # connected!" noise on the prod hang path).
+    clock = _Clock2()
+    client = _FloodOnceClient(3)
+    pool = _pool_of([client], clock)
+    slept: list[float] = []
+    collector = TelegramCollector(pool, sleep=_clock_sleep(clock, slept))
+
+    posts = [post async for post in collector.read([_REF], since=None)]
+
+    assert [post.external_id for post in posts] == ["5"]
+    assert 3 in slept
+    assert client.connect_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_long_flood_rotates_to_ready_account_without_sleeping_hint() -> None:
+    # Pool > 1: a long flood on one account rotates to a READY account
+    # immediately instead of sleeping the flooded account's full hint.
+    clock = _Clock2()
+    long_wait = FLOOD_WAIT_INLINE_CAP_SECONDS + 540
+    flooding = FakeClient(raise_on_iter=FakeFloodWaitError(long_wait))
+    healthy = FakeClient(messages=[make_message(7)])
+    pool = _pool_of([flooding, healthy], clock)
+    slept: list[float] = []
+    collector = TelegramCollector(pool, sleep=_clock_sleep(clock, slept))
+
+    posts = [post async for post in collector.read([_REF], since=None)]
+
+    assert [post.external_id for post in posts] == ["7"]
+    assert healthy.iter_calls == 1
+    assert all(seconds < long_wait for seconds in slept)

@@ -45,12 +45,18 @@ class FakeClient:
         self.connect_calls = 0
         self.iter_calls = 0
         self.disconnect_calls = 0
+        self._connected = False
 
     async def connect(self) -> None:
         self.connect_calls += 1
+        self._connected = True
 
     async def disconnect(self) -> None:
         self.disconnect_calls += 1
+        self._connected = False
+
+    def is_connected(self) -> bool:
+        return self._connected
 
     async def get_entity(self, handle: str) -> object:
         if self._raise_on_entity is not None:
