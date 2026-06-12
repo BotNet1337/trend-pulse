@@ -3,7 +3,7 @@
 # reachable only via nginx (network-design.md §2).
 #
 # Swarm ignores depends_on.condition: api may start before migrations finish.
-# restart_policy.condition: on-failure + the /health healthcheck keep it
+# restart_policy.condition: any + the /health healthcheck keep it
 # restarting until the provisioner jobs complete and the DB is ready (Edge case
 # "depends_on не работает"). make deploy-wait gates convergence.
 services:
@@ -56,7 +56,10 @@ services:
         order: start-first
       # on-failure: keep restarting until migrations/pgvector jobs converge.
       restart_policy:
-        condition: on-failure
+        # `any` (not on-failure): long-running service must survive CLEAN exits too —
+        # daemon restart sends SIGTERM, graceful exit 0 = task "Complete", and
+        # on-failure never reschedules it (frontend stayed 0/1 in the 2026-06-12 incident).
+        condition: any
         delay: 5s
         max_attempts: 0
 
