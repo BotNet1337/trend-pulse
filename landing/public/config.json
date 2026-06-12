@@ -10,7 +10,7 @@
   "_signupUrlNote": "Relative path assumes landing and SPA are served from the same edge/domain (e.g., Cloudflare routing: /sign-up → SPA). To override for a separate SPA domain, set an absolute URL here, e.g. https://app.foresignal.biz/sign-up.",
   "plausibleDomain": "foresignal.biz",
   "_plausibleDomainNote": "Plausible Analytics data-domain, shared by landing + SPA (Plausible aggregates subdomains into one site). Empty string fully disables the analytics script on the landing.",
-  "showcaseTelegramUrl": "",
+  "showcaseTelegramUrl": "https://t.me/trendpulse1338",
   "_showcaseTelegramUrlNote": "Public Telegram showcase channel with live detections (e.g. https://t.me/...). Empty string = showcase links are not rendered. Filled by owner once the channel is created (TASK-070).",
   "compliance": {
     "dataRetentionHours": 48,
