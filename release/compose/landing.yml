@@ -1,7 +1,7 @@
 # Landing (marketing) SSR service — Fastify + Vite SSR on :5174 (internal only;
 # no published host ports). Served at the apex domain (foresignal.biz) via
 # edge-nginx; the dashboard SPA lives at app.foresignal.biz. Static-ish marketing
-# site — no DB/secret deps (the /api/waitlist route is best-effort and unused here).
+# site — no DB deps; SSR-fetches /v1/cases from the api service (TASK-067).
 services:
   landing:
     image: ${LANDING_IMAGE}
@@ -14,6 +14,11 @@ services:
     environment:
       NODE_ENV: production
       PORT: "5174"
+      # Proof-of-speed section (TASK-067): SSR-fetch of live cases. Internal
+      # service-name URL — landing sits on `internal: true` (no egress), so the
+      # public https://app.<domain> URL would NOT be reachable from here.
+      # Empty/unset = section hidden (graceful).
+      CASES_API_URL: http://api:8000/v1/cases
     healthcheck:
       test:
         - CMD-SHELL
