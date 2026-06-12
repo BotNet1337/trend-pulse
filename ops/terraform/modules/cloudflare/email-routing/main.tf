@@ -16,7 +16,8 @@ terraform {
 
 resource "cloudflare_email_routing_dns" "routing" {
   zone_id = var.zone_id
-  name    = var.domain
+  # `name` is ONLY for subdomain routing — passing the apex fails with
+  # "Invalid Input: must be a subdomains of <zone>". Omit it for apex routing.
 }
 
 # --- SPF record (root domain) ---
