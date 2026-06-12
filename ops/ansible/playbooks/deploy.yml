@@ -42,6 +42,18 @@
         # Trust GitHub's SSH host key on first contact (adds to known_hosts only if
         # absent — safer than StrictHostKeyChecking=no).
         accept_newhostkey: true
+
+    # Image tag = EXACT commit sha, not the ref name. With a moving ref ("main")
+    # the tag never changes, the service spec never changes, and `stack deploy`
+    # silently keeps OLD containers running rebuilt-but-identically-tagged images
+    # (2026-06-12 incident: collect-tick shipped, beat kept running without it).
+    # Same-commit re-deploys keep the same tag → converged stack stays 0-changed.
+    - name: Resolve deployed commit sha (image tag)
+      become: false
+      ansible.builtin.command:
+        cmd: git -C {{ app_dir }} rev-parse --short=12 HEAD
+      register: app_commit
+      changed_when: false
   roles:
     # Renders deploy.env + sensitive.env into {{ env_dir }} (= release/env) so the
     # compose `env_file:` paths resolve at `compose config` time.
@@ -61,10 +73,10 @@
       ansible.builtin.lineinfile:
         path: "{{ release_dir }}/version.env"
         regexp: '^APP_VERSION='
-        line: "APP_VERSION={{ app_version }}"
+        line: "APP_VERSION={{ app_commit.stdout }}"
         state: present
 
-    - name: Build the application images tagged {{ app_version }}
+    - name: Build the application images tagged {{ app_commit.stdout }}
       ansible.builtin.command:
         cmd: >-
           docker compose
