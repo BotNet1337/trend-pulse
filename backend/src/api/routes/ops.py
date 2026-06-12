@@ -91,8 +91,13 @@ def _check_celery() -> bool:
 
 
 @router.get("/ready")
+@router.head("/ready", include_in_schema=False)
 def ready() -> JSONResponse:
-    """Readiness: 200 when DB+Redis+Celery reachable, else 503 with per-dep markers."""
+    """Readiness: 200 when DB+Redis+Celery reachable, else 503 with per-dep markers.
+
+    HEAD is registered explicitly (FastAPI does not auto-derive it from GET) —
+    uptime monitors (UptimeRobot) probe with HEAD and treated the 405 as DOWN.
+    """
     db_ok = _check_db()
     redis_ok = _check_redis()
     celery_ok = _check_celery()
