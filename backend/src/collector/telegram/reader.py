@@ -17,7 +17,10 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from collector.base import RawPost, SourceKind, SourceRef
-from collector.constants import INTER_REQUEST_SLEEP_SECONDS
+from collector.constants import (
+    FLOOD_WAIT_INLINE_CAP_SECONDS,
+    INTER_REQUEST_SLEEP_SECONDS,
+)
 from collector.errors import AllAccountsFloodWaitError, SourceUnavailableError
 from collector.telegram.account_pool import AccountPool
 from collector.telegram.client import TelegramClientProtocol
@@ -43,6 +46,17 @@ def _flood_wait_seconds(error: BaseException) -> float | None:
     if isinstance(seconds, int | float):
         return float(seconds)
     return None
+
+
+async def _ensure_connected(client: TelegramClientProtocol) -> None:
+    """Connect `client` only if it is not connected yet.
+
+    Re-calling `connect()` on a live Telethon client logs "User is already
+    connected!" and was part of the prod hang signature (pool=1 "rotation"
+    re-acquired the same connected account every retry).
+    """
+    if not client.is_connected():
+        await client.connect()
 
 
 class TelegramCollector:
@@ -126,7 +140,7 @@ class TelegramCollector:
         handle = normalize_handle(ref.handle, ref.kind)
         try:
             client = self._pool.acquire()
-            await client.connect()
+            await _ensure_connected(client)
             await client.get_entity(handle)
         except AllAccountsFloodWaitError:
             # Transient pool exhaustion — cannot confirm, treat as not-validated now.
@@ -157,6 +171,13 @@ class TelegramCollector:
     async def _read_one(self, ref: SourceRef, since: datetime | None) -> AsyncIterator[RawPost]:
         """Read a single channel once, with FLOOD_WAIT backoff + rotation (AC4).
 
+        A FLOOD_WAIT hint is slept in-task only when short (<= the inline cap);
+        a long hint marks the account cooling and retries through
+        `_acquire_ready_client`, which rotates to a READY account or aborts the
+        ref with `AllAccountsFloodWaitError` (pool=1: the "next" account IS the
+        cooling one — sleeping the full hint here parked the collect tick on a
+        celery slot for the FLOOD_WAIT's lifetime, the prod hang).
+
         Auth/ban exceptions (non-flood, non-source-unavailable) trigger a best-effort
         ops self-alert (TASK-035) before re-raising as SourceUnavailableError.
         """
@@ -166,7 +187,8 @@ class TelegramCollector:
         except Exception as exc:
             if (wait := _flood_wait_seconds(exc)) is not None:
                 self._pool.report_flood_wait(retry_after_seconds=wait)
-                await self._sleep(wait)
+                if wait <= FLOOD_WAIT_INLINE_CAP_SECONDS:
+                    await self._sleep(wait)
                 async for post in self._read_one(ref, since):
                     yield post
                 return
@@ -184,17 +206,21 @@ class TelegramCollector:
         except Exception as exc:
             if (wait := _flood_wait_seconds(exc)) is not None:
                 self._pool.report_flood_wait(retry_after_seconds=wait)
-                await self._sleep(wait)
+                if wait <= FLOOD_WAIT_INLINE_CAP_SECONDS:
+                    await self._sleep(wait)
                 async for post in self._read_one(ref, since):
                     yield post
                 return
             raise SourceUnavailableError(f"failed reading telegram ref {ref.handle}") from exc
 
     async def _acquire_ready_client(self) -> TelegramClientProtocol:
-        """Acquire an account; on full pool flood, back off until one frees up.
+        """Acquire an account; short full-pool floods back off, long ones abort.
 
-        On AllAccountsFloodWaitError: emit pool health metric + ops self-alert
-        (TASK-035) best-effort before sleeping (Invariant: never raises).
+        On AllAccountsFloodWaitError a cooldown within the inline cap is slept
+        and retried; a longer cooldown RE-RAISES so the caller skips the ref
+        (collect tick logs "source skipped" and moves on) instead of holding the
+        task coroutine for the cooldown's lifetime. Pool health metric + ops
+        self-alert (TASK-035) are emitted best-effort either way.
         """
         while True:
             try:
@@ -206,7 +232,9 @@ class TelegramCollector:
                     notify_reason="all_flood",
                     notify_text=(f"TG pool: all accounts flooded. cooldown_remaining={int(wait)}s"),
                 )
+                if wait > FLOOD_WAIT_INLINE_CAP_SECONDS:
+                    raise
                 await self._sleep(wait)
                 continue
-            await client.connect()
+            await _ensure_connected(client)
             return client
