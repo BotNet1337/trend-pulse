@@ -30,6 +30,19 @@ POOL_MAX: Final = 10
 # Small courtesy delay between per-channel requests to stay under rate limits.
 INTER_REQUEST_SLEEP_SECONDS: Final = 0.5
 
+# Hard per-tick safety cap on messages read from ONE channel (task-078). The
+# reader bounds its fetch to posts newer than `since` (Telethon `reverse=True`
+# + `offset_date`, see reader._read_one). `offset_date` WITHOUT `reverse=True`
+# is an UPPER bound and walked the ENTIRE channel history backward (task-077
+# diagnosis: prod posts spanned 2026→2017), causing GetHistory flood-wait
+# storms and 100k+ raw buffers. This cap is the backstop: it maps to Telethon's
+# `iter_messages(limit=...)` so even a misconfigured `since` (huge lookback,
+# corrupt-marker fallback, or `None`) can never trigger a deep full-history
+# pull again. A recent window (lookback 600s, tick 60s) reads far fewer than
+# this in steady state, so the cap is invisible until something is misconfigured
+# — which is exactly when we want the brakes on.
+MAX_MESSAGES_PER_TICK: Final = 500
+
 # Max FLOOD_WAIT the reader is allowed to sleep INSIDE one read (seconds).
 # Telethon already auto-sleeps short flood waits internally (its
 # `flood_sleep_threshold`); a hint that reaches the reader can be huge

@@ -34,7 +34,12 @@ class TelegramClientProtocol(Protocol):
     async def get_entity(self, handle: str) -> TelegramEntityProtocol: ...
 
     def iter_messages(
-        self, entity: TelegramEntityProtocol, *, offset_date: datetime | None
+        self,
+        entity: TelegramEntityProtocol,
+        *,
+        offset_date: datetime | None = None,
+        reverse: bool = False,
+        limit: int | None = None,
     ) -> AsyncIterator[TelegramMessage]: ...
 
 
