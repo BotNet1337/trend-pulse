@@ -32,14 +32,18 @@ def make_message(msg_id: int, text: str = "hi") -> SimpleNamespace:
 class FakeClient:
     """A mock Telethon client: records calls, yields messages, can raise on demand.
 
-    `iter_messages` models Telethon's REAL semantics (task-078) so the reader's
-    history bound is actually exercised, not assumed:
+    `iter_messages` models Telethon's REAL semantics (task-078/task-083) so the
+    reader's window bound is actually exercised, not assumed. Verified against the
+    installed `telethon/client/messages.py` (`_MessagesIter._init` /
+    `_load_next_chunk`):
       * `messages` is the channel history in chronological order (oldest→newest);
-      * `reverse=True` yields oldest→newest, `reverse=False` newest→oldest;
-      * in BOTH modes `offset_date` is the EXCLUSIVE lower bound when reverse is
-        True (the correct forward-window idiom) and the EXCLUSIVE upper bound when
-        reverse is False (the default backward-history-walk that caused the bug);
-      * `limit` caps how many are yielded.
+      * `reverse=False` (Telethon default) yields newest→oldest and `offset_date`
+        is the EXCLUSIVE UPPER bound ("messages *previous* to this date");
+      * `reverse=True` yields oldest→newest and `offset_date` is the EXCLUSIVE
+        LOWER bound — BUT when `offset_date` is None/falsy, `_init` sets
+        `offset_id = 1`, so iteration starts at the channel's OLDEST message and
+        walks forward (the task-083 prod trap: a flushed marker → ancient posts);
+      * `limit` caps how many are yielded (whichever end the order starts from).
     `last_iter_kwargs` records what the reader actually passed at the seam.
     """
 
@@ -91,17 +95,35 @@ class FakeClient:
         }
         if self._raise_on_iter is not None:
             raise self._raise_on_iter
-        # Order per Telethon: oldest→newest when reverse, newest→oldest otherwise.
-        ordered = self._messages if reverse else list(reversed(self._messages))
+
+        if reverse:
+            # reverse=True → oldest→newest. Telethon's `_init` only honours
+            # `offset_date` as a lower bound when it is truthy; with no
+            # `offset_date` it forces `offset_id = 1`, i.e. start at the channel's
+            # OLDEST message and walk forward (the task-083 flushed-marker trap).
+            ordered = self._messages
+            lower_bound = offset_date
+
+            def keep(msg: SimpleNamespace) -> bool:
+                if lower_bound is None or msg.date is None:
+                    return True
+                return msg.date > lower_bound  # exclusive lower bound
+
+        else:
+            # reverse=False (Telethon default) → newest→oldest. `offset_date` is
+            # the EXCLUSIVE UPPER bound ("messages *previous* to this date").
+            ordered = list(reversed(self._messages))
+            upper_bound = offset_date
+
+            def keep(msg: SimpleNamespace) -> bool:
+                if upper_bound is None or msg.date is None:
+                    return True
+                return msg.date < upper_bound  # exclusive upper bound
+
         yielded = 0
         for msg in ordered:
-            if offset_date is not None and msg.date is not None:
-                # Exclusive: reverse → strictly newer than offset_date;
-                # default → strictly older than offset_date.
-                if reverse and not msg.date > offset_date:
-                    continue
-                if not reverse and not msg.date < offset_date:
-                    continue
+            if not keep(msg):
+                continue
             if limit is not None and yielded >= limit:
                 return
             yielded += 1

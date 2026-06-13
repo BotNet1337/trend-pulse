@@ -278,6 +278,67 @@ def test_persists_posts_with_their_embedding() -> None:
         assert list(post.embedding) == expected_by_external[post.external_id]
 
 
+def test_persists_post_embeddings_through_real_cache_path() -> None:
+    """task-083 — embeddings must survive the PRODUCTION path, not just the
+    embed.run fallback. `test_persists_posts_with_their_embedding` patches
+    `embed_with_cache` to return None, so `_run_pipeline` falls back to
+    `embed.run` and NEVER exercises the real runtime, where `embed_with_cache`
+    returns a precomputed vector list passed into `_run_pipeline(..., vectors=...)`.
+    That gap is exactly why the #125 fix had no CI proof on the real path.
+
+    This test runs the REAL `embed_with_cache` over a `fakeredis` instance (the
+    cache path beat/worker actually take) with a faithful 384-d encoder, in the
+    prod shape (3 distinct posts → 3 singleton clusters), and asserts every
+    persisted `Post` carries its 384-d vector — proving `post_embeddings` stays
+    aligned through dedup/normalize/cluster + the precomputed-vectors threading.
+    """
+    import fakeredis
+
+    user_id = 2
+    refs = [SourceRef(kind=SourceKind.TELEGRAM, handle="@chan")]
+    # 3 distinct texts → 3 singleton clusters (the exact prod-incident shape).
+    posts = [
+        _raw("22418", "central bank raised interest rates today"),
+        _raw("22419", "indie game about gardening won awards"),
+        _raw("22420", "local football team wins the championship"),
+    ]
+    mock_session = MagicMock()
+    _install_id_assigning_flush(mock_session)
+    session_ctx = _make_session_ctx(mock_session)
+    channel_map = {("telegram", "@chan"): 4}
+    redis = fakeredis.FakeRedis()
+
+    with (
+        patch.object(batch_processor, "get_redis_client", return_value=redis),
+        patch.object(batch_processor, "get_session", return_value=session_ctx),
+        patch.object(batch_processor, "user_source_refs", return_value=refs),
+        patch.object(batch_processor, "drain_source", return_value=posts),
+        patch.object(batch_processor, "_build_handle_to_channel_id", return_value=channel_map),
+        patch.object(batch_processor, "_find_mergeable_cluster", return_value=None),
+        # NO patch on embed_with_cache → the REAL cache path runs (fakeredis mget/
+        # setex), exactly as in prod. Only the heavy model is faked (384-d).
+        # `get_settings` is deliberately NOT patched: the real cache key needs
+        # `embedding_model_name` (config default) and `cluster.run` needs the real
+        # float `cluster_cosine_threshold` — conftest sets the required env, so the
+        # runtime path is exercised faithfully (patching it would break clustering).
+        patch.object(batch_processor.embed, "_get_model", return_value=_FakeEncoder()),
+    ):
+        count = batch_processor.process_user_batch(user_id)
+
+    from storage.models import Post
+
+    assert count >= 1  # at least one cluster persisted
+    post_rows = [c.args[0] for c in mock_session.add.call_args_list if isinstance(c.args[0], Post)]
+    # All 3 member posts persist (regardless of how the fake vectors cluster), each
+    # carrying its 384-d vector through the real precomputed-vectors cache path.
+    assert len(post_rows) == 3
+    persisted_ids = {p.external_id for p in post_rows}
+    assert persisted_ids == {"22418", "22419", "22420"}
+    for post in post_rows:
+        assert post.embedding is not None, f"post {post.external_id} persisted with NULL embedding"
+        assert len(post.embedding) == EMBEDDING_DIM
+
+
 def test_candidate_to_cluster_sets_user_id_and_embedding() -> None:
     from pipeline.steps.cluster import ClusterCandidate
 

@@ -30,12 +30,15 @@ POOL_MAX: Final = 10
 # Small courtesy delay between per-channel requests to stay under rate limits.
 INTER_REQUEST_SLEEP_SECONDS: Final = 0.5
 
-# Hard per-tick safety cap on messages read from ONE channel (task-078). The
-# reader bounds its fetch to posts newer than `since` (Telethon `reverse=True`
-# + `offset_date`, see reader._read_one). `offset_date` WITHOUT `reverse=True`
-# is an UPPER bound and walked the ENTIRE channel history backward (task-077
-# diagnosis: prod posts spanned 2026→2017), causing GetHistory flood-wait
-# storms and 100k+ raw buffers. This cap is the backstop: it maps to Telethon's
+# Hard per-tick safety cap on messages read from ONE channel (task-078/task-083).
+# The reader fetches the NEWEST posts in the recent window newest-first (Telethon
+# default `reverse=False`) and BREAKS once it passes `since`, see reader._read_one.
+# Earlier idioms were traps: `offset_date` WITHOUT `reverse=True` is an UPPER bound
+# that walked the ENTIRE history backward (task-077: prod 2026→2017 → GetHistory
+# flood storms, 100k+ buffers); `reverse=True` + `offset_date` yields the OLDEST of
+# the window first (cap truncates the newest) and, with no marker, Telethon forces
+# `offset_id=1` → the channel's OLDEST messages (task-083: prod ingested 2024-era
+# posts after a Redis flush). This cap is the backstop: it maps to Telethon's
 # `iter_messages(limit=...)` so even a misconfigured `since` (huge lookback,
 # corrupt-marker fallback, or `None`) can never trigger a deep full-history
 # pull again. A recent window (lookback 600s, tick 60s) reads far fewer than
