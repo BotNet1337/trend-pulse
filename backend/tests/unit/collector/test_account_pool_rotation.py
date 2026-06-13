@@ -168,7 +168,12 @@ class _FloodOnceClient(FakeClient):
         self._flood: Exception | None = FakeFloodWaitError(wait_seconds)
 
     async def iter_messages(
-        self, entity: object, *, offset_date: datetime | None
+        self,
+        entity: object,
+        *,
+        offset_date: datetime | None = None,
+        reverse: bool = False,
+        limit: int | None = None,
     ) -> AsyncIterator[SimpleNamespace]:
         self.iter_calls += 1
         if self._flood is not None:

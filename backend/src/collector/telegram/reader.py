@@ -20,6 +20,7 @@ from collector.base import RawPost, SourceKind, SourceRef
 from collector.constants import (
     FLOOD_WAIT_INLINE_CAP_SECONDS,
     INTER_REQUEST_SLEEP_SECONDS,
+    MAX_MESSAGES_PER_TICK,
 )
 from collector.errors import AllAccountsFloodWaitError, SourceUnavailableError
 from collector.telegram.account_pool import AccountPool
@@ -200,7 +201,26 @@ class TelegramCollector:
             raise SourceUnavailableError(f"cannot resolve telegram ref {ref.handle}") from exc
 
         try:
-            async for message in client.iter_messages(entity, offset_date=since):
+            # Bound the read to a RECENT window, not the full channel history
+            # (task-078). Telethon's `offset_date` is EXCLUSIVE and its meaning
+            # flips with `reverse`: with the default `reverse=False` it is an
+            # UPPER bound and the iterator walks the ENTIRE history backward
+            # (task-077: prod posts 2026→2017 → GetHistory flood storms, 100k+
+            # buffers, lock held its full TTL). With `reverse=True` it is the
+            # LOWER bound and we scan FORWARD from `since` to newest — exactly
+            # the recent window we want. `limit=MAX_MESSAGES_PER_TICK` is the
+            # hard backstop so even a misconfigured `since` cannot deep-pull.
+            # The defensive guard below DROPS anything strictly older than
+            # `since`, locking the lower bound at our boundary regardless of
+            # server-side off-by-one on the exclusive offset.
+            async for message in client.iter_messages(
+                entity,
+                offset_date=since,
+                reverse=True,
+                limit=MAX_MESSAGES_PER_TICK,
+            ):
+                if since is not None and message.date is not None and message.date < since:
+                    continue
                 yield map_entity(message, ref)
             self._pool.report_success()
         except Exception as exc:

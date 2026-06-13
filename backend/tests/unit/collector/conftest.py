@@ -30,7 +30,18 @@ def make_message(msg_id: int, text: str = "hi") -> SimpleNamespace:
 
 
 class FakeClient:
-    """A mock Telethon client: records calls, yields messages, can raise on demand."""
+    """A mock Telethon client: records calls, yields messages, can raise on demand.
+
+    `iter_messages` models Telethon's REAL semantics (task-078) so the reader's
+    history bound is actually exercised, not assumed:
+      * `messages` is the channel history in chronological order (oldest→newest);
+      * `reverse=True` yields oldest→newest, `reverse=False` newest→oldest;
+      * in BOTH modes `offset_date` is the EXCLUSIVE lower bound when reverse is
+        True (the correct forward-window idiom) and the EXCLUSIVE upper bound when
+        reverse is False (the default backward-history-walk that caused the bug);
+      * `limit` caps how many are yielded.
+    `last_iter_kwargs` records what the reader actually passed at the seam.
+    """
 
     def __init__(
         self,
@@ -46,6 +57,7 @@ class FakeClient:
         self.iter_calls = 0
         self.disconnect_calls = 0
         self._connected = False
+        self.last_iter_kwargs: dict[str, object] | None = None
 
     async def connect(self) -> None:
         self.connect_calls += 1
@@ -64,12 +76,35 @@ class FakeClient:
         return SimpleNamespace(handle=handle)
 
     async def iter_messages(
-        self, entity: object, *, offset_date: datetime | None
+        self,
+        entity: object,
+        *,
+        offset_date: datetime | None = None,
+        reverse: bool = False,
+        limit: int | None = None,
     ) -> AsyncIterator[SimpleNamespace]:
         self.iter_calls += 1
+        self.last_iter_kwargs = {
+            "offset_date": offset_date,
+            "reverse": reverse,
+            "limit": limit,
+        }
         if self._raise_on_iter is not None:
             raise self._raise_on_iter
-        for msg in self._messages:
+        # Order per Telethon: oldest→newest when reverse, newest→oldest otherwise.
+        ordered = self._messages if reverse else list(reversed(self._messages))
+        yielded = 0
+        for msg in ordered:
+            if offset_date is not None and msg.date is not None:
+                # Exclusive: reverse → strictly newer than offset_date;
+                # default → strictly older than offset_date.
+                if reverse and not msg.date > offset_date:
+                    continue
+                if not reverse and not msg.date < offset_date:
+                    continue
+            if limit is not None and yielded >= limit:
+                return
+            yielded += 1
             yield msg
 
 
