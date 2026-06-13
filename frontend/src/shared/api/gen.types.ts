@@ -37,6 +37,9 @@ export interface paths {
         /**
          * Ready
          * @description Readiness: 200 when DB+Redis+Celery reachable, else 503 with per-dep markers.
+         *
+         *     HEAD is registered explicitly (FastAPI does not auto-derive it from GET) —
+         *     uptime monitors (UptimeRobot) probe with HEAD and treated the 405 as DOWN.
          */
         get: operations["ready_ready_get"];
         put?: never;
