@@ -125,6 +125,7 @@ def test_persists_clusters_scoped_by_user_id() -> None:
         patch.object(batch_processor, "user_source_refs", return_value=refs),
         patch.object(batch_processor, "drain_source", return_value=posts),
         patch.object(batch_processor, "_build_handle_to_channel_id", return_value={}),
+        patch.object(batch_processor, "_find_mergeable_cluster", return_value=None),
         # Bypass cache so _run_pipeline uses embed.run with the injected model.
         patch.object(batch_processor, "embed_with_cache", return_value=None),
         patch.object(batch_processor.embed, "_get_model", return_value=_FakeEncoder()),
@@ -168,6 +169,7 @@ def test_persists_posts_with_cluster_id_and_resolved_channel() -> None:
         patch.object(batch_processor, "user_source_refs", return_value=refs),
         patch.object(batch_processor, "drain_source", return_value=posts),
         patch.object(batch_processor, "_build_handle_to_channel_id", return_value=channel_map),
+        patch.object(batch_processor, "_find_mergeable_cluster", return_value=None),
         # Bypass cache so _run_pipeline uses embed.run with the injected model.
         patch.object(batch_processor, "embed_with_cache", return_value=None),
         patch.object(batch_processor.embed, "_get_model", return_value=_FakeEncoder()),
@@ -216,6 +218,7 @@ def test_unresolved_channel_skips_post_without_failing() -> None:
         patch.object(batch_processor, "drain_source", return_value=posts),
         # Empty map → channel unresolved → post skipped.
         patch.object(batch_processor, "_build_handle_to_channel_id", return_value={}),
+        patch.object(batch_processor, "_find_mergeable_cluster", return_value=None),
         # Bypass cache so _run_pipeline uses embed.run with the injected model.
         patch.object(batch_processor, "embed_with_cache", return_value=None),
         patch.object(batch_processor.embed, "_get_model", return_value=_FakeEncoder()),
@@ -279,6 +282,7 @@ def test_process_user_batch_uses_embed_with_cache() -> None:
         patch.object(batch_processor, "user_source_refs", return_value=refs),
         patch.object(batch_processor, "drain_source", return_value=posts),
         patch.object(batch_processor, "_build_handle_to_channel_id", return_value={}),
+        patch.object(batch_processor, "_find_mergeable_cluster", return_value=None),
         patch.object(batch_processor, "get_settings") as mock_settings,
     ):
         mock_settings.return_value.embedding_model_name = "all-MiniLM-L6-v2"
@@ -290,6 +294,100 @@ def test_process_user_batch_uses_embed_with_cache() -> None:
     assert mock_redis.mget.called
     # setex NOT called — every vector came from cache (no misses).
     assert not mock_redis.setex.called
+
+
+# ---------------------------------------------------------------------------
+# TASK-080: cross-batch cluster merge
+# ---------------------------------------------------------------------------
+
+
+def test_second_batch_same_topic_merges_into_existing() -> None:
+    """AC2: a candidate whose centroid matches a fresh existing cluster MERGES into
+    it (no new Cluster row) — posts attach to the existing cluster, centroid +
+    updated_at are refreshed. Proves the cross-batch continuity fix.
+    """
+    from datetime import datetime
+
+    from storage.models import Cluster, Post
+
+    user_id = 5
+    refs = [SourceRef(kind=SourceKind.TELEGRAM, handle="@chan")]
+    posts = [_raw("ext-9", "the same recurring topic")]
+
+    # Stand-in for an existing fresh cluster from a previous batch (full-dim centroid).
+    existing = Cluster(
+        user_id=user_id,
+        topic="the same recurring topic",
+        embedding=[1.0] + [0.0] * (EMBEDDING_DIM - 1),
+    )
+    existing.id = 100
+    existing.updated_at = datetime(2026, 6, 13, tzinfo=UTC)
+
+    mock_session = MagicMock()
+    _install_id_assigning_flush(mock_session)
+    session_ctx = _make_session_ctx(mock_session)
+    channel_map = {("telegram", "@chan"): 7}
+
+    with (
+        patch.object(batch_processor, "get_redis_client", return_value=MagicMock()),
+        patch.object(batch_processor, "get_session", return_value=session_ctx),
+        patch.object(batch_processor, "user_source_refs", return_value=refs),
+        patch.object(batch_processor, "drain_source", return_value=posts),
+        patch.object(batch_processor, "_build_handle_to_channel_id", return_value=channel_map),
+        patch.object(batch_processor, "embed_with_cache", return_value=None),
+        patch.object(batch_processor.embed, "_get_model", return_value=_FakeEncoder()),
+        # The NN lookup finds the existing fresh cluster → merge path.
+        patch.object(batch_processor, "_find_mergeable_cluster", return_value=existing),
+        patch.object(batch_processor, "_existing_member_count", return_value=3),
+    ):
+        result = batch_processor.process_user_batch(user_id)
+
+    # No NEW Cluster added — the candidate merged into the existing one.
+    new_clusters = [
+        c.args[0] for c in mock_session.add.call_args_list if isinstance(c.args[0], Cluster)
+    ]
+    assert new_clusters == []
+    # Posts persisted carry the EXISTING cluster's id.
+    post_rows = [c.args[0] for c in mock_session.add.call_args_list if isinstance(c.args[0], Post)]
+    assert len(post_rows) == 1
+    assert post_rows[0].cluster_id == 100
+    # Returned count still reflects clusters touched.
+    assert result == 1
+
+
+def test_dissimilar_candidate_creates_new_cluster() -> None:
+    """AC3: when no fresh cluster matches (NN lookup returns None), the candidate
+    creates a brand-new Cluster row — today's behaviour preserved.
+    """
+    from storage.models import Cluster
+
+    user_id = 6
+    refs = [SourceRef(kind=SourceKind.TELEGRAM, handle="@chan")]
+    posts = [_raw("ext-1", "a totally fresh unrelated topic")]
+
+    mock_session = MagicMock()
+    _install_id_assigning_flush(mock_session)
+    session_ctx = _make_session_ctx(mock_session)
+
+    with (
+        patch.object(batch_processor, "get_redis_client", return_value=MagicMock()),
+        patch.object(batch_processor, "get_session", return_value=session_ctx),
+        patch.object(batch_processor, "user_source_refs", return_value=refs),
+        patch.object(batch_processor, "drain_source", return_value=posts),
+        patch.object(batch_processor, "_build_handle_to_channel_id", return_value={}),
+        patch.object(batch_processor, "embed_with_cache", return_value=None),
+        patch.object(batch_processor.embed, "_get_model", return_value=_FakeEncoder()),
+        # No mergeable cluster found → create-new path.
+        patch.object(batch_processor, "_find_mergeable_cluster", return_value=None),
+    ):
+        result = batch_processor.process_user_batch(user_id)
+
+    new_clusters = [
+        c.args[0] for c in mock_session.add.call_args_list if isinstance(c.args[0], Cluster)
+    ]
+    assert len(new_clusters) == 1
+    assert new_clusters[0].user_id == user_id
+    assert result == 1
 
 
 def test_process_user_batch_without_redis_identical_to_direct_embed() -> None:
@@ -312,6 +410,7 @@ def test_process_user_batch_without_redis_identical_to_direct_embed() -> None:
         patch.object(batch_processor, "user_source_refs", return_value=refs),
         patch.object(batch_processor, "drain_source", return_value=posts),
         patch.object(batch_processor, "_build_handle_to_channel_id", return_value={}),
+        patch.object(batch_processor, "_find_mergeable_cluster", return_value=None),
         patch.object(batch_processor.embed, "_get_model", return_value=_FakeEncoder()),
     ):
         result = batch_processor.process_user_batch(user_id)
