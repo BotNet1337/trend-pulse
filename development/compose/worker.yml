@@ -19,6 +19,16 @@ services:
     # would pile up unconsumed.
     command: celery -A celery_app worker -Q celery,batch,score:global -l info
     restart: unless-stopped
+    # Single TG pool session (pool=1): a rolling restart that runs OLD and NEW worker
+    # at once makes both connect MTProto on the SAME StringSession -> Telegram raises
+    # AuthKeyDuplicatedError (seen on deploy 2026-06-13). stop-first tears the old task
+    # down BEFORE the new one starts so they never overlap on the session; the short
+    # grace period bounds the old worker's MTProto drain. A few seconds of collect
+    # downtime per deploy is acceptable. The durable fix is pool>1 (more sessions).
+    stop_grace_period: 10s
+    deploy:
+      update_config:
+        order: stop-first
     env_file:
       - ../env/deploy.env
       - ../env/sensitive.env
