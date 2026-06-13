@@ -6,11 +6,20 @@
 1. resolves the user's distinct sources (channels across their watchlists),
 2. drains those by-source Redis buffers (collector.buffer — idempotent read+clear),
 3. runs the pure pipeline `dedup → normalize → embed → cluster`,
-4. persists each resulting cluster as a `Cluster` row scoped by `user_id`
-   (session.add + flush to obtain `cluster.id`), then persists that cluster's member
-   posts as `Post` rows carrying `cluster_id` + the `channel_id` resolved by
+4. persists each resulting cluster scoped by `user_id`: a candidate either MERGES
+   into the nearest fresh existing cluster of the same user (cross-batch continuity,
+   task-080 — `_find_mergeable_cluster`) or creates a new `Cluster` row (session.add
+   + flush to obtain `cluster.id`). Either way that cluster's member posts are then
+   persisted as `Post` rows carrying `cluster_id` + the `channel_id` resolved by
    (source_kind, handle) — this is the post↔cluster link the per-cluster scorer
-   reads (task-022). Returns the number of clusters persisted.
+   reads (task-022). Returns the number of clusters touched (merged + created).
+
+task-080: clustering is per-batch (`cluster.run` sees only this batch), so the same
+recurring topic used to spawn a NEW cluster every tick. The persist step now reuses
+an existing cluster when centroids are similar (cosine >= `cluster_cosine_threshold`)
+and it is recent (`updated_at` within `cluster_merge_window_seconds`), updating that
+cluster's centroid as a running mean over members. Merges happen under the per-user
+batch lock (`max_instances=1`), so no two batches race the same user.
 
 An empty buffer is a clean no-op: no Postgres write, returns 0 (AC5). A post whose
 channel can't be resolved is skipped with a warning (never aborts the batch). The
