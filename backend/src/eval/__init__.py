@@ -18,4 +18,15 @@ nothing it cannot:
 What is NOT measurable here (and why) is documented in the baseline report and the
 task doc: clustering/embedding ACCURACY cannot be evaluated because the source text
 and post-level vectors are gone — that needs a forward text-capture experiment (T11).
+
+The harness is extended (TASK-085, T14) to prove the score is MEANINGFUL — that a
+high score means "spreading / worth an alert" and a low score means "noise" — not
+merely non-zero:
+
+- `metrics` — pure ranking-quality helpers (ROC-AUC, precision@k, Spearman, viral-vs-
+  noise separation, confusion at a threshold), exact and numpy-free, unit-tested.
+- `scenarios` — labeled `(ScoreInputs, label)` sets: synthetic controlled cases
+  (viral/noise/borderline with intended labels) and a committed fixture of human-
+  judged REAL prod clusters. Both reuse `scorer.score.compute_components` — the
+  formula is never reimplemented.
 """
