@@ -1,0 +1,7 @@
+# Full prod corpus snapshots are large (clusters.csv ~47MB) and are NOT committed.
+# Regenerate them read-only with scripts/export_corpus.sh. Only the small
+# *.sample.csv fixtures (committed) and this .gitignore are tracked.
+posts.csv
+clusters.csv
+*.err
+*.parquet

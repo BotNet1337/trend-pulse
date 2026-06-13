@@ -18,6 +18,10 @@ dependencies = [
     "telethon>=1.37,<2",
     "datasketch>=1.6,<2",
     "imagehash>=4.3,<5",
+    # numpy: already pulled in transitively by datasketch/imagehash/pgvector (no
+    # extra image weight); declared explicitly so the offline eval harness
+    # (eval.clustering_audit centroid cosine, TASK-081) has a pinned direct dep.
+    "numpy>=2,<3",
     "pillow>=11,<12",
     "pydantic>=2.9,<3",
     "pydantic-settings>=2.6,<3",
