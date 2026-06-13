@@ -94,7 +94,11 @@ async function extractUrlFromEmail(
     const body = data.HTML ?? data.Text ?? ''
     const match = body.match(pattern)
     if (!match) throw new Error(`Pattern ${pattern} not found in email body`)
-    return match[0]
+    // The body is HTML, so ampersands in href URLs are entity-encoded (`&amp;`).
+    // A real email client decodes them before navigation; mirror that here, or
+    // `?token=...&amp;email=...` parses as a bogus `amp;email` param and pages
+    // that require the `email` query param (confirm-email) break.
+    return match[0].replace(/&amp;/g, '&')
   } finally {
     await ctx.dispose()
   }
@@ -139,7 +143,7 @@ test.describe('verify-reset auth flows (requires stack + mailpit)', () => {
     // Extract the verify URL from the email HTML (contains /auth/email/confirm?token=...).
     const verifyUrl = await extractUrlFromEmail(
       messageId,
-      /https?:\/\/[^\s"<>]+\/auth\/email\/confirm\?[^\s"<>]+token=[^\s"<>]+/,
+      /https?:\/\/[^\s"<>]+\/auth\/email\/confirm\?[^\s"<>]*token=[^\s"<>]+/,
     )
     expect(verifyUrl).toContain('/auth/email/confirm')
     expect(verifyUrl).toContain('token=')
@@ -159,16 +163,16 @@ test.describe('verify-reset auth flows (requires stack + mailpit)', () => {
     await page.getByLabel('Email').fill(email)
     await page.getByLabel(/^Password/i).fill(password)
     await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-    await page.waitForURL(/\/(?!auth)/, { timeout: 10000 })
+    await page.waitForURL((url) => !url.pathname.startsWith('/auth/sign-in'), { timeout: 10000 })
 
-    // Check is_verified via API.
-    const meCtx = await playwrightRequest.newContext()
-    const meResp = await meCtx.get(`${page.url().replace(/\/[^/]*$/, '')}${API_BASE}/users/me`)
-    if (meResp.ok()) {
-      const me = (await meResp.json()) as { is_verified?: boolean }
-      expect(me.is_verified).toBe(true)
-    }
-    await meCtx.dispose()
+    // Check is_verified via API. Use page.request so the authenticated session
+    // cookie is sent and the path resolves against the nginx baseURL — a fresh
+    // request context has no cookie and a hand-built absolute URL hits the SPA
+    // fallback (HTML), not the API.
+    const meResp = await page.request.get(`${API_BASE}/users/me`)
+    expect(meResp.ok()).toBe(true)
+    const me = (await meResp.json()) as { is_verified?: boolean }
+    expect(me.is_verified).toBe(true)
   })
 
   test('reset-password flow: forgot-password → mailpit → reset → login new', async ({ page }) => {
@@ -205,7 +209,7 @@ test.describe('verify-reset auth flows (requires stack + mailpit)', () => {
     // Extract the reset URL (/auth/password/reset?token=...).
     const resetUrl = await extractUrlFromEmail(
       messageId,
-      /https?:\/\/[^\s"<>]+\/auth\/password\/reset\?[^\s"<>]+token=[^\s"<>]+/,
+      /https?:\/\/[^\s"<>]+\/auth\/password\/reset\?[^\s"<>]*token=[^\s"<>]+/,
     )
     expect(resetUrl).toContain('/auth/password/reset')
     expect(resetUrl).toContain('token=')
@@ -225,7 +229,7 @@ test.describe('verify-reset auth flows (requires stack + mailpit)', () => {
     await page.getByLabel('Email').fill(email)
     await page.getByLabel(/^Password/i).fill(newPassword)
     await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-    await page.waitForURL(/\/(?!auth)/, { timeout: 10000 })
+    await page.waitForURL((url) => !url.pathname.startsWith('/auth/sign-in'), { timeout: 10000 })
   })
 
   test('sign-in page shows Forgot password link (AC6)', async ({ page }) => {

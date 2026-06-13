@@ -8,8 +8,19 @@ services:
     image: ${MAILPIT_IMAGE}
     environment:
       MP_SMTP_BIND_ADDR: "0.0.0.0:1025"
+      # The backend calls SMTP AUTH whenever SMTP_USER is set (it is, via the
+      # ansible-managed sensitive.env). Mailpit refuses AUTH on a plaintext
+      # connection unless told to accept any credentials insecurely — without
+      # these two, every dev email send fails with "SMTP AUTH extension not
+      # supported by server" and is swallowed as a warning. Dev-only sink.
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
     networks:
       - internal
+      # Web UI port 8025 can only reach the host through a non-internal network;
+      # `internal` (internal:true) blocks host publishing. Attach the dev-only
+      # mailpit_ui bridge so the published 8025 below actually binds on the host.
+      - mailpit_ui
     # Web UI published for local dev only — not in prod profile.
     ports:
       - "8025:8025"
@@ -19,3 +30,7 @@ networks:
   internal:
     driver: bridge
     internal: true
+  # Dev-only bridge that carries the published Mailpit web UI to the host.
+  # NOT internal — that is the whole point. Not present in the prod profile.
+  mailpit_ui:
+    driver: bridge
