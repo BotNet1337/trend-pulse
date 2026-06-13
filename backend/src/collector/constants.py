@@ -7,6 +7,15 @@ from typing import Final
 _RAW_POST_TTL_HOURS: Final = 48
 RAW_POST_TTL_SECONDS: Final = _RAW_POST_TTL_HOURS * 60 * 60  # 172800
 
+# Max posts kept per `raw:{kind}:{handle}` buffer list (OOM safety belt, TASK-076).
+# Redis is the Celery broker AND the raw-post buffer under one 256M cgroup cap; an
+# undrained/hot source must not be able to fill it and trigger the kernel OOM-kill.
+# On overflow the OLDEST buffered posts are dropped (recency matters for a viral
+# detector) — see `buffer.write_post`. An order of magnitude above a normal tick,
+# yet bounds one list to single-digit MB instead of hundreds. NOT the root fix for
+# buffer growth (that is the drain bug / lookback cap) — this is the safety net.
+MAX_RAW_BUFFER_LEN: Final = 50_000
+
 # FLOOD_WAIT exponential backoff bounds (seconds). When Telegram does not supply a
 # wait hint we grow base*2**attempt, capped, before retrying / rotating accounts.
 BACKOFF_BASE_SECONDS: Final = 2
