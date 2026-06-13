@@ -38,11 +38,19 @@ export const AuthGuard: React.FC = () => {
   React.useEffect(() => {
     if (isLoading) return
     if (!data) {
-      void router.navigate({
-        to: paths.auth.signIn,
-        search: { redirect: location.href },
-        replace: true,
-      })
+      // Guard against a redirect loop: while this navigate is in flight the
+      // guard can re-run with location.href already updated to the sign-in URL
+      // (data is still null), which would capture the sign-in URL itself as the
+      // `redirect` param — nesting `?redirect=/auth/sign-in?redirect=…` on every
+      // re-run. Never redirect to sign-in FROM sign-in; keep the clean original
+      // path as the single redirect target.
+      if (location.pathname !== paths.auth.signIn) {
+        void router.navigate({
+          to: paths.auth.signIn,
+          search: { redirect: location.href },
+          replace: true,
+        })
+      }
       return
     }
 
