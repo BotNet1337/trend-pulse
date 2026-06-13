@@ -4,9 +4,9 @@ These prove -- deterministically, no labels needed -- that the REAL scorer
 (`scorer.score.compute_components`, imported, never reimplemented) RESPONDS to each
 driver of virality in the correct direction:
 
-  * more distinct channels  -> higher velocity
-  * faster spread (smaller delta_hours) -> higher velocity
-  * engagement above channel_avg -> engagement > 1 and rising with the numerator
+  * more distinct channels  -> higher velocity (cross-channel burst)
+  * faster spread (smaller delta_hours, above the 1h floor) -> higher velocity
+  * more engagement -> higher engagement, rising with the numerator, bounded at 1 (v2)
   * broader watched-channel coverage -> higher cross_channel
   * the composite viral_score is monotonic NON-DECREASING in each component
 
@@ -53,8 +53,9 @@ def test_more_distinct_channels_raises_velocity(channels: tuple[int, int]) -> No
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("hours", [(0.5, 1.0), (1.0, 2.0), (2.0, 6.0), (6.0, 24.0)])
+@pytest.mark.parametrize("hours", [(1.0, 2.0), (2.0, 6.0), (6.0, 24.0)])
 def test_faster_spread_raises_velocity(hours: tuple[float, float]) -> None:
+    # v2: above the 1h floor, a faster spread (smaller delta_hours) gives a higher burst.
     fast, slow = hours
     v_fast = compute_components(_inputs(delta_hours=fast)).velocity
     v_slow = compute_components(_inputs(delta_hours=slow)).velocity
@@ -62,16 +63,27 @@ def test_faster_spread_raises_velocity(hours: tuple[float, float]) -> None:
 
 
 @pytest.mark.unit
-def test_engagement_above_baseline_exceeds_one() -> None:
-    # weighted numerator = views + 3*fwd + 2*rx; set it well above channel_avg
-    comp = compute_components(_inputs(views=5000, forwards=100, reactions=200, channel_avg=1000.0))
-    assert comp.engagement > 1.0
+def test_velocity_window_floored_at_one_hour() -> None:
+    # v2: sub-hour windows are clamped to 1h, so they yield the SAME burst (a near-zero
+    # window can no longer manufacture a spurious spike — the old 1-minute clamp bug).
+    sub_hour = compute_components(_inputs(delta_hours=0.1)).velocity
+    one_hour = compute_components(_inputs(delta_hours=1.0)).velocity
+    assert sub_hour == pytest.approx(one_hour)
 
 
 @pytest.mark.unit
-def test_engagement_below_baseline_under_one() -> None:
-    comp = compute_components(_inputs(views=200, forwards=1, reactions=2, channel_avg=1000.0))
-    assert comp.engagement < 1.0
+def test_engagement_is_bounded_and_rises_with_numerator() -> None:
+    # v2: engagement = min(log1p(weighted)/SCALE, 1) ∈ [0, 1], strictly rising in the
+    # numerator until it saturates (no longer the unbounded weighted/channel_avg ratio).
+    low = compute_components(_inputs(views=200, forwards=1, reactions=2)).engagement
+    high = compute_components(_inputs(views=5000, forwards=100, reactions=200)).engagement
+    assert 0.0 <= low < high <= 1.0
+
+
+@pytest.mark.unit
+def test_engagement_saturates_at_one() -> None:
+    comp = compute_components(_inputs(views=10**9, forwards=0, reactions=0))
+    assert comp.engagement == pytest.approx(1.0)
 
 
 @pytest.mark.unit

@@ -7,6 +7,7 @@ rolling-window + skip-empty rules from `scorer.tasks._build_score_inputs`.
 
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -86,8 +87,13 @@ def test_replay_excludes_out_of_window_posts() -> None:
         [_cluster(1)], posts, score_window_seconds=86_400, watched_channels_count=10
     )
     assert scores[0].posts_in_window == 1
-    # engagement reflects only the in-window post (fallback channel_avg == its views)
-    assert scores[0].components.engagement == pytest.approx(1.0)
+    # engagement reflects only the in-window post (v2: bounded log of its weighted sum,
+    # weighted = 100 views → min(log1p(100)/LOG_ENGAGEMENT_SCALE, 1))
+    from scorer.score import LOG_ENGAGEMENT_SCALE
+
+    assert scores[0].components.engagement == pytest.approx(
+        min(math.log1p(100) / LOG_ENGAGEMENT_SCALE, 1.0)
+    )
 
 
 @pytest.mark.unit
