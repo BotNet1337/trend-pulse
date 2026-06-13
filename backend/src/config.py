@@ -69,6 +69,17 @@ _DEFAULT_CLUSTER_COSINE_THRESHOLD = 0.75
 # scoring/showcase look-back windows. Override via env CLUSTER_MERGE_WINDOW_SECONDS.
 _DEFAULT_CLUSTER_MERGE_WINDOW_SECONDS: int = 86_400  # 24 hours
 
+# Cross-batch cluster MAX SPAN (scoring-v2). The merge window above bounds freshness
+# (updated_at), but a DAILY recurring template ("Доброе утро", daily market-cap posts)
+# keeps a cluster perpetually fresh and chains it for months — the real-data eval saw
+# such boilerplate collapse into mega-clusters spanning the whole 9-month corpus
+# (Δ ≈ 6574h), inflating engagement sums and corrupting the score. Capping a cluster's
+# total lifetime (`Cluster.first_seen >= now - cluster_max_span_seconds`) forces a
+# fresh cluster to seed after this span, so a viral EVENT (short burst) stays one
+# cluster while a recurring template can't accrete indefinitely. 72h covers a story's
+# realistic multi-day spread. Override via env CLUSTER_MAX_SPAN_SECONDS.
+_DEFAULT_CLUSTER_MAX_SPAN_SECONDS: int = 259_200  # 72 hours
+
 # Scorer (task-008). Named, non-secret defaults — never magic literals (CONVENTIONS).
 # A cluster is "fresh"/scoreable if updated within this window (seconds); the scorer
 # tick (every `scorer_interval_seconds`) only scores clusters inside it. The alert
@@ -381,6 +392,10 @@ class Settings(BaseSettings):
     # >= cluster_cosine_threshold) only if that cluster was updated within this
     # window — otherwise a new cluster is created. Override via CLUSTER_MERGE_WINDOW_SECONDS.
     cluster_merge_window_seconds: int = _DEFAULT_CLUSTER_MERGE_WINDOW_SECONDS
+    # Max total lifetime of a cluster for cross-batch merge (scoring-v2): a candidate
+    # merges into an existing cluster only if that cluster's `first_seen` is within this
+    # span — caps boilerplate chains. Override via CLUSTER_MAX_SPAN_SECONDS.
+    cluster_max_span_seconds: int = _DEFAULT_CLUSTER_MAX_SPAN_SECONDS
 
     # --- Scorer (task-008). Non-secret, settable; defaults above. ---
     scorer_recent_window_seconds: int = _DEFAULT_SCORER_RECENT_WINDOW_SECONDS

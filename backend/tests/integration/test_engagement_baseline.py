@@ -2,10 +2,20 @@
 
 Seeds posts with controlled `posted_at` timestamps in a live Postgres, then
 calls `_build_score_inputs` directly to verify the historical channel_avg
-behaviour without running a full scorer tick.
+COMPUTATION without running a full scorer tick.
 
-AC1 — flat channel: 7d-history ≈ X, new cluster post ≈ X → engagement ≈ 1.0.
-AC2 — spike: 7d-history ≈ X, new cluster post ≈ 10X → engagement ≈ 10.
+NOTE (scoring v2): the `channel_avg` 7d baseline is still computed here and carried
+on `ScoreInputs` (these tests still assert it is correct), but the viral score no
+longer DIVIDES engagement by it — the real-data eval (eval_offline/) showed absolute
+log-engagement predicts virality better than per-channel normalization (ROC-AUC 0.91
+vs 0.86; 0.83 vs 0.62 on single-channel early movers). So `_engagement` is now
+`min(log1p(weighted_sum)/LOG_ENGAGEMENT_SCALE, 1)` — bounded and independent of
+channel_avg. The AC1/AC2 assertions below were updated from the old ratio semantics
+(≈1.0 flat / ≈10 spike) to the v2 bounded-absolute semantics; the channel_avg
+computation they exercise is unchanged.
+
+AC1 — flat channel: 7d-history ≈ X computed correctly; engagement = bounded log(X).
+AC2 — spike: 7d-history ≈ X; a 10X cluster post yields strictly higher engagement.
 AC3 — cold channel (< min_posts in window): fallback to batch-avg +
        log_event("baseline_fallback").
 AC4 — window slides: posts older than the window do NOT affect baseline.
@@ -153,18 +163,19 @@ def test_ac1_flat_channel_engagement_approx_one(db_session: Session) -> None:
     assert inputs.channel_avg == pytest.approx(expected_avg, rel=0.01), (
         f"channel_avg {inputs.channel_avg} should ≈ historical avg {expected_avg}"
     )
-    # engagement = numerator / channel_avg = expected_avg / expected_avg ≈ 1.0
-    from scorer.score import _engagement
+    # v2: engagement is the bounded log of the weighted sum, independent of channel_avg.
+    import math
+
+    from scorer.score import LOG_ENGAGEMENT_SCALE, _engagement
 
     engagement = _engagement(
         views=inputs.views,
         forwards=inputs.forwards,
         reactions=inputs.reactions,
-        channel_avg=inputs.channel_avg,
     )
-    assert engagement == pytest.approx(1.0, rel=0.05), (
-        f"Flat channel engagement {engagement} should be ≈1.0, not spiking"
-    )
+    weighted = inputs.views + inputs.forwards * FORWARD_FACTOR + inputs.reactions * REACTION_FACTOR
+    assert engagement == pytest.approx(min(math.log1p(weighted) / LOG_ENGAGEMENT_SCALE, 1.0))
+    assert 0.0 <= engagement <= 1.0
 
 
 def test_ac2_spike_detected_engagement_approx_ten(db_session: Session) -> None:
@@ -222,12 +233,12 @@ def test_ac2_spike_detected_engagement_approx_ten(db_session: Session) -> None:
         views=inputs.views,
         forwards=inputs.forwards,
         reactions=inputs.reactions,
-        channel_avg=inputs.channel_avg,
     )
-    # numerator is 10x history avg -> engagement ~= 10
-    assert engagement == pytest.approx(10.0, rel=0.05), (
-        f"Spike engagement {engagement} should be ≈10.0"
-    )
+    # v2: a 10x spike yields strictly HIGHER (bounded) engagement than the flat baseline
+    # — absolute magnitude, not a ratio. channel_avg is computed but no longer divides it.
+    flat = _engagement(views=base_views, forwards=base_fwd, reactions=base_rxn)
+    assert engagement > flat
+    assert 0.0 <= engagement <= 1.0
 
 
 def test_ac3_cold_channel_falls_back_to_batch_avg_and_logs(
@@ -391,13 +402,11 @@ def test_ac4_posts_outside_window_do_not_affect_baseline(db_session: Session) ->
 
     from scorer.score import _engagement
 
+    # The window-slide invariant is asserted directly on channel_avg above; engagement
+    # is v2-bounded (independent of channel_avg) and only sanity-checked here.
     engagement = _engagement(
         views=inputs.views,
         forwards=inputs.forwards,
         reactions=inputs.reactions,
-        channel_avg=inputs.channel_avg,
     )
-    # Cluster post = inside-window avg → engagement ≈ 1.0 (not inflated by old posts)
-    assert engagement == pytest.approx(1.0, rel=0.05), (
-        f"Engagement {engagement} should be ≈1.0; outside-window posts inflating baseline?"
-    )
+    assert 0.0 <= engagement <= 1.0

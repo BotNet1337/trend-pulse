@@ -111,22 +111,31 @@ def _find_mergeable_cluster(
 
     Cross-batch continuity fix (TASK-080): instead of always creating a new `Cluster`
     row for each batch candidate, attach it to an EXISTING cluster of the same user
-    whose centroid is close enough (cosine-similarity >= `cluster_cosine_threshold`)
-    and that is recent (`updated_at >= now - cluster_merge_window_seconds`).
+    whose centroid is close enough (cosine-similarity >= `cluster_cosine_threshold`),
+    that is recent (`updated_at >= now - cluster_merge_window_seconds`), AND that has
+    not exceeded its max lifetime (`first_seen >= now - cluster_max_span_seconds`).
+
+    The span cap (scoring-v2) stops a DAILY recurring template from keeping one cluster
+    perpetually "fresh" and chaining it for months: once a cluster is older than the
+    span, a new one seeds instead of merging — so a viral EVENT stays one cluster while
+    boilerplate can't accrete into a corpus-spanning mega-cluster (real-data eval).
 
     pgvector's ``<=>`` operator (``Vector.cosine_distance``) returns cosine DISTANCE
     = ``1 - cosine_similarity``. So "similarity >= threshold" is equivalent to
-    "distance <= 1 - threshold". The query is bounded by user + freshness, filtered
-    by that max distance, and ordered nearest-first with LIMIT 1 (the NN lookup).
+    "distance <= 1 - threshold". The query is bounded by user + freshness + span,
+    filtered by that max distance, and ordered nearest-first with LIMIT 1 (the NN lookup).
     """
     settings = get_settings()
     max_distance = 1.0 - settings.cluster_cosine_threshold
-    window_start = utcnow() - timedelta(seconds=settings.cluster_merge_window_seconds)
+    now = utcnow()
+    window_start = now - timedelta(seconds=settings.cluster_merge_window_seconds)
+    span_start = now - timedelta(seconds=settings.cluster_max_span_seconds)
     distance = Cluster.embedding.cosine_distance(centroid)
     stmt = (
         select(Cluster)
         .where(Cluster.user_id == user_id)
         .where(Cluster.updated_at >= window_start)
+        .where(Cluster.first_seen >= span_start)
         .where(distance <= max_distance)
         .order_by(distance)
         .limit(1)

@@ -176,6 +176,56 @@ def test_ancient_cluster_not_merged_creates_new(
     assert len(rows) == 2
 
 
+def test_cluster_past_max_span_not_merged_creates_new(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scoring-v2 span cap: a same-topic cluster that is still FRESH (recent updated_at)
+    but whose `first_seen` is older than `cluster_max_span_seconds` is NOT merged into —
+    a fresh cluster seeds instead. This is what stops a daily recurring template from
+    chaining one cluster across months (the boilerplate mega-cluster the eval found).
+    """
+    from datetime import timedelta
+
+    from config import get_settings
+    from storage.models.base import utcnow
+
+    handle = "@dailytemplate"
+    user = User(email="span@example.com", hashed_password="x" * 16)
+    db_session.add(user)
+    db_session.flush()
+    channel = Channel(source_kind=ChannelSourceKind.TELEGRAM, handle=handle)
+    db_session.add(channel)
+    db_session.flush()
+    db_session.add(Watchlist(user_id=user.id, channel_id=channel.id, topic="news", lang="en"))
+    db_session.commit()
+    user_id = user.id
+
+    batch_processor = _batch_processor()
+
+    redis1 = fakeredis.FakeRedis()
+    write_post(redis1, _raw("1", "Good morning, here is the daily crypto market recap", handle))
+    monkeypatch.setattr(batch_processor, "get_redis_client", lambda: redis1)
+    assert batch_processor.process_user_batch(user_id) == 1
+
+    # Keep it FRESH (updated_at = now) but push first_seen beyond the max span — exactly
+    # the daily-template shape: recently touched, yet born long ago.
+    now = utcnow()
+    old_first_seen = now - timedelta(seconds=get_settings().cluster_max_span_seconds + 3600)
+    db_session.query(Cluster).filter(Cluster.user_id == user_id).update(
+        {Cluster.updated_at: now, Cluster.first_seen: old_first_seen}
+    )
+    db_session.commit()
+
+    redis2 = fakeredis.FakeRedis()
+    write_post(redis2, _raw("2", "Good morning, the daily crypto market recap once more", handle))
+    monkeypatch.setattr(batch_processor, "get_redis_client", lambda: redis2)
+    batch_processor.process_user_batch(user_id)
+
+    db_session.expire_all()
+    rows = db_session.query(Cluster).filter(Cluster.user_id == user_id).all()
+    assert len(rows) == 2
+
+
 def test_run_batch_empty_buffer_is_no_op(
     db_session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:

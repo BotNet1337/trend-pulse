@@ -1,41 +1,73 @@
-"""Pure, deterministic viral-score formula (overview §4, ADR-001).
+"""Pure, deterministic viral-score formula — v2, engagement-dominant (ADR-001).
 
 `compute_viral_score(ScoreInputs)` is the single source of the score:
 
-    viral_score = velocity·VELOCITY_WEIGHT
-                + engagement·ENGAGEMENT_WEIGHT
-                + cross_channel·CROSS_CHANNEL_WEIGHT
+    viral_score = SCORE_SCALE · ( velocity·VELOCITY_WEIGHT
+                                + engagement·ENGAGEMENT_WEIGHT
+                                + cross_channel·CROSS_CHANNEL_WEIGHT )   ∈ [0, 100]
 
-with (overview §4):
+with every component normalized to [0, 1]:
 
-    velocity      = log1p(max(Δchannel_count - 1, 0)) / Δhours   # cross-channel spread (T15)
-    engagement    = (views + forwards·FORWARD_FACTOR + reactions·REACTION_FACTOR) / channel_avg
-    cross_channel = unique_channels_count / watched_channels_count
+    engagement    = min(log1p(views + forwards·F + reactions·R) / LOG_ENGAGEMENT_SCALE, 1)
+    cross_channel = unique_channels_count / watched_channels_count          (reach)
+    velocity      = min( log1p(max(Δchannel_count - 1, 0)) / max(Δhours, 1h) / BURST_SCALE, 1 )
 
-The function is platform-independent: it consumes already-normalized aggregates
-(PostMetrics totals + channel counts + a time delta) passed directly, performs no
-I/O, queries no DB, and imports nothing from `collector`/Telethon (AC2). All
-weights and coefficients are NAMED constants (no magic literals — CONVENTIONS).
-Guards keep the formula total over degenerate inputs (Δhours→0, channel_avg==0,
-watched==0) instead of raising (Edge cases in the task doc).
+v2 rationale (real-data eval, eval_offline/): on a 52k-post crypto-RU corpus the
+old velocity-dominant weights (0.4/0.35/0.25) ranked eventual virality at ROC-AUC
+≈ 0.86 in a clean early-detection test; leading with ENGAGEMENT (0.55/0.30/0.15)
+and bounding every term to [0, 1] reaches 0.91-0.93 and makes the 0-100 score
+threshold-able (the old unbounded engagement reached ~13071, so the pack threshold
+of 70 was meaningless). Engagement carries the signal (AUC 0.91/0.94; 0.83 even for
+single-channel early movers); reach is corroboration; spread is the weakest term.
+
+The function is platform-independent: it consumes already-normalized aggregates,
+performs no I/O, queries no DB, and imports nothing from `collector`/Telethon (AC2).
+All weights/coefficients are NAMED constants. Guards keep the formula total over
+degenerate inputs (Δhours→0, watched==0) instead of raising.
 """
 
 import math
 from dataclasses import dataclass
 
-# Formula weights (overview §4 — sum to 1.0). Named, never magic literals.
-VELOCITY_WEIGHT = 0.4
-ENGAGEMENT_WEIGHT = 0.35
-CROSS_CHANNEL_WEIGHT = 0.25
+# Formula weights (sum to 1.0). Named, never magic literals.
+#
+# v2 (TASK-scoring-v2): ENGAGEMENT-DOMINANT, derived from a real-data predictive
+# eval (eval_offline/, 52k-post crypto-RU corpus with text). On a clean time-split
+# early-detection test (features from a story's first 6h → eventual virality), the
+# old velocity-dominant weights (0.4/0.35/0.25) scored ROC-AUC ≈ 0.86 while a blend
+# that LEADS WITH ENGAGEMENT scored 0.91-0.93. Engagement is the carrier of the
+# signal (AUC 0.91/0.94, and 0.83 even for single-channel early movers); reach is
+# corroboration; the spread term (kept from T15) is the weakest, so it gets the
+# smallest weight — the inverse of the old allocation.
+VELOCITY_WEIGHT = 0.15
+ENGAGEMENT_WEIGHT = 0.55
+CROSS_CHANNEL_WEIGHT = 0.30
 
 # Engagement coefficients (overview §4): a forward signals stronger virality than
 # a view, a reaction stronger than a view but weaker than a forward.
 FORWARD_FACTOR = 3
 REACTION_FACTOR = 2
 
-# Minimum time window (hours) for `_velocity`: when every channel lights up in the
-# same instant (Δhours→0) we clamp to this quantum instead of dividing by zero.
-MIN_WINDOW_HOURS = 1.0 / 60.0  # one minute, expressed in hours
+# v2: every component is normalized to [0, 1] and the weighted sum is scaled by
+# SCORE_SCALE so `viral_score ∈ [0, 100]`. The old score was unbounded (engagement =
+# weighted/channel_avg reached 13071 on real data) which made the alert threshold
+# meaningless — the pack default of 70 was simultaneously unreachable for most
+# clusters and trivially exceeded by a few. A bounded 0-100 score gives the
+# threshold a stable, calibratable meaning (see `_DEFAULT_SCORE_THRESHOLD`).
+SCORE_SCALE = 100.0
+
+# Engagement is bounded by log1p(weighted_engagement) / LOG_ENGAGEMENT_SCALE, clamped
+# to 1. LOG_ENGAGEMENT_SCALE ≈ the 99th pct of log-engagement in the 9-month corpus
+# (≈ e^14): the largest real stories saturate engagement_c at 1.0, everything else
+# scales smoothly. log1p(raw weighted sum) beat channel-avg-normalized engagement on
+# the eval (AUC 0.908 vs 0.856) — absolute reach matters for virality; the tradeoff is
+# that large channels are no longer size-normalized (intentional).
+LOG_ENGAGEMENT_SCALE = 14.0
+
+# Spread "burst": breadth-per-hour, floored at 1 HOUR (not the old 1-minute clamp that
+# let a lone instant post saturate) and divided by BURST_SCALE into [0, 1].
+BURST_FLOOR_HOURS = 1.0
+BURST_SCALE = 3.0
 
 # Lower/upper bounds for the cross-channel ratio (unique ≤ watched by definition;
 # clamp dirty data into the unit interval — invariant cross_channel ∈ [0, 1]).
@@ -62,28 +94,23 @@ class ScoreInputs:
 
 
 def _velocity(*, delta_channel_count: int, delta_hours: float) -> float:
-    """Log-scaled CROSS-CHANNEL spread speed: log1p(Δchannel_count - 1) / Δhours.
+    """Bounded cross-channel BURST: log1p(Δch - 1) / max(Δhours, 1h) / BURST_SCALE ∈ [0, 1].
 
     "Viral" means a story SPREADING ACROSS channels (overview §4, product principle).
-    A single-channel cluster has *no* cross-channel spread, so its velocity must be 0
-    — `log1p(max(Δch - 1, 0))` makes exactly one channel → log1p(0) = 0, two channels
-    → log1p(1), and so on, rising monotonically with the breadth of spread (T15).
+    A single-channel cluster has *no* cross-channel spread, so its burst is 0 —
+    `log1p(max(Δch - 1, 0))` makes one channel → 0, two → log1p(1), rising monotonically
+    with the breadth of spread (T15 — kept).
 
-    Without the `- 1`, a lone post (Δch = 1) on a backfill-shaped corpus where the
-    window collapses (Δhours → 0, clamped to `MIN_WINDOW_HOURS`) scored
-    `log1p(1)/MIN_WINDOW_HOURS ≈ 41.6`, dominating the weighted sum and ranking every
-    isolated post as viral — inverting the ranking on real data (proven by the T14
-    meaningfulness harness: real-data ROC-AUC ≈ 0.564, chance). Subtracting the
-    self-channel removes that degeneration at the source.
-
-    `log1p` is safe at 0 (→ 0.0) and dampens very large spreads (log scale, by design).
-    `Δhours` is still clamped to `MIN_WINDOW_HOURS` so a zero/near-zero window never
-    divides by zero — but with no spread (Δch ≤ 1) the numerator is 0, so the clamp can
-    no longer manufacture a spurious velocity.
+    v2 changes vs T15: (1) the window is floored at 1 HOUR, not 1 minute, so a near-zero
+    window can no longer inflate the rate; (2) the rate is divided by BURST_SCALE and
+    clamped to [0, 1] so this term cannot dominate the weighted sum. On the real-data
+    eval the spread term was the WEAKEST predictor (AUC ≈ 0.82 vs engagement's 0.91), so
+    it is both down-weighted and bounded — the inverse of the old velocity-dominant design.
     """
-    hours = max(delta_hours, MIN_WINDOW_HOURS)
+    hours = max(delta_hours, BURST_FLOOR_HOURS)
     extra_channels = max(delta_channel_count - 1, 0)
-    return math.log1p(extra_channels) / hours
+    rate = math.log1p(extra_channels) / hours
+    return min(rate / BURST_SCALE, 1.0)
 
 
 def engagement_numerator(*, views: int, forwards: int, reactions: int) -> float:
@@ -96,16 +123,20 @@ def engagement_numerator(*, views: int, forwards: int, reactions: int) -> float:
     return float(views + forwards * FORWARD_FACTOR + reactions * REACTION_FACTOR)
 
 
-def _engagement(*, views: int, forwards: int, reactions: int, channel_avg: float) -> float:
-    """Weighted engagement normalized by the channel's historical average.
+def _engagement(*, views: int, forwards: int, reactions: int) -> float:
+    """Bounded engagement: min(log1p(weighted_engagement) / LOG_ENGAGEMENT_SCALE, 1) ∈ [0, 1].
 
-    `channel_avg ≤ 0` (no historical base) → 0.0 (no engagement signal) rather
-    than a ZeroDivision.
+    v2: the DOMINANT term (weight 0.55). The old version divided the weighted sum by a
+    per-channel 7-day historical average (channel_avg), giving an unbounded value that
+    reached ~13071 on real data and made the score impossible to threshold. The eval
+    showed raw log-engagement separates eventual virality BETTER than the channel-avg
+    normalized form (ROC-AUC 0.908 vs 0.856), and even predicts which single-channel
+    early movers will spread (AUC 0.830). So v2 uses the bounded raw form; `channel_avg`
+    is no longer consumed here (kept on `ScoreInputs` for backwards-compat / the eval
+    replay). Always finite, never raises.
     """
-    if channel_avg <= 0:
-        return 0.0
     weighted = engagement_numerator(views=views, forwards=forwards, reactions=reactions)
-    return weighted / channel_avg
+    return min(math.log1p(weighted) / LOG_ENGAGEMENT_SCALE, 1.0)
 
 
 def _cross_channel(*, unique_channels_count: int, watched_channels_count: int) -> float:
@@ -144,13 +175,14 @@ def compute_components(inputs: ScoreInputs) -> ScoreComponents:
         views=inputs.views,
         forwards=inputs.forwards,
         reactions=inputs.reactions,
-        channel_avg=inputs.channel_avg,
     )
     cross_channel = _cross_channel(
         unique_channels_count=inputs.unique_channels_count,
         watched_channels_count=inputs.watched_channels_count,
     )
-    viral_score = (
+    # All three components ∈ [0, 1]; scale the weighted sum to a 0-100 viral_score
+    # so the alert threshold is a stable, calibratable number (v2).
+    viral_score = SCORE_SCALE * (
         velocity * VELOCITY_WEIGHT
         + engagement * ENGAGEMENT_WEIGHT
         + cross_channel * CROSS_CHANNEL_WEIGHT
