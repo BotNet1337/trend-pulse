@@ -7,8 +7,20 @@ scheduled scorer tick, registered in `pipeline.tasks` (kept there so the existin
 active user it walks their FRESH clusters (recent by `Cluster.updated_at`, within
 `scorer_recent_window_seconds`), derives a platform-independent `ScoreInputs` from
 that cluster's own `Post` rows, computes the viral score (`scorer.score`), upserts
-a `Score` row, and — when the cluster's topic matches a watched topic AND
+a `Score` row, and — when the cluster matches a watched topic AND
 `viral_score > that watchlist's threshold` — creates exactly one `Alert`.
+
+Topic matching (TASK-084, prod-verified root cause): a cluster is matched to a
+watched topic by **CHANNEL OVERLAP**, NOT by topic-string equality. `Cluster.topic`
+is free text (the first post's `text[:255]`, e.g. «Паоло Ардоино: …»), while
+`Watchlist.topic` is a CATEGORY label (e.g. "crypto"/"tech"); they can NEVER be
+equal, so the old `topic_configs.get(cluster.topic)` lookup was always `None` and
+the scorer persisted ZERO `Score` rows in prod (9,400+ clusters, 0 scores). Instead
+we compute the cluster's channel set (the distinct `channel_id` of its in-window
+posts) and pick the watched topic whose `_TopicConfig.channel_ids` has the LARGEST
+intersection with that set — ties broken deterministically by topic name. A cluster
+with no watched-channel overlap is skipped (no score, no alert). Best-overlap (not
+per-topic) preserves the "one cluster → one Score / one Alert" invariant below.
 
 Input sourcing (task-022, per-cluster): each `Post` carries a `cluster_id` FK
 (set at batch-persist time, `pipeline.batch_processor`), so score inputs are
@@ -114,6 +126,53 @@ def _topic_configs(session: Session, *, user_id: int) -> dict[str, _TopicConfig]
         )
         for topic, watchlists in configs.items()
     }
+
+
+def _cluster_channel_ids(
+    session: Session, *, user_id: int, cluster_id: int, window_start: datetime
+) -> frozenset[int]:
+    """Distinct `channel_id` of the cluster's posts inside the score window (TASK-084).
+
+    The cluster's channel set is the basis for channel-overlap topic matching. It is
+    bounded to the SAME recent rolling window (`score_window_seconds`) that
+    `_build_score_inputs` uses, so matching and scoring see a consistent post set: a
+    long-lived cluster's stale posts on a since-unwatched channel must not change the
+    match. Returns an empty set when the cluster has no in-window posts (caller skips).
+    """
+    stmt = (
+        select(Post.channel_id)
+        .where(Post.user_id == user_id)
+        .where(Post.cluster_id == cluster_id)
+        .where(Post.posted_at >= window_start)
+        .distinct()
+    )
+    return frozenset(session.scalars(stmt).all())
+
+
+def _match_topic_by_channels(
+    topic_configs: dict[str, _TopicConfig], cluster_channels: frozenset[int]
+) -> tuple[str, _TopicConfig] | None:
+    """Pick the watched topic with the LARGEST channel overlap (TASK-084).
+
+    A cluster's posts span one or more channels; a user watches each topic across a
+    set of channels (`_TopicConfig.channel_ids`). The cluster is matched to the topic
+    whose watched-channel set intersects the cluster's channels the most. Ties are
+    broken deterministically by topic name (ascending) so a given cluster always maps
+    to the same topic across ticks — preserving the idempotent one-cluster→one-alert
+    invariant. Returns ``None`` when NO watched topic shares a channel with the
+    cluster (the caller skips: no score, no alert — AC5).
+    """
+    best: tuple[int, str, _TopicConfig] | None = None
+    for topic, config in topic_configs.items():
+        overlap = len(config.channel_ids & cluster_channels)
+        if overlap == 0:
+            continue
+        # Maximize overlap; tie-break on the SMALLEST topic name for determinism.
+        if best is None or overlap > best[0] or (overlap == best[0] and topic < best[1]):
+            best = (overlap, topic, config)
+    if best is None:
+        return None
+    return best[1], best[2]
 
 
 def _channel_historical_avg(
@@ -441,12 +500,25 @@ def _score_user(
     deliver_after = _resolve_deliver_after(session, user_id=user_id, settings=settings)
     countdown: int | None = settings.free_alert_delay_seconds if deliver_after is not None else None
 
+    # Score window for channel-overlap matching — MUST mirror `_build_score_inputs`
+    # so matching and scoring see the same in-window post set (TASK-084 / TASK-079).
+    score_window_start = utcnow() - timedelta(seconds=settings.score_window_seconds)
+
     created: list[tuple[int, int | None]] = []
     for cluster in _recent_clusters(session, user_id=user_id, window_start=window_start):
-        config = topic_configs.get(cluster.topic)
-        if config is None:
-            # Topic-mismatch (or unclassified topic) → no alert (AC5). No score.
+        # Match by CHANNEL OVERLAP, not topic-string equality (TASK-084 root cause):
+        # cluster.topic is free text, watchlist.topic is a category — never equal.
+        cluster_channels = _cluster_channel_ids(
+            session,
+            user_id=user_id,
+            cluster_id=cluster.id,
+            window_start=score_window_start,
+        )
+        match = _match_topic_by_channels(topic_configs, cluster_channels)
+        if match is None:
+            # No watched-channel overlap (or no in-window posts) → no score, no alert (AC5).
             continue
+        _topic, config = match
 
         inputs = _build_score_inputs(
             session,
