@@ -17,7 +17,7 @@ from typing import Protocol, cast
 from redis import Redis
 
 from collector.base import PostMetrics, RawPost, SourceKind, SourceRef
-from collector.constants import RAW_POST_TTL_SECONDS
+from collector.constants import MAX_RAW_BUFFER_LEN, RAW_POST_TTL_SECONDS
 from collector.errors import BufferWriteError
 from collector.telegram.dedup import normalize_handle
 
@@ -26,18 +26,35 @@ logger = logging.getLogger(__name__)
 _KEY_PREFIX = "raw"
 
 
-class _RedisLike(Protocol):
-    """Minimal Redis surface the buffer uses (sync redis-py client / fakeredis).
+class _PipelineLike(Protocol):
+    """Minimal MULTI/EXEC pipeline surface `write_post` queues onto.
 
-    Return types are `object` (the buffer ignores them): redis-py's stubs type
-    these methods as `Awaitable[...] | ...` unions, which would otherwise fail
-    to match a narrower `int`/`bool` protocol when a concrete `Redis` client is
-    passed (as the collect-tick producer does).
+    Return types are `object` (the buffer ignores per-command queue results):
+    redis-py's stubs type these as `Pipeline | Awaitable[...]` unions, which a
+    narrower protocol could not match against a concrete `Pipeline`.
     """
 
     def rpush(self, name: str, *values: str) -> object: ...
 
+    def ltrim(self, name: str, start: int, end: int) -> object: ...
+
     def expire(self, name: str, time: int) -> object: ...
+
+    def execute(self) -> object: ...
+
+
+class _RedisLike(Protocol):
+    """Minimal Redis surface the buffer uses (sync redis-py client / fakeredis).
+
+    `pipeline` lets `write_post` run rpush+ltrim+expire as one MULTI/EXEC so a
+    concurrent drain can never observe an unbounded or untrimmed intermediate
+    state. Return types are `object` (the buffer ignores them): redis-py's stubs
+    type these as `Awaitable[...] | ...` unions, which would otherwise fail to
+    match a narrower protocol when a concrete `Redis` client is passed (as the
+    collect-tick producer does).
+    """
+
+    def pipeline(self, transaction: bool = ...) -> _PipelineLike: ...
 
 
 def buffer_key(kind: SourceKind, handle: str) -> str:
@@ -66,13 +83,23 @@ def serialize_post(post: RawPost) -> str:
 
 
 def write_post(redis: _RedisLike, post: RawPost) -> str:
-    """Append `post` to its by-source buffer and (re)set the TTL. Returns the key."""
+    """Append `post` to its by-source buffer, cap its length, (re)set TTL.
+
+    Append + cap + TTL run in one MULTI/EXEC pipeline: a source's buffer is bounded
+    to `MAX_RAW_BUFFER_LEN` (OOM safety belt, TASK-076) atomically, so a concurrent
+    `drain_source` can never see an unbounded or half-trimmed list. `ltrim(-MAX, -1)`
+    keeps the NEWEST `MAX` posts (rpush appends to the tail); on overflow the oldest
+    are dropped — recency matters for a viral detector. Returns the key.
+    """
     key = buffer_key(post.source.kind, post.source.handle)
     try:
-        redis.rpush(key, serialize_post(post))
-        redis.expire(key, RAW_POST_TTL_SECONDS)
+        pipe = redis.pipeline(transaction=True)
+        pipe.rpush(key, serialize_post(post))
+        pipe.ltrim(key, -MAX_RAW_BUFFER_LEN, -1)
+        pipe.expire(key, RAW_POST_TTL_SECONDS)
+        pipe.execute()
     except Exception as exc:
-        logger.error("failed writing raw post to buffer key=%s", key)
+        logger.error("failed writing raw post to buffer key=%s", key, exc_info=exc)
         raise BufferWriteError(f"could not buffer raw post for {key}") from exc
     return key
 

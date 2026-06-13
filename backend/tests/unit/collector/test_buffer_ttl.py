@@ -1,13 +1,22 @@
 """AC6 — Redis buffer keyed BY SOURCE with TTL == RAW_POST_TTL_SECONDS (≤ 48h)."""
 
 from datetime import UTC, datetime
+from typing import cast
 
 import fakeredis
 import pytest
+from redis import Redis
 
 from collector.base import PostMetrics, RawPost, SourceKind, SourceRef
-from collector.buffer import BufferWriteError, buffer_key, serialize_post, write_post
-from collector.constants import RAW_POST_TTL_SECONDS
+from collector.buffer import (
+    BufferWriteError,
+    buffer_key,
+    deserialize_post,
+    drain_source,
+    serialize_post,
+    write_post,
+)
+from collector.constants import MAX_RAW_BUFFER_LEN, RAW_POST_TTL_SECONDS
 
 
 def _post(handle: str = "@news", external_id: str = "1") -> RawPost:
@@ -53,13 +62,82 @@ def test_serialize_is_deterministic() -> None:
     assert serialize_post(post) == serialize_post(post)
 
 
+def test_under_cap_keeps_all_posts() -> None:
+    redis = fakeredis.FakeRedis()
+    for i in range(5):
+        write_post(redis, _post(external_id=str(i)))
+
+    assert redis.llen("raw:telegram:@news") == 5
+
+
+def test_buffer_capped_at_max_len() -> None:
+    # Writing more than the cap must never let one source's list grow unbounded:
+    # this is the OOM safety belt (TASK-076).
+    redis = fakeredis.FakeRedis()
+    overflow = MAX_RAW_BUFFER_LEN + 50
+    for i in range(overflow):
+        write_post(redis, _post(external_id=str(i)))
+
+    assert redis.llen("raw:telegram:@news") == MAX_RAW_BUFFER_LEN
+
+
+def test_buffer_keeps_newest_posts_on_overflow() -> None:
+    # Recency matters for a viral detector: when capped, the OLDEST posts are
+    # dropped and the most recent MAX_RAW_BUFFER_LEN are retained.
+    redis = fakeredis.FakeRedis()
+    overflow = MAX_RAW_BUFFER_LEN + 3
+    for i in range(overflow):
+        write_post(redis, _post(external_id=str(i)))
+
+    stored = redis.lrange("raw:telegram:@news", 0, -1)
+    # Oldest survivor is the (overflow - MAX)th post written; newest is the last.
+    first_kept = deserialize_post(stored[0].decode("utf-8"))
+    last_kept = deserialize_post(stored[-1].decode("utf-8"))
+    assert first_kept.external_id == str(overflow - MAX_RAW_BUFFER_LEN)
+    assert last_kept.external_id == str(overflow - 1)
+
+
+def test_ttl_set_even_after_trim() -> None:
+    redis = fakeredis.FakeRedis()
+    for i in range(MAX_RAW_BUFFER_LEN + 5):
+        write_post(redis, _post(external_id=str(i)))
+
+    assert redis.ttl("raw:telegram:@news") == RAW_POST_TTL_SECONDS
+
+
+def test_drain_returns_only_capped_window() -> None:
+    # Round-trip through the public interface: drain after overflow returns exactly
+    # the capped, newest window — the cap and the atomic drain stay consistent.
+    redis = fakeredis.FakeRedis()
+    overflow = MAX_RAW_BUFFER_LEN + 7
+    for i in range(overflow):
+        write_post(redis, _post(external_id=str(i)))
+
+    drained = drain_source(cast(Redis, redis), SourceKind.TELEGRAM, "@news")
+
+    assert len(drained) == MAX_RAW_BUFFER_LEN
+    assert drained[0].external_id == str(overflow - MAX_RAW_BUFFER_LEN)
+    assert drained[-1].external_id == str(overflow - 1)
+    assert redis.llen("raw:telegram:@news") == 0
+
+
 def test_redis_failure_raises_buffer_write_error() -> None:
-    class BrokenRedis:
-        def rpush(self, name: str, *values: str) -> int:
+    class BrokenPipeline:
+        def rpush(self, name: str, *values: str) -> object:
+            return self
+
+        def ltrim(self, name: str, start: int, end: int) -> object:
+            return self
+
+        def expire(self, name: str, time: int) -> object:
+            return self
+
+        def execute(self) -> object:
             raise ConnectionError("redis down")
 
-        def expire(self, name: str, time: int) -> bool:
-            return True
+    class BrokenRedis:
+        def pipeline(self, transaction: bool = True) -> BrokenPipeline:
+            return BrokenPipeline()
 
     with pytest.raises(BufferWriteError):
         write_post(BrokenRedis(), _post())

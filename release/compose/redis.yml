@@ -2,6 +2,12 @@
 services:
   redis:
     image: redis:${REDIS_VERSION}
+    # Explicit maxmemory BELOW the 256M cgroup limit + noeviction (TASK-076).
+    # Without a command Redis runs maxmemory=0 (unbounded from its own view) and
+    # the kernel OOM-kills it once RSS passes the cgroup cap. noeviction (NOT
+    # allkeys-*) is mandatory: Redis is also the Celery broker/result-backend, so
+    # a full instance must REJECT writes loudly, never silently evict queued tasks.
+    command: redis-server --maxmemory ${REDIS_MAXMEMORY} --maxmemory-policy noeviction
     networks:
       - redis_net
     healthcheck:
