@@ -201,26 +201,36 @@ class TelegramCollector:
             raise SourceUnavailableError(f"cannot resolve telegram ref {ref.handle}") from exc
 
         try:
-            # Bound the read to a RECENT window, not the full channel history
-            # (task-078). Telethon's `offset_date` is EXCLUSIVE and its meaning
-            # flips with `reverse`: with the default `reverse=False` it is an
-            # UPPER bound and the iterator walks the ENTIRE history backward
-            # (task-077: prod posts 2026→2017 → GetHistory flood storms, 100k+
-            # buffers, lock held its full TTL). With `reverse=True` it is the
-            # LOWER bound and we scan FORWARD from `since` to newest — exactly
-            # the recent window we want. `limit=MAX_MESSAGES_PER_TICK` is the
-            # hard backstop so even a misconfigured `since` cannot deep-pull.
-            # The defensive guard below DROPS anything strictly older than
-            # `since`, locking the lower bound at our boundary regardless of
-            # server-side off-by-one on the exclusive offset.
+            # Fetch the NEWEST posts in the recent window — newest-first, bounded
+            # (task-078/task-083). Telethon's `iter_messages` default order is
+            # newest→oldest (`reverse=False`); we walk from the top and BREAK as
+            # soon as we pass `since`, so we read only the recent tail and stop.
+            #
+            # Why not `offset_date` + `reverse`? Both prior idioms were traps:
+            #   * `reverse=False` + `offset_date=since`: `offset_date` is an
+            #     EXCLUSIVE UPPER bound ("messages *previous* to this date"), so
+            #     it walked the ENTIRE history backward (task-077: prod 2026→2017
+            #     → GetHistory flood storms, 100k+ buffers, lock held full TTL).
+            #   * `reverse=True` + `offset_date=since`: lower bound, oldest→newest
+            #     — but it yields the OLDEST of the window first, so the cap
+            #     truncates the NEWEST posts (wrong end for a viral detector); and
+            #     when the marker is absent (Redis flush → `_init` forces
+            #     `offset_id = 1`) it returns the channel's OLDEST messages
+            #     forward (task-083 prod launch bug: ingested 2024-era posts).
+            #
+            # Newest-first + early break + `limit=MAX_MESSAGES_PER_TICK` keeps the
+            # NEWEST posts, never deep-pulls, and is correct even with no marker
+            # (`since = now - collect_lookback_seconds`, never None at the tick).
+            # The `limit` is the hard backstop if `since` is misconfigured/absent.
             async for message in client.iter_messages(
                 entity,
-                offset_date=since,
-                reverse=True,
+                reverse=False,
                 limit=MAX_MESSAGES_PER_TICK,
             ):
+                # Newest→oldest: the first message older than `since` means every
+                # later one is older too — stop the scan (don't merely skip).
                 if since is not None and message.date is not None and message.date < since:
-                    continue
+                    break
                 yield map_entity(message, ref)
             self._pool.report_success()
         except Exception as exc:
