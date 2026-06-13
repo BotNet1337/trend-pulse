@@ -40,7 +40,7 @@ def _expected(
     unique_channels_count: int,
     watched_channels_count: int,
 ) -> float:
-    velocity = math.log1p(delta_channel_count) / delta_hours
+    velocity = math.log1p(max(delta_channel_count - 1, 0)) / delta_hours
     engagement = (views + forwards * FORWARD_FACTOR + reactions * REACTION_FACTOR) / channel_avg
     cross = unique_channels_count / watched_channels_count
     return (
@@ -60,12 +60,13 @@ def test_compute_viral_score_matches_hand_computed_value() -> None:
         unique_channels_count=8,
         watched_channels_count=10,
     )
-    # velocity = log1p(47)/0.5 = 3.8712010109078907/0.5 = 7.742402021815781
+    # velocity = log1p(47-1)/0.5 = 3.8501476017100584/0.5 = 7.700295203420117
+    #   (T15: log1p(Δch - 1) so one channel = no cross-channel spread → velocity 0)
     # engagement = (1000 + 50*3 + 200*2)/500 = 1550/500 = 3.1
     # cross_channel = 8/10 = 0.8
-    # viral = 7.742402021815781*0.4 + 3.1*0.35 + 0.8*0.25
-    #       = 3.0969608087263124 + 1.0850000000000002 + 0.2 = 4.381960808726313
-    expected = 4.381960808726313
+    # viral = 7.700295203420117*0.4 + 3.1*0.35 + 0.8*0.25
+    #       = 3.080118081368047 + 1.0850000000000002 + 0.2 = 4.365118081368047
+    expected = 4.365118081368047
     assert compute_viral_score(inputs) == pytest.approx(expected)
     assert compute_viral_score(inputs) == pytest.approx(
         _expected(
@@ -95,20 +96,45 @@ def test_compute_viral_score_is_deterministic() -> None:
     assert compute_viral_score(inputs) == compute_viral_score(inputs)
 
 
-def test_velocity_uses_log1p_over_hours() -> None:
-    assert _velocity(delta_channel_count=47, delta_hours=0.5) == pytest.approx(math.log1p(47) / 0.5)
+def test_velocity_uses_log1p_of_extra_channels_over_hours() -> None:
+    # T15: velocity counts CROSS-CHANNEL spread = log1p(Δch - 1), so a story across
+    # N channels contributes log1p(N-1), not log1p(N).
+    assert _velocity(delta_channel_count=47, delta_hours=0.5) == pytest.approx(math.log1p(46) / 0.5)
 
 
 def test_velocity_guards_zero_delta_hours() -> None:
     # Δhours → 0 must not raise; it clamps to MIN_WINDOW_HOURS (no ZeroDivision).
+    # Use ≥2 channels so there IS spread to measure (1 channel is 0 regardless of speed).
     value = _velocity(delta_channel_count=10, delta_hours=0.0)
     assert value > 0
     assert math.isfinite(value)
 
 
+def test_velocity_single_channel_is_zero() -> None:
+    # T15 (product principle): a story on ONE channel has NO cross-channel spread →
+    # velocity 0, no matter how fast or how small the window. This is the fix that
+    # stops isolated single posts from scoring as "viral".
+    assert _velocity(delta_channel_count=1, delta_hours=2.0) == pytest.approx(0.0)
+    assert _velocity(delta_channel_count=1, delta_hours=0.0) == pytest.approx(0.0)
+
+
 def test_velocity_zero_channels_is_zero() -> None:
-    # log1p(0) == 0 → no growth, velocity 0.
+    # Degenerate Δch=0 (no observed channels) → max(0-1,0)=0 → log1p(0)=0 → velocity 0.
     assert _velocity(delta_channel_count=0, delta_hours=1.0) == pytest.approx(0.0)
+
+
+def test_velocity_two_channels_is_positive() -> None:
+    # T15: two channels = real cross-channel spread → strictly positive velocity.
+    assert _velocity(delta_channel_count=2, delta_hours=2.0) > 0
+
+
+def test_velocity_monotonic_in_channels() -> None:
+    # T15: more channels spreading (same window) → strictly higher velocity.
+    prev = _velocity(delta_channel_count=1, delta_hours=2.0)
+    for n in range(2, 12):
+        cur = _velocity(delta_channel_count=n, delta_hours=2.0)
+        assert cur > prev
+        prev = cur
 
 
 def test_engagement_weights_forwards_and_reactions() -> None:

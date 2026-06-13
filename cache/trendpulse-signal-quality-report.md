@@ -383,3 +383,89 @@ single-channel, zero-width-window shape and inverts the ranking. The fix is a
 **scorer-side** change (revisit the `Δhours` clamp / velocity scaling) plus accruing
 genuine multi-channel live data — both outside this read-only eval. T14 delivers the
 reusable harness and the concrete numbers that make this diagnosable.
+
+---
+
+## T15 velocity fix — before/after (TASK-086), 2026-06-13
+
+T14 diagnosed the defect; **T15 fixes it at the source**. The velocity term was
+`velocity = log1p(Δchannel_count) / Δhours`. On a single-post / single-channel cluster
+(`Δchannel_count = 1`, `Δhours → 0` clamped to `MIN_WINDOW_HOURS = 1/60 h`) this gave
+`log1p(1)/(1/60) = 0.693·60 ≈ 41.6`, so the `0.4·velocity` term pinned every isolated
+post at `viral_score ≈ 17` — the noise floor became the ceiling and the ranking
+**inverted** (real ROC-AUC ≈ 0.564, chance).
+
+### The fix (one line, scope-minimal)
+
+```python
+# scorer/score.py  _velocity()
+# before:
+return math.log1p(delta_channel_count) / hours
+# after (T15):
+extra_channels = max(delta_channel_count - 1, 0)
+return math.log1p(extra_channels) / hours
+```
+
+Product principle: **"viral" = a story SPREADING ACROSS channels.** Subtracting the
+self-channel makes 1 channel → `log1p(0) = 0` (no cross-channel spread → no velocity),
+2 channels → `log1p(1)`, and so on, monotonic in the breadth of spread. The `Δhours`
+clamp stays (div-by-zero safety), but with `Δch ≤ 1` the numerator is 0, so the clamp
+can no longer manufacture a spurious velocity. **No weights changed; engagement /
+cross_channel untouched** — the harness showed the velocity fix alone removes the
+inversion, so nothing else was touched (smallest diff).
+
+### Before → after (same `meaningfulness_eval.py`, same committed fixtures)
+
+| Metric | BEFORE (T14) | AFTER (T15) |
+|---|---:|---:|
+| **REAL ROC-AUC** (n=35, 9 viral) | **0.5641** | **0.8590** |
+| REAL Spearman (vs ordinal severity) | 0.0128 | **0.5041** |
+| REAL precision@1 / @3 / @5 | 0.00 / 0.33 / 0.60 | **1.00 / 1.00 / 0.60** |
+| REAL separation: viral mean / noise mean | 11.829 / 16.404 (**margin −4.575**, inverted) | 0.724 / 0.407 (**margin +0.317**, correct) |
+| SYNTHETIC ROC-AUC | 1.0000 | **1.0000** (unchanged) |
+| SYNTHETIC Spearman | 0.9759 | **0.9759** (unchanged) |
+| SYNTHETIC viral mean / noise mean | 21.887 / 0.500 | 21.826 / 0.483 |
+
+**Verdict: the fix makes the score meaningful on real data.** Real ROC-AUC jumps from
+chance (0.564) to **0.859**, the viral/noise separation **flips from inverted to
+correct** (viral now scores ABOVE noise), and the top-1 and top-3 real clusters are now
+all genuinely viral (precision@1: 0 → 1.0). The synthetic discrimination stays perfect
+— the viral cases still rank top — so the fix didn't trade synthetic correctness for
+real-data gains.
+
+### Threshold calibration after the fix (REAL, n=35)
+
+| thr | TP | FP | TN | FN | precision | recall |
+|---:|--:|--:|--:|--:|---:|---:|
+| 0 | 9 | 26 | 0 | 0 | 0.257 | 1.000 |
+| **1** | **3** | **0** | **26** | **6** | **1.000** | 0.333 |
+| 5 / 10 / 50 / 70 / 85 / 90 | 0 | 0 | 26 | 9 | 0.000 | 0.000 |
+
+A usable bar now EXISTS where before none did: at **threshold ≈ 1.0 the real set gives
+precision 1.000** (3 true positives, **zero** false positives) — the three multi-post /
+higher-engagement viral stories clear it cleanly, whereas before every cluster piled at
+~17 and no threshold separated anything.
+
+### Residual gap (honest)
+
+Real AUC is **0.859, not 1.0** — and that ceiling is a **corpus limitation, not a
+formula defect**. **34 of the 35** judged clusters are single-channel
+(`Δchannel_count ≤ 1`), so velocity contributes 0 for them and their ranking rests on
+**engagement / cross_channel alone**. The remaining misranks are high-engagement
+single-channel noise (e.g. a price-recap with above-average views) outscoring a few
+low-engagement single-channel viral posts — velocity cannot help separate them because
+*neither* spread across channels. The harness now prints this single-channel coverage
+caveat next to the metrics (replacing the old, now-obsolete Δhours-clamp warning). The
+true ceiling lifts only as **genuine multi-channel live data** accrues (T11 forward
+capture); re-running this same harness on a fresh judged fixture will then measure it.
+**Recommendation:** ship this fix (it removes the proven inversion and restores a usable
+alert bar); the next quality lever is multi-channel live data, not another formula edit.
+
+### Reproduce
+
+```bash
+cd backend && JWT_SECRET=dump OAUTH_STATE_SECRET=dump \
+  GOOGLE_CLIENT_ID=dump GOOGLE_CLIENT_SECRET=dump \
+  uv run python scripts/meaningfulness_eval.py \
+    --real-judged data/eval/real_judged.sample.csv
+```
