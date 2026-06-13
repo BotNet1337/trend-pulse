@@ -134,5 +134,5 @@ harness реально прогнан на синтетике + judged-real — 
 - [x] do (TDD)
 - [x] verify (G2) — make test + ci-fast
 - [x] review — code-reviewer APPROVE, 0 findings (correctness/scope/no dead refs)
-- [ ] ship (PR, NO merge)
-- current_step: ship
+- [x] ship — PR #129 https://github.com/BotNet1337/trend-pulse/pull/129 (NO merge; orchestrator validates+merges+redeploys)
+- current_step: done (awaiting orchestrator merge + redeploy)
