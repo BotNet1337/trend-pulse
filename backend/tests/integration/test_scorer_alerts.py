@@ -402,3 +402,136 @@ def test_persist_score_channels_count_real_and_upsert_updates(db_session: Sessio
     assert row.channels_count == 4, (
         f"Expected upsert to update channels_count to 4, got {row.channels_count}"
     )
+
+
+def test_score_window_excludes_old_posts(db_session: Session) -> None:
+    """TASK-079: score inputs come ONLY from posts inside score_window_seconds.
+
+    A cluster accrues posts across days; an OLD high-engagement post far outside
+    the score window must NOT inflate the cluster's score, and stale `posted_at`
+    on an old post must NOT widen `delta_hours` (collapsing velocity).
+
+    Two identical clusters with the SAME recent burst:
+      - clusterA: only the recent burst (2 posts ~30 min apart).
+      - clusterB: the same recent burst PLUS one massive post ~3 days ago.
+    With unbounded lifetime aggregation (the OLD behaviour) clusterB's huge old
+    post inflates views/reactions AND stretches delta_hours over 3 days → its
+    score diverges from clusterA. With a bounded window both clusters see only
+    the recent burst → IDENTICAL score. This test asserts equality, so it FAILS
+    (RED) on the unbounded code and passes (GREEN) once the window is applied.
+    """
+    from scorer.tasks import score_recent_clusters
+    from storage.models import Score
+
+    user = _seed_user(db_session, "scwin@example.com")
+    ch1 = _seed_channel(db_session, "@scwin1")
+    ch2 = _seed_channel(db_session, "@scwin2")
+    db_session.add(Watchlist(user_id=user.id, channel_id=ch1.id, topic="crypto", threshold=0.0))
+    db_session.add(Watchlist(user_id=user.id, channel_id=ch2.id, topic="crypto", threshold=0.0))
+
+    cluster_a = _seed_cluster(db_session, user_id=user.id, topic="crypto")
+    cluster_b = _seed_cluster(db_session, user_id=user.id, topic="crypto")
+
+    # The SAME recent burst for both clusters (inside the 24h window).
+    for cl, prefix in ((cluster_a, "a"), (cluster_b, "b")):
+        _seed_post(
+            db_session,
+            user_id=user.id,
+            channel_id=ch1.id,
+            external_id=f"scwin-{prefix}1",
+            views=1000,
+            forwards=50,
+            reactions=100,
+            minutes_ago=40,
+            cluster_id=cl.id,
+        )
+        _seed_post(
+            db_session,
+            user_id=user.id,
+            channel_id=ch2.id,
+            external_id=f"scwin-{prefix}2",
+            views=900,
+            forwards=40,
+            reactions=90,
+            minutes_ago=10,
+            cluster_id=cl.id,
+        )
+
+    # clusterB ALSO carries a massive OLD post ~3 days ago — outside the 24h window.
+    _seed_post(
+        db_session,
+        user_id=user.id,
+        channel_id=ch1.id,
+        external_id="scwin-b-old",
+        views=10_000_000,
+        forwards=500_000,
+        reactions=2_000_000,
+        minutes_ago=3 * 24 * 60,  # 3 days ago
+        cluster_id=cluster_b.id,
+    )
+    db_session.commit()
+
+    score_recent_clusters()
+
+    db_session.expire_all()
+    score_a = (
+        db_session.query(Score)
+        .filter(Score.user_id == user.id, Score.cluster_id == cluster_a.id)
+        .one()
+    )
+    score_b = (
+        db_session.query(Score)
+        .filter(Score.user_id == user.id, Score.cluster_id == cluster_b.id)
+        .one()
+    )
+    # The old post is out-of-window, so it must not affect ANY component.
+    assert score_b.viral_score == pytest.approx(score_a.viral_score), (
+        f"Out-of-window post leaked into the score: clusterB ({score_b.viral_score}) "
+        f"!= clusterA ({score_a.viral_score}) — lifetime aggregation bug"
+    )
+    assert score_b.channels_count == score_a.channels_count == 2, (
+        "Out-of-window post must not change the unique-channel count"
+    )
+
+
+def test_score_window_empty_skips_cleanly(db_session: Session) -> None:
+    """TASK-079 edge case: a fresh cluster with NO posts inside the score window.
+
+    The cluster is still "fresh" (updated_at within scorer_recent_window) but every
+    one of its posts is older than score_window_seconds. The scorer must SKIP it
+    cleanly: no Score row, no Alert, no ZeroDivision / 0-score pollution.
+    """
+    from scorer.tasks import score_recent_clusters
+    from storage.models import Score
+
+    user = _seed_user(db_session, "scempty@example.com")
+    ch = _seed_channel(db_session, "@scempty1")
+    db_session.add(Watchlist(user_id=user.id, channel_id=ch.id, topic="tech", threshold=0.0))
+    # Cluster is fresh (updated_at = _NOW) but its only post is ~2 days old.
+    cluster = _seed_cluster(db_session, user_id=user.id, topic="tech")
+    _seed_post(
+        db_session,
+        user_id=user.id,
+        channel_id=ch.id,
+        external_id="scempty-old",
+        views=100_000,
+        forwards=5_000,
+        reactions=10_000,
+        minutes_ago=2 * 24 * 60,  # 2 days ago — outside the 24h window
+        cluster_id=cluster.id,
+    )
+    db_session.commit()
+
+    score_recent_clusters()
+
+    db_session.expire_all()
+    score = (
+        db_session.query(Score)
+        .filter(Score.user_id == user.id, Score.cluster_id == cluster.id)
+        .first()
+    )
+    assert score is None, (
+        "A cluster with no posts inside the score window must not emit a Score row"
+    )
+    alerts = _alerts_for(db_session, user_id=user.id, cluster_id=cluster.id)
+    assert alerts == [], "Empty-window cluster must not create an alert"

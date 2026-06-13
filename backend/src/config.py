@@ -64,6 +64,21 @@ _DEFAULT_CLUSTER_COSINE_THRESHOLD = 0.75
 # global default threshold is needed.
 _DEFAULT_SCORER_RECENT_WINDOW_SECONDS = 3600
 
+# Score velocity/engagement rolling window (TASK-079). Named, non-secret default;
+# time in SECONDS (CONVENTIONS). The viral score must measure a RECENT burst, not a
+# cluster's whole lifetime: `_build_score_inputs` aggregates views/forwards/reactions,
+# `delta_hours` and channel counts ONLY over the cluster's posts with
+# `posted_at >= now - score_window_seconds`. A long-lived cluster that keeps
+# accruing posts across days would otherwise stretch `delta_hours` (collapsing
+# velocity) and dilute engagement with stale posts (the historical-backfill
+# scores=0 symptom). 24h = 86400s. This is DISTINCT from:
+#   - `scorer_recent_window_seconds` (cluster freshness by `Cluster.updated_at`),
+#   - `trending_window_seconds` (showcase selection look-back),
+#   - `engagement_baseline_window_seconds` (per-channel 7d channel_avg baseline,
+#     TASK-041 — a separate historical denominator, NOT the scoring window).
+# Override via env SCORE_WINDOW_SECONDS (e.g. 172800 for a 48h window).
+_DEFAULT_SCORE_WINDOW_SECONDS: int = 86_400  # 24 hours
+
 # Alert delivery (task-009). Named, non-secret defaults — never magic literals.
 # The Telegram Bot API base; `<token>` is appended per-request and NEVER logged.
 # HTTP timeout bounds a hung Telegram/webhook call (seconds). The retry policy:
@@ -352,6 +367,10 @@ class Settings(BaseSettings):
 
     # --- Scorer (task-008). Non-secret, settable; defaults above. ---
     scorer_recent_window_seconds: int = _DEFAULT_SCORER_RECENT_WINDOW_SECONDS
+    # Rolling window (seconds) for the score's velocity/engagement inputs (TASK-079).
+    # `_build_score_inputs` aggregates a cluster's posts ONLY within this look-back so
+    # the score reflects a recent burst, not the cluster's whole lifetime. Default 24h.
+    score_window_seconds: int = _DEFAULT_SCORE_WINDOW_SECONDS
 
     # --- Compliance & ops (task-011). Non-secret, settable; defaults above. ---
     raw_content_retention_seconds: int = _DEFAULT_RAW_CONTENT_RETENTION_SECONDS

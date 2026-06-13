@@ -17,7 +17,10 @@ from all posts on the topic's channels — one cluster, one real engagement sign
 (removes the duplicate-alerts-per-topic problem of the old per-topic approximation).
 The `cross_channel` denominator (`watched_channels_count`) still comes from the
 user's watchlist config for the topic. Cluster freshness (`_recent_clusters`) bounds
-recency, so the per-cluster post query needs no separate `posted_at` window.
+which clusters are scored, but a fresh cluster can still carry posts spanning days,
+so the per-cluster post query is ALSO bounded to a recent rolling window
+(`score_window_seconds`, TASK-079): velocity/engagement measure a recent burst, not
+the cluster's whole lifetime. A cluster with no posts inside that window is skipped.
 
 Idempotency (AC6): an alert is unique per `(user_id, cluster_id)` via the DB unique
 constraint `uq_alerts_user_cluster` (migration 0003) — a duplicate insert raises
@@ -167,35 +170,43 @@ def _build_score_inputs(
     user_id: int,
     cluster_id: int,
     watched_channels_count: int,
-) -> ScoreInputs:
-    """Aggregate a cluster's posts into ScoreInputs (per-cluster, not per-topic).
+) -> ScoreInputs | None:
+    """Aggregate a cluster's RECENT posts into ScoreInputs (per-cluster, not per-topic).
 
-    Reads posts scoped by `(user_id, cluster_id)` — the FK added in migration 0007.
-    This gives each cluster its own engagement signal, eliminating the per-topic
-    duplicate-score problem. Degenerate aggregates (no posts) yield zeroed inputs
-    the formula guards handle.
+    Reads posts scoped by `(user_id, cluster_id)` — the FK added in migration 0007 —
+    AND bounded to a recent rolling window (`posted_at >= now - score_window_seconds`,
+    TASK-079). The score must measure a recent burst, not a cluster's whole lifetime:
+    a long-lived cluster keeps accruing posts across days, which would stretch
+    `delta_hours` (collapsing velocity) and dilute engagement with stale posts. Only
+    posts inside the window feed views/forwards/reactions, the `delta_hours` span and
+    the unique-channel counts.
 
-    `channel_avg` is now the historical weighted-numerator average over the
-    per-channel sliding window (`engagement_baseline_window_seconds`). When fewer
-    than `engagement_baseline_min_posts` posts exist in the window, or the avg is
-    zero/null (cold channel), the scorer falls back to the batch-avg of the cluster
-    posts (legacy behaviour) and emits a ``baseline_fallback`` log event so the
+    Returns ``None`` when the cluster has NO posts inside the score window — the
+    caller skips it cleanly (no Score row, no alert), instead of emitting a polluting
+    0-score row. This window is DISTINCT from the `channel_avg` historical baseline
+    (`engagement_baseline_window_seconds`, TASK-041), which is a separate per-channel
+    denominator and is intentionally left unchanged.
+
+    `channel_avg` is the historical weighted-numerator average over the per-channel
+    sliding window (`engagement_baseline_window_seconds`). When fewer than
+    `engagement_baseline_min_posts` posts exist in that baseline window, or the avg is
+    zero/null (cold channel), the scorer falls back to the batch-avg of the in-window
+    cluster posts (legacy behaviour) and emits a ``baseline_fallback`` log event so the
     fraction of cold channels is visible in observability.
     """
     settings = get_settings()
-    stmt = select(Post).where(Post.user_id == user_id).where(Post.cluster_id == cluster_id)
+    score_window_start = utcnow() - timedelta(seconds=settings.score_window_seconds)
+    stmt = (
+        select(Post)
+        .where(Post.user_id == user_id)
+        .where(Post.cluster_id == cluster_id)
+        .where(Post.posted_at >= score_window_start)
+    )
     posts = list(session.scalars(stmt).all())
     if not posts:
-        return ScoreInputs(
-            views=0,
-            forwards=0,
-            reactions=0,
-            channel_avg=0.0,
-            delta_channel_count=0,
-            delta_hours=0.0,
-            unique_channels_count=0,
-            watched_channels_count=watched_channels_count,
-        )
+        # No posts inside the recent window → skip cleanly (no score / no alert).
+        # (A cluster may still be "fresh" by updated_at yet carry only stale posts.)
+        return None
 
     views = sum(p.views for p in posts)
     forwards = sum(p.forwards for p in posts)
@@ -443,6 +454,10 @@ def _score_user(
             cluster_id=cluster.id,
             watched_channels_count=len(config.channel_ids),
         )
+        if inputs is None:
+            # No posts inside the score window (TASK-079) → no score, no alert.
+            continue
+
         viral_score = _persist_score(session, user_id=user_id, cluster_id=cluster.id, inputs=inputs)
         if viral_score <= config.threshold:
             # Below (or at) threshold → no alert (AC3).
