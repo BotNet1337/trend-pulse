@@ -84,3 +84,30 @@ def test_cluster_candidate_is_frozen() -> None:
     candidates = cluster.run([_post("1")], [[1.0, 0.0]])
     with pytest.raises(AttributeError):
         candidates[0].topic = "changed"  # type: ignore[misc]
+
+
+def test_cluster_candidate_carries_per_post_embeddings() -> None:
+    """TASK-082: each candidate carries its members' per-post vectors, parallel to
+    `posts`, so the batch processor can persist `posts.embedding` (the same vector
+    used for clustering — not the centroid, not re-embedded)."""
+    posts = [_post("1"), _post("2"), _post("3")]
+    vectors = [
+        [1.0, 0.0, 0.0],
+        [0.99, 0.01, 0.0],  # joins post 1's cluster
+        [0.0, 1.0, 0.0],  # stands alone
+    ]
+    candidates = cluster.run(posts, vectors)
+
+    # post_embeddings is parallel to posts in EVERY candidate.
+    for candidate in candidates:
+        assert len(candidate.post_embeddings) == len(candidate.posts)
+
+    # Map external_id → persisted per-post vector and check it equals the input vector
+    # for that post (same vector that drove clustering, in order).
+    by_external: dict[str, tuple[float, ...]] = {}
+    for candidate in candidates:
+        for post, vec in zip(candidate.posts, candidate.post_embeddings, strict=True):
+            by_external[post.external_id] = vec
+    assert by_external["1"] == (1.0, 0.0, 0.0)
+    assert by_external["2"] == (0.99, 0.01, 0.0)
+    assert by_external["3"] == (0.0, 1.0, 0.0)

@@ -26,15 +26,22 @@ class ClusterCandidate:
 
     Frozen/immutable. `topic` is derived from the first member's text (capped to the
     column width); `embedding` is the centroid (mean) vector; `posts` are the member
-    `NormalizedPost`s; `handles` are the distinct source handles that contributed
+    `NormalizedPost`s; `post_embeddings` are those members' per-post vectors, parallel
+    to `posts` (the SAME vectors that drove clustering — not the centroid, not
+    re-embedded); `handles` are the distinct source handles that contributed
     (cross-source aggregation, ADR-001). The batch processor maps this to a
-    `Cluster` ORM row scoped by `user_id`.
+    `Cluster` ORM row scoped by `user_id`, and persists each member `Post` carrying its
+    `post_embeddings` entry (task-082: per-post vectors survive the 48h text purge).
+
+    `post_embeddings` defaults to an empty tuple so directly-constructed candidates
+    (e.g. in tests) stay valid; `run` always populates it parallel to `posts`.
     """
 
     topic: str
     embedding: tuple[float, ...]
     posts: tuple[NormalizedPost, ...]
     handles: tuple[str, ...]
+    post_embeddings: tuple[tuple[float, ...], ...] = ()
 
 
 def _cosine(a: NDArray[np.float64], b: NDArray[np.float64]) -> float:
@@ -80,6 +87,11 @@ class _Group:
             embedding=tuple(float(value) for value in centroid),
             posts=tuple(self.posts),
             handles=tuple(handles),
+            # Per-post vectors, parallel to `posts` — the same vectors used for
+            # grouping, carried through so the persist step can write posts.embedding.
+            post_embeddings=tuple(
+                tuple(float(value) for value in vector) for vector in self.vectors
+            ),
         )
 
 
