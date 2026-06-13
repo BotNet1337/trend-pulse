@@ -42,7 +42,6 @@ from eval.scenarios import (
     score_scenarios,
     synthetic_scenarios,
 )
-from scorer.score import MIN_WINDOW_HOURS
 
 # Thresholds to sweep for calibration. The watchlist default is 0.0 (alert on every
 # scored cluster -- storage.models.watchlists._DEFAULT_THRESHOLD); packs ship 70;
@@ -77,22 +76,30 @@ def _report_set(name: str, scenarios: Sequence[LabeledScenario]) -> None:
 
 
 def _warn_velocity_clamp(scenarios: Sequence[LabeledScenario]) -> None:
-    """Flag when most items hit the velocity Δhours clamp (a known discrimination killer).
+    """Flag the residual single-channel coverage limit on the backfill-shaped corpus.
 
-    On the backfill-shaped prod corpus almost every scoreable cluster is a single post
-    with `delta_hours == 0` -> velocity is clamped to `log1p(Δch)/MIN_WINDOW_HOURS`, so
-    the scores pile up at a single value and AUC/Spearman collapse toward chance. This
-    warning makes that artifact VISIBLE next to the metrics so the AUC is never read
-    naked as "the scorer can't discriminate".
+    BEFORE T15 the velocity term was `log1p(Δch)/Δhours`: on this corpus almost every
+    cluster is a single post with `delta_hours → 0`, so velocity clamped to
+    `log1p(1)/MIN_WINDOW_HOURS ≈ 41.6` and the scores PILED UP at one value -> AUC/
+    Spearman collapsed toward chance (real ROC-AUC ≈ 0.564). That was a formula defect,
+    not a corpus artifact, and T15 fixed it: velocity is now `log1p(Δch - 1)/Δhours`, so
+    a single-channel cluster scores velocity 0 and the Δhours clamp can no longer
+    manufacture a spurious value.
+
+    The RESIDUAL limit is the corpus itself: most judged clusters are single-channel, so
+    velocity contributes 0 for them and the ranking among them rests on engagement /
+    cross_channel alone. This warning surfaces how many items get no velocity signal so
+    the AUC is read with that coverage caveat — not as "the formula can't discriminate".
     """
-    at_clamp = sum(1 for s in scenarios if s.inputs.delta_hours < MIN_WINDOW_HOURS)
-    if at_clamp:
-        pct = at_clamp / len(scenarios) * 100.0
+    single_channel = sum(1 for s in scenarios if s.inputs.delta_channel_count <= 1)
+    if single_channel:
+        pct = single_channel / len(scenarios) * 100.0
         print(
-            f"  [!] {at_clamp}/{len(scenarios)} ({pct:.0f}%) items have delta_hours below "
-            f"MIN_WINDOW_HOURS ({MIN_WINDOW_HOURS:.4f}h) -> velocity is CLAMPED for them; "
-            "scores collapse toward a single value and AUC/Spearman understate the "
-            "formula (see report 'Why real != synthetic')."
+            f"  [!] {single_channel}/{len(scenarios)} ({pct:.0f}%) items are single-channel "
+            "(Δchannel_count ≤ 1) -> velocity 0 by design (no cross-channel spread, T15); "
+            "their ranking rests on engagement/cross_channel alone, so AUC reflects the "
+            "corpus's single-channel coverage, not a formula defect (see report "
+            "'T15 velocity fix')."
         )
 
 

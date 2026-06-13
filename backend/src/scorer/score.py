@@ -8,7 +8,7 @@
 
 with (overview §4):
 
-    velocity      = log1p(Δchannel_count) / Δhours
+    velocity      = log1p(max(Δchannel_count - 1, 0)) / Δhours   # cross-channel spread (T15)
     engagement    = (views + forwards·FORWARD_FACTOR + reactions·REACTION_FACTOR) / channel_avg
     cross_channel = unique_channels_count / watched_channels_count
 
@@ -62,14 +62,28 @@ class ScoreInputs:
 
 
 def _velocity(*, delta_channel_count: int, delta_hours: float) -> float:
-    """Log-scaled spread speed: log1p(Δchannel_count) / Δhours.
+    """Log-scaled CROSS-CHANNEL spread speed: log1p(Δchannel_count - 1) / Δhours.
 
-    `log1p` is safe at 0 (→ 0.0) and dampens very large Δchannel_count (log scale,
-    by design). `Δhours` is clamped to `MIN_WINDOW_HOURS` so a zero/near-zero
-    window never divides by zero.
+    "Viral" means a story SPREADING ACROSS channels (overview §4, product principle).
+    A single-channel cluster has *no* cross-channel spread, so its velocity must be 0
+    — `log1p(max(Δch - 1, 0))` makes exactly one channel → log1p(0) = 0, two channels
+    → log1p(1), and so on, rising monotonically with the breadth of spread (T15).
+
+    Without the `- 1`, a lone post (Δch = 1) on a backfill-shaped corpus where the
+    window collapses (Δhours → 0, clamped to `MIN_WINDOW_HOURS`) scored
+    `log1p(1)/MIN_WINDOW_HOURS ≈ 41.6`, dominating the weighted sum and ranking every
+    isolated post as viral — inverting the ranking on real data (proven by the T14
+    meaningfulness harness: real-data ROC-AUC ≈ 0.564, chance). Subtracting the
+    self-channel removes that degeneration at the source.
+
+    `log1p` is safe at 0 (→ 0.0) and dampens very large spreads (log scale, by design).
+    `Δhours` is still clamped to `MIN_WINDOW_HOURS` so a zero/near-zero window never
+    divides by zero — but with no spread (Δch ≤ 1) the numerator is 0, so the clamp can
+    no longer manufacture a spurious velocity.
     """
     hours = max(delta_hours, MIN_WINDOW_HOURS)
-    return math.log1p(delta_channel_count) / hours
+    extra_channels = max(delta_channel_count - 1, 0)
+    return math.log1p(extra_channels) / hours
 
 
 def engagement_numerator(*, views: int, forwards: int, reactions: int) -> float:
