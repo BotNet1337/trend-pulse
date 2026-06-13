@@ -214,13 +214,19 @@ class TestGuardOrdering:
         ):
             from scorer.tasks import _score_user
 
-            # Minimal setup to get past early returns
+            # Minimal setup to get past early returns. The cluster's channel set
+            # (TASK-084: matching is by channel overlap) must intersect the topic's
+            # watched channels ({1}) so matching succeeds and we reach the guards.
             with (
                 patch("scorer.tasks._topic_configs", return_value={"crypto": topic_config}),
                 patch("scorer.tasks._resolve_deliver_after", return_value=None),
                 patch(
                     "scorer.tasks._recent_clusters",
                     return_value=[_mock_cluster(cluster_id=1, topic="crypto")],
+                ),
+                patch(
+                    "scorer.tasks._cluster_channel_ids",
+                    return_value=frozenset([1]),
                 ),
                 patch(
                     "scorer.tasks._build_score_inputs",

@@ -171,18 +171,29 @@ def test_below_threshold_creates_no_alert(db_session: Session) -> None:
     assert _alerts_for(db_session, user_id=user.id, cluster_id=cluster.id) == []
 
 
-def test_topic_mismatch_creates_no_alert(db_session: Session) -> None:
+def test_cluster_on_unwatched_channel_creates_no_alert(db_session: Session) -> None:
+    """AC5 (T13): matching is by CHANNEL OVERLAP, not topic-string equality.
+
+    The user watches "sports" on `@sports1`, but the fresh cluster's posts are on
+    `@other1`, a channel the user does NOT watch. There is zero channel overlap
+    with any watched topic → no Score, no alert. (Cluster.topic is free text and is
+    irrelevant to matching — set it to a plausible first-post snippet here.)
+    """
     from scorer.tasks import score_recent_clusters
 
     user = _seed_user(db_session, "mismatch@example.com")
-    ch = _seed_channel(db_session, "@sports1")
-    # User watches "sports"; the fresh cluster's topic is "politics" → mismatch.
-    db_session.add(Watchlist(user_id=user.id, channel_id=ch.id, topic="sports", threshold=0.0))
-    cluster = _seed_cluster(db_session, user_id=user.id, topic="politics")
+    watched_ch = _seed_channel(db_session, "@sports1")
+    other_ch = _seed_channel(db_session, "@other1")
+    db_session.add(
+        Watchlist(user_id=user.id, channel_id=watched_ch.id, topic="sports", threshold=0.0)
+    )
+    # Free-text topic (a first-post snippet), NOT the category label — and the post
+    # is on a channel the user does not watch.
+    cluster = _seed_cluster(db_session, user_id=user.id, topic="Breaking: market rally continues")
     _seed_post(
         db_session,
         user_id=user.id,
-        channel_id=ch.id,
+        channel_id=other_ch.id,
         external_id="c1",
         views=5000,
         forwards=500,
@@ -194,8 +205,146 @@ def test_topic_mismatch_creates_no_alert(db_session: Session) -> None:
 
     created = score_recent_clusters()
 
-    assert created == 0  # AC5 — topic mismatch, no alert
+    assert created == 0  # AC5 — no watched-channel overlap, no alert
     assert _alerts_for(db_session, user_id=user.id, cluster_id=cluster.id) == []
+
+
+def test_freetext_topic_on_watched_channel_now_scores(db_session: Session) -> None:
+    """T13 core: a cluster whose topic is FREE TEXT (not a category) but whose posts
+    are on a watched channel now gets a Score persisted (was always 0 in prod).
+
+    This is the prod-verified regression: prod has 9,400+ clusters but 0 scores
+    because `cluster.topic` (first post's text) could never equal `watchlist.topic`
+    (the category, e.g. "crypto"). Channel-overlap matching fixes it.
+    """
+    from scorer.tasks import score_recent_clusters
+    from storage.models import Score
+
+    user = _seed_user(db_session, "freetext@example.com")
+    ch = _seed_channel(db_session, "@cryptochan")
+    # Watched under the CATEGORY label "crypto".
+    db_session.add(Watchlist(user_id=user.id, channel_id=ch.id, topic="crypto", threshold=0.0))
+    # Cluster topic is the first post's text — never equals "crypto".
+    cluster = _seed_cluster(
+        db_session, user_id=user.id, topic="Паоло Ардоино: USDT капитализация рекорд"
+    )
+    _seed_post(
+        db_session,
+        user_id=user.id,
+        channel_id=ch.id,
+        external_id="ft1",
+        views=2000,
+        forwards=100,
+        reactions=300,
+        minutes_ago=20,
+        cluster_id=cluster.id,
+    )
+    db_session.commit()
+
+    created = score_recent_clusters()
+
+    db_session.expire_all()
+    score = (
+        db_session.query(Score)
+        .filter(Score.user_id == user.id, Score.cluster_id == cluster.id)
+        .first()
+    )
+    assert score is not None, "T13: free-text-topic cluster on a watched channel must be scored"
+    assert score.viral_score > 0.0
+    # threshold 0.0 → strictly-greater score also fires an alert.
+    assert created == 1
+    assert len(_alerts_for(db_session, user_id=user.id, cluster_id=cluster.id)) == 1
+
+
+def test_cluster_overlapping_two_topics_scores_once_under_best_overlap(
+    db_session: Session,
+) -> None:
+    """T13 multi-match policy: a cluster whose posts span channels of TWO watched
+    topics is scored exactly ONCE, under the topic with the LARGEST channel overlap.
+
+    "crypto" is watched on ch1+ch2 (2 channels); "tech" on ch3 (1 channel). The
+    cluster's posts are on ch1, ch2, ch3 → overlap(crypto)=2, overlap(tech)=1 →
+    best = crypto. Exactly one Score / one alert (one cluster → one Score invariant).
+    """
+    from scorer.tasks import score_recent_clusters
+    from storage.models import Score
+
+    user = _seed_user(db_session, "multi@example.com")
+    ch1 = _seed_channel(db_session, "@multi1")
+    ch2 = _seed_channel(db_session, "@multi2")
+    ch3 = _seed_channel(db_session, "@multi3")
+    # crypto → 2 channels; tech → 1 channel.
+    db_session.add(Watchlist(user_id=user.id, channel_id=ch1.id, topic="crypto", threshold=0.0))
+    db_session.add(Watchlist(user_id=user.id, channel_id=ch2.id, topic="crypto", threshold=0.0))
+    db_session.add(Watchlist(user_id=user.id, channel_id=ch3.id, topic="tech", threshold=0.0))
+    cluster = _seed_cluster(db_session, user_id=user.id, topic="Some viral story across desks")
+    for i, ch in enumerate((ch1, ch2, ch3)):
+        _seed_post(
+            db_session,
+            user_id=user.id,
+            channel_id=ch.id,
+            external_id=f"mm{i}",
+            views=1000,
+            forwards=50,
+            reactions=100,
+            minutes_ago=30 - i * 5,
+            cluster_id=cluster.id,
+        )
+    db_session.commit()
+
+    created = score_recent_clusters()
+
+    db_session.expire_all()
+    scores = (
+        db_session.query(Score)
+        .filter(Score.user_id == user.id, Score.cluster_id == cluster.id)
+        .all()
+    )
+    assert len(scores) == 1, "one cluster → exactly one Score row (best-overlap topic only)"
+    assert scores[0].channels_count == 3  # the cluster spans 3 channels
+    assert len(_alerts_for(db_session, user_id=user.id, cluster_id=cluster.id)) == 1
+    assert created == 1
+
+
+def test_no_posts_in_score_window_still_no_score(db_session: Session) -> None:
+    """Regression (TASK-079): a cluster fresh by updated_at but whose posts are all
+    OUTSIDE the score window gets no Score even though channels overlap a watched topic.
+    """
+    from config import get_settings
+    from scorer.tasks import score_recent_clusters
+    from storage.models import Score
+
+    settings = get_settings()
+    stale_minutes = int(settings.score_window_seconds // 60) + 60  # well past the window
+
+    user = _seed_user(db_session, "stalewin@example.com")
+    ch = _seed_channel(db_session, "@stalewin1")
+    db_session.add(Watchlist(user_id=user.id, channel_id=ch.id, topic="crypto", threshold=0.0))
+    # Cluster looks fresh (updated_at = _NOW via _seed_cluster) but its only post is old.
+    cluster = _seed_cluster(db_session, user_id=user.id, topic="Old viral story")
+    _seed_post(
+        db_session,
+        user_id=user.id,
+        channel_id=ch.id,
+        external_id="sw1",
+        views=9000,
+        forwards=900,
+        reactions=900,
+        minutes_ago=stale_minutes,
+        cluster_id=cluster.id,
+    )
+    db_session.commit()
+
+    created = score_recent_clusters()
+
+    db_session.expire_all()
+    score = (
+        db_session.query(Score)
+        .filter(Score.user_id == user.id, Score.cluster_id == cluster.id)
+        .first()
+    )
+    assert score is None, "no posts inside the score window → no Score row (TASK-079)"
+    assert created == 0
 
 
 def test_per_cluster_engagement_not_per_topic(db_session: Session) -> None:
