@@ -57,6 +57,18 @@ _DEFAULT_EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 _DEFAULT_DEDUP_SIMILARITY_THRESHOLD = 0.8
 _DEFAULT_CLUSTER_COSINE_THRESHOLD = 0.75
 
+# Cross-batch cluster merge window (TASK-080). Named, non-secret default; time in
+# SECONDS (CONVENTIONS). Clustering is per-batch, so the same recurring topic used to
+# spawn a NEW `Cluster` every tick (prod 2026-06-13: 753 topics duplicated across
+# 3 010 clusters). The batch persist step now MERGES a candidate into the nearest
+# EXISTING cluster of the same user when their centroids' cosine-similarity is
+# >= `cluster_cosine_threshold` AND that cluster is fresh — updated within this
+# window (`Cluster.updated_at >= now - cluster_merge_window_seconds`). The freshness
+# bound stops merges into ancient clusters. 24h = 86400s. This is DISTINCT from the
+# narrower `scorer_recent_window_seconds` (1h scoring freshness) and from the
+# scoring/showcase look-back windows. Override via env CLUSTER_MERGE_WINDOW_SECONDS.
+_DEFAULT_CLUSTER_MERGE_WINDOW_SECONDS: int = 86_400  # 24 hours
+
 # Scorer (task-008). Named, non-secret defaults — never magic literals (CONVENTIONS).
 # A cluster is "fresh"/scoreable if updated within this window (seconds); the scorer
 # tick (every `scorer_interval_seconds`) only scores clusters inside it. The alert
@@ -364,6 +376,11 @@ class Settings(BaseSettings):
     embedding_model_name: str = _DEFAULT_EMBEDDING_MODEL_NAME
     dedup_similarity_threshold: float = _DEFAULT_DEDUP_SIMILARITY_THRESHOLD
     cluster_cosine_threshold: float = _DEFAULT_CLUSTER_COSINE_THRESHOLD
+    # Cross-batch merge freshness window (TASK-080). A batch cluster candidate merges
+    # into the nearest existing cluster of the same user (centroid cosine-sim
+    # >= cluster_cosine_threshold) only if that cluster was updated within this
+    # window — otherwise a new cluster is created. Override via CLUSTER_MERGE_WINDOW_SECONDS.
+    cluster_merge_window_seconds: int = _DEFAULT_CLUSTER_MERGE_WINDOW_SECONDS
 
     # --- Scorer (task-008). Non-secret, settable; defaults above. ---
     scorer_recent_window_seconds: int = _DEFAULT_SCORER_RECENT_WINDOW_SECONDS

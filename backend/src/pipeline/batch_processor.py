@@ -27,9 +27,10 @@ passes them in.
 import hashlib
 import json
 import logging
+from datetime import timedelta
 from typing import TYPE_CHECKING, cast
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from collector.base import RawPost, SourceKind, SourceRef
@@ -43,6 +44,7 @@ from pipeline.steps.embed import Encoder
 from pipeline.steps.normalize import NormalizedPost
 from storage.database import get_session
 from storage.models import EMBEDDING_DIM, Channel, Cluster, Watchlist
+from storage.models.base import utcnow
 from storage.models.channels import SourceKind as ChannelSourceKind
 from storage.models.posts import Post
 from storage.redis_client import get_redis_client
@@ -89,6 +91,64 @@ def _candidate_to_cluster(candidate: ClusterCandidate, user_id: int) -> Cluster:
         topic=candidate.topic,
         embedding=list(candidate.embedding),
     )
+
+
+def _find_mergeable_cluster(
+    session: Session,
+    user_id: int,
+    centroid: list[float],
+) -> Cluster | None:
+    """Return the nearest fresh existing cluster to merge `centroid` into, or None.
+
+    Cross-batch continuity fix (TASK-080): instead of always creating a new `Cluster`
+    row for each batch candidate, attach it to an EXISTING cluster of the same user
+    whose centroid is close enough (cosine-similarity >= `cluster_cosine_threshold`)
+    and that is recent (`updated_at >= now - cluster_merge_window_seconds`).
+
+    pgvector's ``<=>`` operator (``Vector.cosine_distance``) returns cosine DISTANCE
+    = ``1 - cosine_similarity``. So "similarity >= threshold" is equivalent to
+    "distance <= 1 - threshold". The query is bounded by user + freshness, filtered
+    by that max distance, and ordered nearest-first with LIMIT 1 (the NN lookup).
+    """
+    settings = get_settings()
+    max_distance = 1.0 - settings.cluster_cosine_threshold
+    window_start = utcnow() - timedelta(seconds=settings.cluster_merge_window_seconds)
+    distance = Cluster.embedding.cosine_distance(centroid)
+    stmt = (
+        select(Cluster)
+        .where(Cluster.user_id == user_id)
+        .where(Cluster.updated_at >= window_start)
+        .where(distance <= max_distance)
+        .order_by(distance)
+        .limit(1)
+    )
+    return session.scalars(stmt).first()
+
+
+def _existing_member_count(session: Session, cluster_id: int) -> int:
+    """Number of `Post` rows already attached to `cluster_id` (centroid weight)."""
+    stmt = select(func.count()).select_from(Post).where(Post.cluster_id == cluster_id)
+    return int(session.scalar(stmt) or 0)
+
+
+def _merged_centroid(
+    old_centroid: list[float],
+    old_count: int,
+    new_centroid: list[float],
+    new_count: int,
+) -> list[float]:
+    """Running mean of two centroids weighted by their member counts.
+
+    Immutable: returns a NEW list, mutates neither input. Falls back to the new
+    centroid when the combined weight is zero (degenerate / empty cluster).
+    """
+    total = old_count + new_count
+    if total <= 0:
+        return list(new_centroid)
+    return [
+        (old * old_count + new * new_count) / total
+        for old, new in zip(old_centroid, new_centroid, strict=True)
+    ]
 
 
 def _build_handle_to_channel_id(
@@ -286,9 +346,26 @@ def process_user_batch(user_id: int) -> int:
     with get_session() as session:
         handle_to_channel_id = _build_handle_to_channel_id(session, all_normalized)
         for candidate in candidates:
-            cluster_row = _candidate_to_cluster(candidate, user_id)
-            session.add(cluster_row)
-            session.flush()  # obtain cluster_row.id before persisting posts
+            candidate_centroid = list(candidate.embedding)
+            # Cross-batch merge (TASK-080): attach to the nearest fresh existing
+            # cluster of the same user when centroids are similar; else create new.
+            existing = _find_mergeable_cluster(session, user_id, candidate_centroid)
+            if existing is not None:
+                # Refresh centroid as a running mean weighted by current members,
+                # then mark the cluster recently-updated so it stays mergeable/fresh.
+                old_count = _existing_member_count(session, existing.id)
+                existing.embedding = _merged_centroid(
+                    list(existing.embedding),
+                    old_count,
+                    candidate_centroid,
+                    len(candidate.posts),
+                )
+                existing.updated_at = utcnow()
+                cluster_row = existing
+            else:
+                cluster_row = _candidate_to_cluster(candidate, user_id)
+                session.add(cluster_row)
+                session.flush()  # obtain cluster_row.id before persisting posts
 
             for np_post in candidate.posts:
                 kind_value = str(np_post.source.kind.value)

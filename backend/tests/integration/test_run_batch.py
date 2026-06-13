@@ -80,6 +80,93 @@ def test_run_batch_persists_clusters_scoped_by_user(
     assert all(len(r.embedding) > 0 for r in rows)
 
 
+def test_second_batch_same_topic_merges_into_one_cluster(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC2 (real pgvector): running two batches whose posts describe the SAME topic
+    yields ONE cluster, not two — the second batch's candidate merges into the
+    first batch's cluster instead of spawning a duplicate.
+    """
+    handle = "@viralnews"
+    user = User(email="merge@example.com", hashed_password="x" * 16)
+    db_session.add(user)
+    db_session.flush()
+    channel = Channel(source_kind=ChannelSourceKind.TELEGRAM, handle=handle)
+    db_session.add(channel)
+    db_session.flush()
+    db_session.add(Watchlist(user_id=user.id, channel_id=channel.id, topic="news", lang="en"))
+    db_session.commit()
+    user_id = user.id
+
+    batch_processor = _batch_processor()
+
+    # Batch 1: one topic.
+    redis1 = fakeredis.FakeRedis()
+    write_post(redis1, _raw("1", "The central bank raised interest rates today", handle))
+    monkeypatch.setattr(batch_processor, "get_redis_client", lambda: redis1)
+    count1 = batch_processor.process_user_batch(user_id)
+    assert count1 == 1
+
+    # Batch 2: same topic, fresh external_id → must MERGE into the existing cluster.
+    redis2 = fakeredis.FakeRedis()
+    write_post(redis2, _raw("2", "The central bank raised interest rates again today", handle))
+    monkeypatch.setattr(batch_processor, "get_redis_client", lambda: redis2)
+    batch_processor.process_user_batch(user_id)
+
+    db_session.expire_all()
+    rows = db_session.query(Cluster).filter(Cluster.user_id == user_id).all()
+    # The defect produced 2 rows; the fix yields exactly 1.
+    assert len(rows) == 1
+
+
+def test_ancient_cluster_not_merged_creates_new(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC4 (real pgvector): a same-topic but STALE cluster (updated_at older than
+    the merge window) is NOT merged into — a fresh cluster is created instead.
+    """
+    from datetime import timedelta
+
+    from config import get_settings
+    from storage.models.base import utcnow
+
+    handle = "@viralnews"
+    user = User(email="ancient@example.com", hashed_password="x" * 16)
+    db_session.add(user)
+    db_session.flush()
+    channel = Channel(source_kind=ChannelSourceKind.TELEGRAM, handle=handle)
+    db_session.add(channel)
+    db_session.flush()
+    db_session.add(Watchlist(user_id=user.id, channel_id=channel.id, topic="news", lang="en"))
+    db_session.commit()
+    user_id = user.id
+
+    batch_processor = _batch_processor()
+
+    # Batch 1 → one cluster.
+    redis1 = fakeredis.FakeRedis()
+    write_post(redis1, _raw("1", "The central bank raised interest rates today", handle))
+    monkeypatch.setattr(batch_processor, "get_redis_client", lambda: redis1)
+    assert batch_processor.process_user_batch(user_id) == 1
+
+    # Age that cluster beyond the merge freshness window.
+    stale_at = utcnow() - timedelta(seconds=get_settings().cluster_merge_window_seconds + 3600)
+    db_session.query(Cluster).filter(Cluster.user_id == user_id).update(
+        {Cluster.updated_at: stale_at}
+    )
+    db_session.commit()
+
+    # Batch 2: same topic, but the only existing cluster is stale → new cluster.
+    redis2 = fakeredis.FakeRedis()
+    write_post(redis2, _raw("2", "The central bank raised interest rates again today", handle))
+    monkeypatch.setattr(batch_processor, "get_redis_client", lambda: redis2)
+    batch_processor.process_user_batch(user_id)
+
+    db_session.expire_all()
+    rows = db_session.query(Cluster).filter(Cluster.user_id == user_id).all()
+    assert len(rows) == 2
+
+
 def test_run_batch_empty_buffer_is_no_op(
     db_session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
