@@ -235,6 +235,49 @@ def test_unresolved_channel_skips_post_without_failing() -> None:
     assert post_rows == []  # unresolved channel → no Post persisted, no crash
 
 
+def test_persists_posts_with_their_embedding() -> None:
+    """TASK-082: each persisted `Post` carries a non-null 384-d embedding equal to the
+    vector that drove its cluster. Today `posts.embedding` is NULL for every row — the
+    pipeline computes the vector (for clustering) then drops it at persist time. This
+    proves the vector now survives into the Post row (so it outlives the 48h text purge
+    and future corpora are backtestable)."""
+    user_id = 42
+    refs = [SourceRef(kind=SourceKind.TELEGRAM, handle="@chan")]
+    # Distinct texts → fake encoder yields distinct vectors → two separate clusters.
+    posts = [_raw("ext-1", "alpha news today"), _raw("ext-2", "beta different story")]
+
+    mock_session = MagicMock()
+    _install_id_assigning_flush(mock_session)
+    session_ctx = _make_session_ctx(mock_session)
+    channel_map = {("telegram", "@chan"): 7}
+
+    with (
+        patch.object(batch_processor, "get_redis_client", return_value=MagicMock()),
+        patch.object(batch_processor, "get_session", return_value=session_ctx),
+        patch.object(batch_processor, "user_source_refs", return_value=refs),
+        patch.object(batch_processor, "drain_source", return_value=posts),
+        patch.object(batch_processor, "_build_handle_to_channel_id", return_value=channel_map),
+        patch.object(batch_processor, "_find_mergeable_cluster", return_value=None),
+        patch.object(batch_processor, "embed_with_cache", return_value=None),
+        patch.object(batch_processor.embed, "_get_model", return_value=_FakeEncoder()),
+    ):
+        batch_processor.process_user_batch(user_id)
+
+    from storage.models import Post
+
+    post_rows = [c.args[0] for c in mock_session.add.call_args_list if isinstance(c.args[0], Post)]
+    assert len(post_rows) == 2
+    # The fake encoder vector for the i-th distinct text is [i+1, 0, 0, ...].
+    expected_by_external = {
+        "ext-1": [1.0] + [0.0] * (EMBEDDING_DIM - 1),
+        "ext-2": [2.0] + [0.0] * (EMBEDDING_DIM - 1),
+    }
+    for post in post_rows:
+        assert post.embedding is not None  # no longer NULL
+        assert len(post.embedding) == EMBEDDING_DIM  # 384-d invariant
+        assert list(post.embedding) == expected_by_external[post.external_id]
+
+
 def test_candidate_to_cluster_sets_user_id_and_embedding() -> None:
     from pipeline.steps.cluster import ClusterCandidate
 

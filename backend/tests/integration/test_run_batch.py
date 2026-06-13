@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from collector.base import PostMetrics, RawPost, SourceKind, SourceRef
 from collector.buffer import write_post
-from storage.models import Channel, Cluster, User, Watchlist
+from storage.models import EMBEDDING_DIM, Channel, Cluster, Post, User, Watchlist
 from storage.models.channels import SourceKind as ChannelSourceKind
 
 pytestmark = pytest.mark.integration
@@ -78,6 +78,15 @@ def test_run_batch_persists_clusters_scoped_by_user(
     assert len(rows) == count
     assert all(r.user_id == user_id for r in rows)
     assert all(len(r.embedding) > 0 for r in rows)
+
+    # TASK-082: per-post embeddings persisted (real model) — every Post row now carries
+    # a non-null 384-d vector (the one used for its cluster), so vectors survive the
+    # 48h text purge and the corpus becomes backtestable.
+    posts_persisted = db_session.query(Post).filter(Post.user_id == user_id).all()
+    assert posts_persisted, "expected member posts to be persisted"
+    for post in posts_persisted:
+        assert post.embedding is not None
+        assert len(post.embedding) == EMBEDDING_DIM
 
 
 def test_second_batch_same_topic_merges_into_one_cluster(

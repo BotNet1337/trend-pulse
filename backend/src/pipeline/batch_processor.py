@@ -160,6 +160,20 @@ def _merged_centroid(
     ]
 
 
+def _embedding_for_post(vector: tuple[float, ...] | None) -> list[float] | None:
+    """Return a persistable per-post embedding, or None when it can't be trusted.
+
+    task-082: persist the SAME vector the pipeline already computed for clustering so
+    it survives the 48h text purge (go-forward backtests / vector ML). The 384-d
+    invariant (EMBEDDING_DIM) is enforced here too — if a vector is missing or the
+    wrong dimension we persist NULL (embedding is nullable) rather than crashing the
+    batch or corrupting pgvector.
+    """
+    if vector is None or len(vector) != EMBEDDING_DIM:
+        return None
+    return list(vector)
+
+
 def _build_handle_to_channel_id(
     session: Session,
     posts: list[NormalizedPost],
@@ -376,7 +390,13 @@ def process_user_batch(user_id: int) -> int:
                 session.add(cluster_row)
                 session.flush()  # obtain cluster_row.id before persisting posts
 
-            for np_post in candidate.posts:
+            # Pair each member post with its own embedding (parallel to posts). When
+            # a candidate carries no per-post vectors (defensive: directly-built
+            # candidates), fall back to None so embedding persists as NULL.
+            post_vectors: tuple[tuple[float, ...] | None, ...] = candidate.post_embeddings or (
+                (None,) * len(candidate.posts)
+            )
+            for np_post, post_vector in zip(candidate.posts, post_vectors, strict=False):
                 kind_value = str(np_post.source.kind.value)
                 channel_id = handle_to_channel_id.get((kind_value, np_post.source.handle))
                 if channel_id is None:
@@ -397,6 +417,9 @@ def process_user_batch(user_id: int) -> int:
                         views=np_post.metrics.views,
                         forwards=np_post.metrics.forwards,
                         reactions=np_post.metrics.reactions,
+                        # task-082: persist the per-post vector the pipeline already
+                        # computed (NULL on dimension drift / missing — never crash).
+                        embedding=_embedding_for_post(post_vector),
                         posted_at=np_post.posted_at,
                     )
                 )
