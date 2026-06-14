@@ -84,6 +84,24 @@ TWITTER_RATE_LIMIT_INLINE_CAP_SECONDS: Final = 60
 # Redis key prefix for the monthly read-budget counter: twitter:reads:{YYYY-MM}.
 TWITTER_READS_COUNTER_PREFIX: Final = "twitter:reads"
 
+# Per-account minimum read interval (seconds). The shared collect tick fires every
+# `collect_interval_seconds` (~60s) and reads ALL kinds; without this guard Twitter
+# would be polled every tick (43 accounts x 1440 ticks/day = pay-per-use blowout).
+# We read each Twitter account at most once per this window (Redis last-read stamp),
+# making the 15-min cadence real regardless of the shared tick frequency.
+TWITTER_MIN_READ_INTERVAL_SECONDS: Final = TWITTER_COLLECT_INTERVAL_SECONDS  # 15 min
+TWITTER_LASTREAD_PREFIX: Final = "twitter:lastread"
+
+# Cache handle → user id (resolve is itself a billable read; ids are stable). TTL
+# long but bounded so renamed/deleted accounts eventually re-resolve.
+TWITTER_USERID_PREFIX: Final = "twitter:userid"
+TWITTER_USERID_TTL_SECONDS: Final = 7 * 24 * 60 * 60  # 7 days
+
+# After an HTTP 402 CreditsDepleted, pause ALL Twitter reads for this long (seconds)
+# and alert ops ONCE — a persistent billing state (no API credits), so retrying every
+# tick just spams logs and fires rejected calls. Cleared automatically after cooldown.
+TWITTER_CREDITS_COOLDOWN_SECONDS: Final = 60 * 60  # 1 hour
+
 # --- collect-tick (beat ingest task) — import-cycle-free contract constants. ---
 # Celery task name for the collect tick. Lives here (not in collector.tasks,
 # which imports celery_app) so `scheduler` can reference it without a circular

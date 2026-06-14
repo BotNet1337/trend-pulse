@@ -1,21 +1,30 @@
 """`TwitterCollector` — the Twitter/X `SourceCollector` (TASK-031, ADR-001).
 
 Mirrors `collector/telegram/reader.py`. X API specifics (v2 endpoints, 429 reset,
-pay-per-use read budget) are confined to this module + `client`/`mapper`/`dedup`.
-`read` builds the UNION of unique TWITTER refs, reads each account once newer than
-`since`, maps each tweet via the pure mapper, and on 429 applies a bounded inline
-backoff (long resets skip the ref) — never crashing the collect tick.
+402 credits, pay-per-use read budget) are confined to this module + `client`/
+`mapper`/`dedup`. `read` builds the UNION of unique TWITTER refs, reads each account
+once newer than `since`, maps each tweet via the pure mapper, and never crashes the
+collect tick (any failure skips ONLY that ref via `SourceUnavailableError`).
 
-Cost guard (research brief §1): X API is pay-per-use, so a monthly read budget
-(`MAX_TWITTER_READS_PER_MONTH`, Redis counter) hard-stops reading and alerts ops
-ONCE when exhausted. All self-observation is best-effort and never raises
-(Invariant: observation must not crash collection).
+Cost controls (research brief §1 — X API is pay-per-use, $0.005/read):
+- **Per-account read interval**: the shared collect tick fires ~every 60s and reads
+  all kinds; we read each Twitter account at most once per
+  `TWITTER_MIN_READ_INTERVAL_SECONDS` (Redis last-read stamp) so the 15-min cadence
+  is real regardless of the tick frequency.
+- **user-id cache**: resolve is itself billable; ids are stable → cached in Redis.
+- **monthly read budget**: hard stop + once/month ops alert at
+  `MAX_TWITTER_READS_PER_MONTH`.
+- **402 credits cooldown**: on CreditsDepleted, pause ALL reads for
+  `TWITTER_CREDITS_COOLDOWN_SECONDS` and alert ops once (a persistent billing state).
+
+All self-observation is best-effort and never raises (Invariant).
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, TypeVar, cast
@@ -23,17 +32,23 @@ from typing import TYPE_CHECKING, TypeVar, cast
 from collector.base import RawPost, SourceKind, SourceRef
 from collector.constants import (
     MAX_TWITTER_READS_PER_MONTH,
+    TWITTER_CREDITS_COOLDOWN_SECONDS,
+    TWITTER_LASTREAD_PREFIX,
     TWITTER_MAX_RESULTS_PER_TICK,
+    TWITTER_MIN_READ_INTERVAL_SECONDS,
     TWITTER_RATE_LIMIT_INLINE_CAP_SECONDS,
     TWITTER_READS_COUNTER_PREFIX,
+    TWITTER_USERID_PREFIX,
+    TWITTER_USERID_TTL_SECONDS,
 )
 from collector.errors import (
     SourceUnavailableError,
+    TwitterCreditsDepletedError,
     TwitterRateLimitError,
     TwitterReadBudgetExceededError,
 )
 from collector.twitter.client import TwitterClientProtocol
-from collector.twitter.dedup import unique_twitter_refs
+from collector.twitter.dedup import normalize_handle, unique_twitter_refs
 from collector.twitter.mapper import map_tweet
 
 if TYPE_CHECKING:
@@ -48,6 +63,8 @@ _T = TypeVar("_T")
 
 # Redis counter lives ~35 days so a month's key self-expires after the month ends.
 _READS_COUNTER_TTL_SECONDS = 35 * 24 * 60 * 60
+# Last-read stamp lives a few intervals so a quiet account eventually re-reads.
+_LASTREAD_TTL_SECONDS = max(TWITTER_MIN_READ_INTERVAL_SECONDS * 4, 3600)
 
 
 class TwitterCollector:
@@ -63,17 +80,21 @@ class TwitterCollector:
         settings: Settings | None = None,
         redis: Redis | None = None,
         now: Callable[[], datetime] | None = None,
+        monotonic: Callable[[], float] | None = None,
     ) -> None:
         self._client = client
         self._sleep: _AsyncSleep = sleep if sleep is not None else asyncio.sleep
         self._settings = settings
         self._redis = redis
-        # Injectable clock so the month-bucket key is deterministic in tests.
+        # Injectable clocks so month bucket + cooldown are deterministic in tests.
         self._now: Callable[[], datetime] = now if now is not None else (lambda: datetime.now(UTC))
-        # Month bucket (YYYY-MM) we've already alerted for — so the budget alert
-        # fires once PER MONTH, not once per process lifetime (the collector is a
-        # cached singleton that can outlive a month rollover).
+        self._monotonic: Callable[[], float] = (
+            monotonic if monotonic is not None else time.monotonic
+        )
+        # Month bucket already alerted for the read budget (once per month).
         self._budget_alerted_month = ""
+        # Monotonic deadline until which ALL Twitter reads are paused (402 credits).
+        self._credits_cooldown_until = 0.0
 
     async def aclose(self) -> None:
         """Release the underlying client transport (worker shutdown)."""
@@ -89,39 +110,51 @@ class TwitterCollector:
         """True iff `ref` resolves to a readable public account; never raises (ADR-001)."""
         if ref.kind is not SourceKind.TWITTER:
             return False
-        from collector.twitter.dedup import normalize_handle
-
         handle = normalize_handle(ref.handle)
         try:
             user_id = await self._client.resolve_user_id(handle)
         except Exception:
-            # Rate-limited / network / API error — cannot confirm now, not validated.
+            # Rate-limited / credits / network / API error — cannot confirm now.
             logger.info("twitter validate_ref could not confirm handle")
             return False
         return user_id is not None
 
     async def read(self, refs: list[SourceRef], since: datetime | None) -> AsyncIterator[RawPost]:
         """Yield `RawPost`s for the unique union of TWITTER `refs` newer than `since`."""
+        if self._in_credits_cooldown():
+            # Billing paused — do not touch the API at all this tick (no spam, no calls).
+            return
         for ref in unique_twitter_refs(refs):
             self._guard_read_budget()
             async for post in self._read_one(ref, since):
                 yield post
 
     async def _read_one(self, ref: SourceRef, since: datetime | None) -> AsyncIterator[RawPost]:
-        """Read one account once, with bounded 429 backoff (long resets skip the ref)."""
-        user_id = await self._with_rate_limit(lambda: self._client.resolve_user_id(ref.handle), ref)
-        if user_id is None:
-            return  # private / nonexistent / renamed — skip silently (like validate)
-
-        tweets = await self._with_rate_limit(
-            lambda: self._client.fetch_tweets(
-                user_id,
-                start_time=since,
-                max_results=TWITTER_MAX_RESULTS_PER_TICK,
-                author=ref.handle,
-            ),
-            ref,
-        )
+        """Read one account once (cost-guarded), with bounded 429 backoff."""
+        # Per-account cadence: skip accounts read within the min interval (no API call).
+        if not self._should_read_account(ref.handle):
+            return
+        try:
+            user_id = await self._resolve_user_id_cached(ref)
+            if user_id is None:
+                self._mark_account_read(ref.handle)  # avoid hammering a bad handle
+                return  # private / nonexistent / renamed — skip silently
+            effective_since = self._effective_since(ref.handle, since)
+            tweets = await self._with_rate_limit(
+                lambda: self._client.fetch_tweets(
+                    user_id,
+                    start_time=effective_since,
+                    max_results=TWITTER_MAX_RESULTS_PER_TICK,
+                    author=ref.handle,
+                ),
+                ref,
+            )
+        except TwitterCreditsDepletedError as exc:
+            self._enter_credits_cooldown()
+            raise SourceUnavailableError(
+                f"twitter credits depleted while reading {ref.handle} — paused"
+            ) from exc
+        self._mark_account_read(ref.handle)
         self._charge_read_budget(len(tweets))
         for tweet in tweets:
             # `start_time` already bounds the API result; double-guard the cutoff.
@@ -129,18 +162,28 @@ class TwitterCollector:
                 continue
             yield map_tweet(tweet, ref)
 
+    async def _resolve_user_id_cached(self, ref: SourceRef) -> str | None:
+        """Resolve handle→id, caching in Redis (resolve is itself a billable read)."""
+        cached = self._cached_user_id(ref.handle)
+        if cached is not None:
+            return cached
+        user_id = await self._with_rate_limit(lambda: self._client.resolve_user_id(ref.handle), ref)
+        if user_id is not None:
+            self._cache_user_id(ref.handle, user_id)
+        return user_id
+
     async def _with_rate_limit(self, op: Callable[[], Awaitable[_T]], ref: SourceRef) -> _T:
         """Run `op`; on 429 sleep a short reset and retry ONCE, else skip the ref.
 
-        EVERY failure is converted to `SourceUnavailableError` so a single bad
-        account (429, API 5xx, network/JSON error) skips ONLY that ref — the
-        collect tick catches `SourceUnavailableError` and keeps the rest going
-        (Invariant: a failing ref never kills the rest). A long 429 reset (above the
-        inline cap) skips immediately so the tick coroutine is never parked for the
-        full reset window (mirrors the Telegram FLOOD pattern).
+        429 / API / network / JSON errors become `SourceUnavailableError` (per-ref
+        skip — never crash the tick). `TwitterCreditsDepletedError` is re-raised so
+        the caller can enter the billing cooldown instead of treating it as a normal
+        per-ref miss.
         """
         try:
             return await op()
+        except TwitterCreditsDepletedError:
+            raise
         except TwitterRateLimitError as exc:
             wait = exc.retry_after_seconds
             if wait > TWITTER_RATE_LIMIT_INLINE_CAP_SECONDS:
@@ -150,16 +193,108 @@ class TwitterCollector:
             await self._sleep(wait)
             try:
                 return await op()
-            except Exception as exc2:  # 2nd 429 or any other error → skip the ref
+            except TwitterCreditsDepletedError:
+                raise
+            except Exception as exc2:
                 raise SourceUnavailableError(
                     f"twitter retry failed for {ref.handle} ({type(exc2).__name__}) — skip ref"
                 ) from exc2
         except Exception as exc:
-            # API 5xx / network / malformed-JSON — skip ONLY this ref, never crash
-            # the tick (the outer collect_tick catches SourceUnavailableError).
             raise SourceUnavailableError(
                 f"twitter error for {ref.handle} ({type(exc).__name__}) — skip ref"
             ) from exc
+
+    # --- 402 credits cooldown -----------------------------------------------------
+
+    def _in_credits_cooldown(self) -> bool:
+        return self._monotonic() < self._credits_cooldown_until
+
+    def _enter_credits_cooldown(self) -> None:
+        """Pause all Twitter reads for the cooldown and alert ops ONCE per entry."""
+        already = self._in_credits_cooldown()
+        self._credits_cooldown_until = self._monotonic() + TWITTER_CREDITS_COOLDOWN_SECONDS
+        if not already:
+            self._notify_ops_best_effort(
+                reason="twitter_credits",
+                text=(
+                    "Twitter: нет кредитов на X API (HTTP 402 CreditsDepleted) — ингест Twitter "
+                    f"приостановлен на {TWITTER_CREDITS_COOLDOWN_SECONDS // 60} мин. "
+                    "Пополни баланс X API."
+                ),
+            )
+
+    # --- per-account cadence + user-id cache --------------------------------------
+
+    def _now_epoch(self) -> float:
+        return self._now().timestamp()
+
+    def _should_read_account(self, handle: str) -> bool:
+        """True unless this account was read within the min interval (Redis stamp)."""
+        if self._redis is None:
+            return True
+        try:
+            raw = cast("bytes | str | None", self._redis.get(f"{TWITTER_LASTREAD_PREFIX}:{handle}"))
+        except Exception:
+            return True
+        if raw is None:
+            return True
+        try:
+            last = float(raw)
+        except (TypeError, ValueError):
+            return True
+        return (self._now_epoch() - last) >= TWITTER_MIN_READ_INTERVAL_SECONDS
+
+    def _mark_account_read(self, handle: str) -> None:
+        if self._redis is None:
+            return
+        try:
+            key = f"{TWITTER_LASTREAD_PREFIX}:{handle}"
+            self._redis.set(key, str(self._now_epoch()), ex=_LASTREAD_TTL_SECONDS)
+        except Exception:
+            logger.warning("twitter lastread stamp update failed (ignored)")
+
+    def _effective_since(self, handle: str, caller_since: datetime | None) -> datetime | None:
+        """Read window for this account: since its previous read, else the caller's.
+
+        Using the per-account previous-read time (not the ~60s shared tick `since`)
+        means a 15-min-spaced read still captures the full window since last time.
+        """
+        if self._redis is None:
+            return caller_since
+        try:
+            raw = cast("bytes | str | None", self._redis.get(f"{TWITTER_LASTREAD_PREFIX}:{handle}"))
+        except Exception:
+            return caller_since
+        if raw is None:
+            return caller_since
+        try:
+            last_dt = datetime.fromtimestamp(float(raw), tz=UTC)
+        except (TypeError, ValueError, OSError):
+            return caller_since
+        if caller_since is None:
+            return last_dt
+        return min(caller_since, last_dt)
+
+    def _cached_user_id(self, handle: str) -> str | None:
+        if self._redis is None:
+            return None
+        try:
+            raw = cast("bytes | str | None", self._redis.get(f"{TWITTER_USERID_PREFIX}:{handle}"))
+        except Exception:
+            return None
+        if raw is None:
+            return None
+        return raw.decode() if isinstance(raw, bytes) else str(raw)
+
+    def _cache_user_id(self, handle: str, user_id: str) -> None:
+        if self._redis is None:
+            return
+        try:
+            self._redis.set(
+                f"{TWITTER_USERID_PREFIX}:{handle}", user_id, ex=TWITTER_USERID_TTL_SECONDS
+            )
+        except Exception:
+            logger.warning("twitter user-id cache update failed (ignored)")
 
     # --- read budget (pay-per-use spend backstop) --------------------------------
 
@@ -174,8 +309,6 @@ class TwitterCollector:
         if self._redis is None:
             return 0
         try:
-            # redis-py sync stubs type returns as Any|Awaitable; we use the sync
-            # client, so cast at this single seam (same pattern as collector.tasks).
             raw = cast("bytes | str | None", self._redis.get(self._counter_key()))
         except Exception:
             return 0
@@ -187,7 +320,7 @@ class TwitterCollector:
             return 0
 
     def _guard_read_budget(self) -> None:
-        """Stop reading + alert ops ONCE when the monthly read budget is exhausted."""
+        """Stop reading + alert ops ONCE per month when the read budget is exhausted."""
         if self._reads_this_month() < MAX_TWITTER_READS_PER_MONTH:
             return
         current_month = self._current_month()
@@ -206,10 +339,9 @@ class TwitterCollector:
     def _charge_read_budget(self, count: int) -> None:
         """Increment the monthly read counter best-effort (never raises).
 
-        INCRBY + EXPIRE are issued in ONE pipeline so the TTL can never be lost to a
-        crash between the two commands (the month key would otherwise leak forever).
-        Re-setting EXPIRE on every charge is idempotent and keeps the key alive for
-        the whole month.
+        INCRBY + EXPIRE in ONE pipeline so the TTL can't be lost to a crash between
+        commands. Re-setting EXPIRE each charge is idempotent (keeps the month key
+        alive for the month).
         """
         if self._redis is None or count <= 0:
             return

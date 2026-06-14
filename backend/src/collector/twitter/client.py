@@ -21,11 +21,16 @@ from typing import Protocol
 
 import httpx
 
-from collector.errors import TwitterAPIError, TwitterRateLimitError
+from collector.errors import (
+    TwitterAPIError,
+    TwitterCreditsDepletedError,
+    TwitterRateLimitError,
+)
 
 # Tweet fields we request — keep MINIMAL (every field/tweet read costs money).
 _TWEET_FIELDS = "public_metrics,created_at"
 _HTTP_TOO_MANY_REQUESTS = 429
+_HTTP_PAYMENT_REQUIRED = 402
 _HTTP_NOT_FOUND = 404
 _HTTP_OK_FLOOR = 200
 _HTTP_OK_CEIL = 300
@@ -173,6 +178,9 @@ class TwitterHTTPClient:
                 f"twitter rate-limited ({context})",
                 retry_after_seconds=_retry_after_from(response),
             )
+        if response.status_code == _HTTP_PAYMENT_REQUIRED:
+            # 402 CreditsDepleted — pay-per-use account out of credits (persistent).
+            raise TwitterCreditsDepletedError(f"twitter credits depleted ({context})")
         # Never include the response body — it could echo request params; status only.
         raise TwitterAPIError(f"twitter api error {response.status_code} ({context})")
 
