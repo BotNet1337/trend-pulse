@@ -1,7 +1,7 @@
 ---
 id: TASK-090
 title: Инструкция по данным Twitter/X (docs, рус) — доступ, ключ, env, эндпоинты, лимиты, расходы
-status: planned         # planned → in-progress → review → done
+status: done           # docs guide написан (docs/twitter-data-guide.md)
 owner: backend
 created: 2026-06-14
 updated: 2026-06-14

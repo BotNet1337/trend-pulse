@@ -9,9 +9,16 @@ Tests:
 import re
 
 from api.packs.data import PACK_CATALOG, PackChannel, PackDef, get_pack, list_packs
+from storage.models.channels import SourceKind
 
-# Telegram handle pattern (mirrors watchlist/schemas.py TELEGRAM_HANDLE_PATTERN).
+# Handle patterns per source kind (mirror watchlist/schemas.py). Twitter pack
+# handles are bare lowercase usernames (1-15) — TASK-031/089.
 _TELEGRAM_HANDLE_RE = re.compile(r"^@[A-Za-z0-9_]{4,32}$")
+_TWITTER_HANDLE_RE = re.compile(r"^[a-z0-9_]{1,15}$")
+_HANDLE_RE_BY_KIND = {
+    SourceKind.TELEGRAM: _TELEGRAM_HANDLE_RE,
+    SourceKind.TWITTER: _TWITTER_HANDLE_RE,
+}
 
 
 # ─── Catalog structure tests ──────────────────────────────────────────────────
@@ -42,12 +49,24 @@ def test_all_packs_have_channels() -> None:
         assert len(pack.channels) > 0, f"pack {pack.slug!r} must have at least one channel"
 
 
-def test_all_handles_match_telegram_format() -> None:
+def test_all_handles_match_format_for_kind() -> None:
     for pack in PACK_CATALOG:
         for ch in pack.channels:
-            assert _TELEGRAM_HANDLE_RE.match(ch.handle), (
-                f"handle {ch.handle!r} in pack {pack.slug!r} does not match Telegram format"
+            pattern = _HANDLE_RE_BY_KIND[ch.kind]
+            assert pattern.match(ch.handle), (
+                f"handle {ch.handle!r} (kind={ch.kind}) in pack {pack.slug!r} "
+                f"does not match the {ch.kind} format"
             )
+
+
+def test_crypto_twitter_pack_is_all_twitter_kind() -> None:
+    pack = get_pack("crypto-twitter")
+    assert pack is not None
+    assert pack.topic == "crypto"
+    assert len(pack.channels) >= 20, "seed twitter pack should have ~20-40 candidates"
+    assert all(ch.kind is SourceKind.TWITTER for ch in pack.channels)
+    # No '@' / uppercase — stored in the collector's canonical bare-lowercase form.
+    assert all(ch.handle == ch.handle.lower().lstrip("@") for ch in pack.channels)
 
 
 def test_all_pack_fields_non_empty() -> None:
