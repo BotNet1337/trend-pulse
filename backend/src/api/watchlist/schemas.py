@@ -16,7 +16,7 @@ All ranges/defaults/regex are named module constants — no magic literals.
 import re
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from storage.models.channels import SourceKind
 
@@ -24,6 +24,17 @@ from storage.models.channels import SourceKind
 # rules). Real existence check is the collector's job (task-005); this is the
 # format gate at the API boundary.
 TELEGRAM_HANDLE_PATTERN = re.compile(r"^@[A-Za-z0-9_]{4,32}$")
+
+# Twitter/X handle: a username of 1..15 of [A-Za-z0-9_], optional leading '@'
+# (TASK-031). The collector normalizes the '@' away; real existence is the
+# collector's validate_ref job — this is just the boundary format gate.
+TWITTER_HANDLE_PATTERN = re.compile(r"^@?[A-Za-z0-9_]{1,15}$")
+
+# Per-source handle format gate (selected by `ChannelRef.kind`).
+_HANDLE_PATTERN_BY_KIND = {
+    SourceKind.TELEGRAM: TELEGRAM_HANDLE_PATTERN,
+    SourceKind.TWITTER: TWITTER_HANDLE_PATTERN,
+}
 
 # Alert-config ranges (scoring contract; full scorer is task-006/008).
 SCORE_THRESHOLD_MIN = 0
@@ -45,12 +56,23 @@ class ChannelRef(BaseModel):
     handle: str
     kind: SourceKind = SourceKind.TELEGRAM
 
-    @field_validator("handle")
-    @classmethod
-    def _validate_handle(cls, value: str) -> str:
-        if not TELEGRAM_HANDLE_PATTERN.match(value):
-            raise ValueError("handle must match a Telegram username: '@' + 4-32 of [A-Za-z0-9_]")
-        return value
+    @model_validator(mode="after")
+    def _validate_handle_for_kind(self) -> "ChannelRef":
+        # Validate the handle against the pattern for its source kind (TASK-031).
+        # A model-validator (not field-validator) is used because the rule depends
+        # on `kind`; Telegram behaviour is unchanged (backward-compat).
+        pattern = _HANDLE_PATTERN_BY_KIND.get(self.kind)
+        if pattern is None:
+            raise ValueError(f"unsupported source kind: {self.kind!r}")
+        if not pattern.match(self.handle):
+            if self.kind is SourceKind.TELEGRAM:
+                raise ValueError(
+                    "handle must match a Telegram username: '@' + 4-32 of [A-Za-z0-9_]"
+                )
+            raise ValueError(
+                "handle must match a Twitter username: 1-15 of [A-Za-z0-9_] (optional leading '@')"
+            )
+        return self
 
 
 class AlertConfig(BaseModel):

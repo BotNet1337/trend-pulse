@@ -1,7 +1,7 @@
 ---
 id: TASK-089
 title: Twitter seed-pack «Crypto (RU+EN)» через packs-фичу + per-source handle-валидация
-status: planned         # planned → in-progress → review → done
+status: in-progress    # код+pack готовы; live validate_ref owner-gated на ключ
 owner: backend
 created: 2026-06-14
 updated: 2026-06-14

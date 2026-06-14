@@ -16,9 +16,14 @@ _HANDLE_MAX = 255
 
 
 class SourceKind(enum.StrEnum):
-    """Platform a channel belongs to. Telegram now; Twitter/X later (ADR-001)."""
+    """Platform a channel belongs to (ADR-001). Mirrors `collector.base.SourceKind`.
+
+    The `source_kind` column is `Enum(..., native_enum=False)` (VARCHAR(32), no DB
+    CHECK constraint — see migration 0001), so adding a member needs NO migration.
+    """
 
     TELEGRAM = "telegram"
+    TWITTER = "twitter"  # TASK-031: second source (collector/twitter)
 
 
 class Channel(Base):

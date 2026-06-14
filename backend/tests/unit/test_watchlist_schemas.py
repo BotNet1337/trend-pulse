@@ -33,6 +33,32 @@ def test_channel_ref_rejects_bad_handle(handle: str) -> None:
         ChannelRef(handle=handle)
 
 
+# --- Twitter source handle validation (TASK-031, per-source) -----------------
+
+
+@pytest.mark.parametrize("handle", ["VitalikButerin", "@cobie", "lopp", "a", "x" * 15])
+def test_channel_ref_accepts_valid_twitter_handle(handle: str) -> None:
+    ref = ChannelRef(handle=handle, kind=SourceKind.TWITTER)
+    assert ref.kind is SourceKind.TWITTER
+    assert ref.handle == handle
+
+
+@pytest.mark.parametrize(
+    "handle",
+    ["bad handle!", "@bad-dash", "x" * 16, "@" + "y" * 16, "with.dot", ""],
+)
+def test_channel_ref_rejects_bad_twitter_handle(handle: str) -> None:
+    with pytest.raises(ValidationError):
+        ChannelRef(handle=handle, kind=SourceKind.TWITTER)
+
+
+def test_telegram_handle_rejected_as_twitter_when_too_long() -> None:
+    # A 20-char handle is a valid-ish Telegram name but too long for Twitter (≤15).
+    ChannelRef(handle="@" + "a" * 20, kind=SourceKind.TELEGRAM)  # ok for telegram
+    with pytest.raises(ValidationError):
+        ChannelRef(handle="a" * 20, kind=SourceKind.TWITTER)
+
+
 @pytest.mark.parametrize("threshold", [-1, 101, 1000])
 def test_alert_config_rejects_out_of_range_threshold(threshold: int) -> None:
     with pytest.raises(ValidationError):

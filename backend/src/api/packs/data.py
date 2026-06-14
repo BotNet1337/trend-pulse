@@ -9,10 +9,20 @@ handles (e.g. @wired, @startups) were rejected. Handles follow the format
 validated by `TELEGRAM_HANDLE_PATTERN` (watchlist/schemas.py): '@' + 4-32 of
 [A-Za-z0-9_]. Dead handles are silently skipped by the collector (ADR-001).
 
-Two packs are required by TASK-038 as a baseline, a third added 2026-06-12:
-  - crypto-ru  (~8 handles): Russian-language crypto / DeFi channels
-  - tech-en    (~6 handles): English-language tech / startup channels
-  - crypto-en  (~8 handles): English-language crypto / on-chain channels
+Two packs are required by TASK-038 as a baseline, a third added 2026-06-12, a
+fourth (Twitter/X) added 2026-06-14 (TASK-031/089):
+  - crypto-ru       (~29 handles): Russian-language crypto / DeFi Telegram channels
+  - tech-en         (~6 handles):  English-language tech / startup Telegram channels
+  - crypto-en       (~8 handles):  English-language crypto / on-chain Telegram channels
+  - crypto-twitter  (~40 handles): crypto Twitter/X accounts (RU+EN), kind=TWITTER
+
+The Twitter pack handles are CANDIDATES (well-known accounts); live existence is
+not pre-validated here because it requires TWITTER_BEARER_TOKEN (owner-gated). Dead
+or renamed handles are silently skipped by the collector at read time (resolve →
+None → skip), exactly like dead Telegram handles. When the key is configured a
+follow-up run prunes the dead ones via TwitterCollector.validate_ref (TASK-089).
+Handles are stored bare + lowercased (the collector's canonical form) and are ≤15
+chars (X username limit).
 
 Known limitation (by design, task doc §Discussion): subscribing a pack snapshot
 the current handle list; if a pack is updated later, users must unsubscribe and
@@ -129,6 +139,57 @@ _CRYPTO_EN_CHANNELS: tuple[PackChannel, ...] = (
     PackChannel("@glassnode"),  # Glassnode — on-chain analytics, 44.5K
 )
 
+_CRYPTO_TWITTER_CHANNELS: tuple[PackChannel, ...] = (
+    # Crypto Twitter/X accounts (TASK-031/089), bare + lowercase usernames (≤15 chars).
+    # CANDIDATES — live existence pruned later via validate_ref once TWITTER_BEARER_TOKEN
+    # is set (owner-gated); dead/renamed handles are skipped by the collector at read time.
+    # -- EN: founders / analysts / on-chain / media --
+    PackChannel("vitalikbuterin", kind=SourceKind.TWITTER),
+    PackChannel("balajis", kind=SourceKind.TWITTER),
+    PackChannel("saylor", kind=SourceKind.TWITTER),
+    PackChannel("apompliano", kind=SourceKind.TWITTER),
+    PackChannel("cryptohayes", kind=SourceKind.TWITTER),
+    PackChannel("cobie", kind=SourceKind.TWITTER),
+    PackChannel("pentosh1", kind=SourceKind.TWITTER),
+    PackChannel("woonomic", kind=SourceKind.TWITTER),
+    PackChannel("wclementeiii", kind=SourceKind.TWITTER),
+    PackChannel("100trillionusd", kind=SourceKind.TWITTER),
+    PackChannel("rektcapital", kind=SourceKind.TWITTER),
+    PackChannel("cryptokaleo", kind=SourceKind.TWITTER),
+    PackChannel("intocryptoverse", kind=SourceKind.TWITTER),
+    PackChannel("ryansadams", kind=SourceKind.TWITTER),
+    PackChannel("trustlessstate", kind=SourceKind.TWITTER),
+    PackChannel("cburniske", kind=SourceKind.TWITTER),
+    PackChannel("haydenzadams", kind=SourceKind.TWITTER),
+    PackChannel("stanikulechov", kind=SourceKind.TWITTER),
+    PackChannel("erikvoorhees", kind=SourceKind.TWITTER),
+    PackChannel("lopp", kind=SourceKind.TWITTER),
+    PackChannel("gavofyork", kind=SourceKind.TWITTER),
+    PackChannel("messaricrypto", kind=SourceKind.TWITTER),
+    PackChannel("glassnode", kind=SourceKind.TWITTER),
+    PackChannel("santimentfeed", kind=SourceKind.TWITTER),
+    PackChannel("defillama", kind=SourceKind.TWITTER),
+    PackChannel("lookonchain", kind=SourceKind.TWITTER),
+    PackChannel("whalealert", kind=SourceKind.TWITTER),
+    PackChannel("watcherguru", kind=SourceKind.TWITTER),
+    PackChannel("cointelegraph", kind=SourceKind.TWITTER),
+    PackChannel("coindesk", kind=SourceKind.TWITTER),
+    PackChannel("theblock__", kind=SourceKind.TWITTER),
+    # -- RU: Russian-language crypto media / analysts --
+    PackChannel("forklog", kind=SourceKind.TWITTER),
+    PackChannel("rbc_crypto", kind=SourceKind.TWITTER),
+    PackChannel("incrypted", kind=SourceKind.TWITTER),
+    PackChannel("bitsmedia_ru", kind=SourceKind.TWITTER),
+    PackChannel("prostocoin", kind=SourceKind.TWITTER),
+    PackChannel("hashtelegraph", kind=SourceKind.TWITTER),
+    PackChannel("bccnews", kind=SourceKind.TWITTER),
+    PackChannel("cryptorussia", kind=SourceKind.TWITTER),
+    PackChannel("profinvestment", kind=SourceKind.TWITTER),
+    PackChannel("coinpost_ru", kind=SourceKind.TWITTER),
+    PackChannel("ru_holderlab", kind=SourceKind.TWITTER),
+    PackChannel("cryptohacker_ru", kind=SourceKind.TWITTER),
+)
+
 # The catalog is a frozen tuple — immutable at runtime (CONVENTIONS: no mutable globals).
 PACK_CATALOG: tuple[PackDef, ...] = (
     PackDef(
@@ -148,6 +209,12 @@ PACK_CATALOG: tuple[PackDef, ...] = (
         title="Crypto EN",
         topic="crypto",
         channels=_CRYPTO_EN_CHANNELS,
+    ),
+    PackDef(
+        slug="crypto-twitter",
+        title="Crypto Twitter (RU+EN)",
+        topic="crypto",
+        channels=_CRYPTO_TWITTER_CHANNELS,
     ),
 )
 
