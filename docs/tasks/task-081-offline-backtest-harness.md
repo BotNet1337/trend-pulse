@@ -1,10 +1,10 @@
 ---
 id: TASK-081
 title: Offline accuracy harness на прод-корпусе (METRICS-ONLY) — измерительный инструмент + baseline-отчёт
-status: review         # planned → in-progress → review → done
+status: done           # planned → in-progress → review → done
 owner: backend
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-14
 baseline_commit: "fb4d497"
 branch: "task/081-offline-backtest-harness"
 tags: [eval, backtest, scorer, clustering, metrics, signal-quality, T9]
@@ -137,5 +137,5 @@ audit sizes/dup-topics/dup-centroids incl. block-boundary). Harness реальн
 - [x] do (TDD)
 - [x] verify (G2) — make test + ci-fast
 - [x] review
-- [x] ship (PR, NO merge)
+- [x] ship — PR #124 https://github.com/BotNet1337/trend-pulse/pull/124 (MERGED)
 - current_step: ship

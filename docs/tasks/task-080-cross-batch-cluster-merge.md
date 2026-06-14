@@ -1,10 +1,10 @@
 ---
 id: TASK-080
 title: Cross-batch cluster merge — перестать плодить дубликаты кластеров одной темы
-status: review         # planned → in-progress → review → done
+status: done           # planned → in-progress → review → done
 owner: backend
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-14
 baseline_commit: "fb4d497"
 branch: "task/080-cross-batch-cluster-merge"
 tags: [pipeline, clustering, pgvector, cross-batch, merge, dedup]
@@ -131,9 +131,9 @@ pgvector `<=>` = cosine DISTANCE = `1 - cosine_similarity`. «similarity ≥ thr
 - [x] plan (G1)
 - [x] do (TDD)
 - [x] verify (G2)
-- [ ] review
-- [ ] ship
-- current_step: do→verify
+- [x] review
+- [x] ship — PR #123 https://github.com/BotNet1337/trend-pulse/pull/123 (MERGED)
+- current_step: ship
 - lock: agent-a5f3f69034249e8ea
 
 ## Tests (RED → GREEN)

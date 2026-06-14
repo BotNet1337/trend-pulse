@@ -1,10 +1,10 @@
 ---
 id: TASK-086
 title: Фикс вырождения velocity — viral_score снова осмыслен на реал-данных (T15)
-status: review         # planned → in-progress → review → done
+status: done           # planned → in-progress → review → done
 owner: backend
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-14
 baseline_commit: "de121e5"
 branch: "task/086-fix-velocity-degeneration"
 tags: [scorer, velocity, signal-quality, discrimination, auc, T15]
