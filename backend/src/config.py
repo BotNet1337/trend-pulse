@@ -112,6 +112,11 @@ _DEFAULT_TELEGRAM_API_BASE_URL = "https://api.telegram.org"
 # Twitter/X API v2 base (TASK-031, ADR-001). Single source for the host so tests
 # can point the collector at a mock transport without touching call sites.
 _DEFAULT_TWITTER_API_BASE_URL = "https://api.twitter.com"
+# Reddit hosts (TASK-092, ADR-001). After OAuth2 the API lives on oauth.reddit.com;
+# the access-token endpoint lives on www.reddit.com. Single-sourced so tests can
+# point the collector at a mock transport without touching call sites.
+_DEFAULT_REDDIT_API_BASE_URL = "https://oauth.reddit.com"
+_DEFAULT_REDDIT_OAUTH_BASE_URL = "https://www.reddit.com"
 # Billing — NOWPayments (task-010, ADR-004). The API base is the single source for
 # the URL (non-secret, not a magic literal at the call site). The API key + IPN
 # secret are secrets from sensitive.env; they DEFAULT to empty so the app boots
@@ -453,6 +458,19 @@ class Settings(BaseSettings):
     # collector.constants.MAX_TWITTER_READS_PER_MONTH). ---
     twitter_bearer_token: str | None = None
     twitter_api_base_url: str = _DEFAULT_TWITTER_API_BASE_URL
+
+    # --- Reddit source (TASK-092, ADR-001). Optional: app boots without it
+    # (collector unregistered → ingest no-op for REDDIT refs, like an empty TG pool
+    # or an unset Twitter Bearer). OAuth2 application-only (client_credentials) reads
+    # public data and is FREE — no per-read price, so NO read budget (unlike X).
+    # The three secrets come from sensitive.env as REDDIT_CLIENT_ID/
+    # REDDIT_CLIENT_SECRET/REDDIT_USER_AGENT, NEVER hardcoded/logged. Reddit REQUIRES
+    # a unique User-Agent. ---
+    reddit_client_id: str | None = None
+    reddit_client_secret: str | None = None
+    reddit_user_agent: str | None = None
+    reddit_api_base_url: str = _DEFAULT_REDDIT_API_BASE_URL
+    reddit_oauth_base_url: str = _DEFAULT_REDDIT_OAUTH_BASE_URL
 
     # --- Auth secrets (fastapi-users + httpx-oauth, ADR-003). ---
     # NO defaults on the SECRET fields → a missing env var fails fast at startup

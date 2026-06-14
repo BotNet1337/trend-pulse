@@ -58,3 +58,28 @@ class TwitterReadBudgetExceededError(SourceUnavailableError):
     Subclasses `SourceUnavailableError` so `collect_tick` already skips the ref
     cleanly (no tasks.py change), while remaining distinguishable for the once-only
     ops alert."""
+
+
+class RedditAPIError(CollectorError):
+    """A non-recoverable Reddit API error (non-2xx other than 401/403/404/429) — skip the ref.
+
+    Reddit OAuth2 application-only is FREE (no per-read cost, unlike X pay-per-use),
+    so there is no credits/budget error here — only transient API/rate-limit ones
+    (TASK-092)."""
+
+
+class RedditAuthError(CollectorError):
+    """Reddit OAuth2 token could not be obtained/refreshed (bad client creds / auth 4xx).
+
+    The reader maps this to a per-ref `SourceUnavailableError` (skip the ref, never
+    crash the tick); the credentials are owner-supplied env (TASK-092)."""
+
+
+class RedditRateLimitError(CollectorError):
+    """Reddit API returned 429. Carries `retry_after_seconds` (from the
+    `x-ratelimit-reset`/`retry-after` header when present) so the reader can back off
+    inline (short) or skip the ref (long) — mirrors the Twitter 429 contract."""
+
+    def __init__(self, message: str, *, retry_after_seconds: float) -> None:
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds

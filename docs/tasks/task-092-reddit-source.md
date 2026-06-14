@@ -1,10 +1,11 @@
 ---
 id: TASK-092
 title: Reddit source readiness — третий SourceCollector (ADR-001), OAuth2 app-only клиент, регистрация, per-source handle
-status: planned             # planned → in-progress → review → done
+status: done                # planned → in-progress → review → done
 owner: backend
 created: 2026-06-14
 updated: 2026-06-14
+lock: ""
 baseline_commit: "8debda0b863501cdf92fea2d1105264f73ca98bb"
 branch: "gsd/phase-092-reddit-source"
 tags: [backend, collector, source-abstraction, reddit, reddit-loop, phase-r, R1]
@@ -223,18 +224,18 @@ collector. DoD — Acceptance Criteria.
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
+current_step: done
 baseline_commit: "8debda0b863501cdf92fea2d1105264f73ca98bb"
 branch: "gsd/phase-092-reddit-source"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved; зеркало TASK-031, defaults из runbook §Reddit-spec)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + real behavior на моке API)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (если применимо)
-- [ ] 6 ship (PR, squash-merged)
-- [ ] 7 learnings (auto)
+- [x] 3 do (TDD: failing test → minimal code — 38 reddit unit + 9 watchlist-schema)
+- [x] 4 verify (G2 — `make ci-fast` зелёный: ruff+mypy 181 files+pytest 935 passed на моке API)
+- [x] 5 review (auto, adversarial — 0 CRITICAL; 2 HIGH сняты как inherited/pre-existing)
+- [x] 5.5 security (auto — 0 CRITICAL/HIGH; секреты из env/маскированы, нет SSRF/инъекции)
+- [x] 6 ship (PR, squash-merged)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details
@@ -252,3 +253,39 @@ owner-gated ФАЗА 2. Ядро/pipeline/scorer/billing НЕ трогаем (п
 deps: нет (source-abstraction + Twitter-эталон уже на main). locate+plan выполнены этим планированием —
 executor стартует с «3 do». Run в изолированном git worktree `apps/trendPulse-reddit` — основное дерево
 занято параллельной TASK-031d-сессией.)
+
+### Реализация 2026-06-14 (do→verify→review→ship)
+Реализовано как точная калька Twitter-источника, но **проще** (Reddit бесплатен → нет read-budget/credits-
+cooldown/user-id-cache; сабреддит = идентификатор, resolve-шага нет). Файлы: `collector/reddit/{__init__,
+client,reader,mapper,dedup}.py` (client = OAuth2 application-only + token-refresh + 401-retry-once + 429→
+RedditRateLimitError; reader = per-sub `/r/{sub}/new` + inline-429-backoff, любая ошибка → per-ref
+SourceUnavailableError; mapper = score→reactions/num_crossposts→forwards/views=0/extra; dedup = strip `r/`/
+URL, lowercase). Регистрация `register(REDDIT, _build_reddit_collector)`. errors: RedditAPIError/
+RedditAuthError/RedditRateLimitError. constants: REDDIT_COLLECT_INTERVAL_SECONDS=300/MAX_RESULTS=50/
+RATE_LIMIT_INLINE_CAP=60/OAUTH_TOKEN_PATH/EXPIRY_LEEWAY. config: reddit_client_id/secret/user_agent/
+api_base_url(oauth.reddit.com)/oauth_base_url(www.reddit.com). watchlist: REDDIT_HANDLE_PATTERN
+`^(?:r/)?[A-Za-z0-9_]{3,21}$` + per-source error-map. env: sensitive.env.example.
+
+**Расширения scope (необходимые, зафиксированы):**
+1. `storage/models/channels.py::SourceKind` += `REDDIT` — ОБА enum (collector.base + storage) независимы;
+   watchlist-валидация и Channel.source_kind используют storage-enum. native_enum=False VARCHAR → миграция
+   НЕ нужна (как Twitter). Контракт неизменен (только +1 значение).
+2. Тесты watchlist-source_kind=reddit размещены в существующем `tests/unit/test_watchlist_schemas.py`
+   (per-source handle-валидация) — следуя реальному Twitter-прецеденту (отдельного `test_twitter_watchlist.py`
+   на самом деле НЕТ); end-to-end wiring watchlist→collect_tick source-agnostic (уже покрыт generically).
+   Это AC4: handle принят + registry знает REDDIT + collector.read покрыт в test_reddit_collector.
+3. env-пример: только `release/deployment.example/sensitive.env.example` (корневого `.env.example` в репо нет —
+   Twitter добавлялся туда же).
+
+**Review/security (адверсариально, 0 CRITICAL):** code-reviewer 2 HIGH — оба сняты: (a) «SourceUnavailableError
+валит тик» — НЕ так: `collector/tasks.py` зовёт `read([ref])` по одному ref и ловит SourceUnavailableError
+per-ref (тик продолжается); (b) negative `score` в DTO — намеренно: client._coerce_int permissive, инвариант
+≥0 enforced в mapper._as_int (задокументировано). Hyphen-в-сабреддите (LOW) — ОТКЛОНЕНО: имена сабреддитов
+не допускают дефис. Внесены дешёвые фиксы: контекст (handle+exc_type) в логе validate_ref; комментарий о
+clamp. security-reviewer: 0 HIGH (секреты только из env/маскированы, нет SSRF — host из конфига не из ввода,
+нет path-инъекции — handle `[A-Za-z0-9_]`, JSON untrusted нормализуется, 401-refresh без бесконечного цикла).
+
+**Follow-up (не блокер, вне scope):** `to_storage_params` пишет handle as-is для ВСЕХ источников (Twitter тоже)
+→ `r/Bitcoin` и `bitcoin` могут дать 2 channel-строки; коллектор дедупит при чтении (unique_reddit_refs), но
+storage-нормализацию стоит добавить общим улучшением refs.py позже (refs.py намеренно не импортирует collector).
+G2 (поведенческое на проде) — owner-gated ФАЗА 2 (нужен Reddit-ключ).)
