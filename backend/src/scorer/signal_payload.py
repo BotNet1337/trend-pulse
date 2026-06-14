@@ -31,22 +31,22 @@ class SignalPost:
 
     text: str
     channel_id: int
-    posted_at: float        # epoch seconds
+    posted_at: float  # epoch seconds
 
 
 @dataclass(frozen=True)
 class SignalPayload:
     """The actionable signal an alert / API / MCP tool emits."""
 
-    headline_score: float            # [0,100], independence-weighted, 0 if noise
-    signal_kind: SignalKind          # organic | promo | coordinated
-    category: EventCategory          # listing | hack | regulation | price_move | other
+    headline_score: float  # [0,100], independence-weighted, 0 if noise
+    signal_kind: SignalKind  # organic | promo | coordinated
+    category: EventCategory  # listing | hack | regulation | price_move | other
     origin_channel: int
     origin_at: float
-    total_channels: int              # raw distinct channels in the cluster
-    independent_channels: float      # effective independent reach (shill ring → ~1)
+    total_channels: int  # raw distinct channels in the cluster
+    independent_channels: float  # effective independent reach (shill ring → ~1)
     lead_time_to_confirmation_seconds: float | None  # origin → CONFIRMATION_CHANNEL_N
-    narrative: str                   # origin post text, capped
+    narrative: str  # origin post text, capped
 
 
 def build_signal_payload(

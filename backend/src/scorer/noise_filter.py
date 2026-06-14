@@ -29,16 +29,16 @@ from enum import StrEnum
 # promo requires a MAJORITY of posts to be promotional (a lone ad reposted into an
 # otherwise-organic story should not poison the whole cluster).
 _PROMO_PATTERNS: tuple[str, ...] = (
-    r"#\s*реклам",                     # #реклама / # реклама
+    r"#\s*реклам",  # #реклама / # реклама
     r"\b(?:ad|sponsored|promo(?:ted)?)\b",
-    r"партн[её]рск",                  # партнёрский материал
-    r"utm_[a-z]+=",                    # utm tracking
-    r"\bref(?:erral)?[._=/-]",        # referral links
-    r"t\.me/\+",                       # private invite link (typical of shill funnels)
+    r"партн[её]рск",  # партнёрский материал
+    r"utm_[a-z]+=",  # utm tracking
+    r"\bref(?:erral)?[._=/-]",  # referral links
+    r"t\.me/\+",  # private invite link (typical of shill funnels)
     r"промокод|промо-?код",
     r"\bзалетай(?:те)?\b|\bуспей(?:те)?\s+купить|\bbuy\s+now\b|\bape\s+in\b",
     r"\bairdrop\b.*\bclaim\b|\bclaim\b.*\bairdrop\b",
-    r"\b0x[a-fA-F0-9]{40}\b",         # EVM contract address (paired with a buy-call below)
+    r"\b0x[a-fA-F0-9]{40}\b",  # EVM contract address (paired with a buy-call below)
     r"\b(?:not\s+financial\s+advice|nfa|это\s+не\s+финанс\w*\s+совет)\b",
 )
 _PROMO_RE = re.compile("|".join(_PROMO_PATTERNS), re.IGNORECASE)
@@ -51,7 +51,7 @@ PROMO_CLUSTER_FRACTION = 0.5
 # not organically propagated), and that duplicate set covers at least
 # COORDINATED_DUP_FRACTION of the cluster's distinct channels.
 COORDINATED_MIN_CHANNELS = 3
-COORDINATED_WINDOW_SECONDS = 600.0       # 10 minutes — tighter than organic spread
+COORDINATED_WINDOW_SECONDS = 600.0  # 10 minutes — tighter than organic spread
 COORDINATED_DUP_FRACTION = 0.6
 # Texts shorter than this (after normalization) are too generic to judge as a
 # coordinated duplicate (e.g. "GM", a lone emoji) — ignore them for dup detection.
@@ -75,7 +75,7 @@ class ClusterPost:
     """Minimal per-post shape the filter needs — platform-independent."""
 
     text: str
-    posted_at: float        # epoch seconds
+    posted_at: float  # epoch seconds
     channel_id: int
 
 

@@ -18,7 +18,7 @@ class AttributionPost:
     """Minimal per-post shape attribution needs."""
 
     channel_id: int
-    posted_at: float        # epoch seconds
+    posted_at: float  # epoch seconds
 
 
 @dataclass(frozen=True)

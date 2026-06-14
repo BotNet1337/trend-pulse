@@ -79,9 +79,7 @@ def test_independent_breadth_beats_shill_ring() -> None:
 @pytest.mark.unit
 @pytest.mark.parametrize("kind", [SignalKind.PROMO, SignalKind.COORDINATED])
 def test_noise_clusters_score_zero(kind: SignalKind) -> None:
-    s = compute_headline_score(
-        base=_inputs(), effective_independent_channels=8.0, signal_kind=kind
-    )
+    s = compute_headline_score(base=_inputs(), effective_independent_channels=8.0, signal_kind=kind)
     assert s == 0.0
 
 

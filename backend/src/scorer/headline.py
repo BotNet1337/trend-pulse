@@ -37,9 +37,7 @@ def compute_headline_score(
     if signal_kind is not SignalKind.ORGANIC:
         return 0.0
 
-    engagement = v2._engagement(
-        views=base.views, forwards=base.forwards, reactions=base.reactions
-    )
+    engagement = v2._engagement(views=base.views, forwards=base.forwards, reactions=base.reactions)
 
     independent = max(effective_independent_channels, 0.0)
     watched = base.watched_channels_count

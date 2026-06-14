@@ -100,8 +100,7 @@ def test_same_text_but_time_lagged_is_not_coordinated() -> None:
     # not a simultaneous seeding burst (the time gate distinguishes them).
     seed = "Биржа Binance объявила о листинге нового актива на спотовом рынке сегодня днём"
     posts = tuple(
-        _p(seed, channel=ch, dt=ch * (COORDINATED_WINDOW_SECONDS + 600.0))
-        for ch in range(1, 6)
+        _p(seed, channel=ch, dt=ch * (COORDINATED_WINDOW_SECONDS + 600.0)) for ch in range(1, 6)
     )
     assert classify_cluster(posts) is not SignalKind.COORDINATED
 
