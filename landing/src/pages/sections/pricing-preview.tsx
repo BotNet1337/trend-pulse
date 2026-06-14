@@ -59,7 +59,7 @@ export function PricingPreviewSection() {
                 className={[
                   'bg-card border rounded-xl p-8 relative flex flex-col transition-all',
                   isPopular
-                    ? 'border-primary shadow-lg scale-105'
+                    ? 'border-primary shadow-brand scale-105'
                     : 'border-border hover:border-primary/50 hover:shadow-md',
                 ].join(' ')}
               >

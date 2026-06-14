@@ -54,7 +54,7 @@ export function RootLayout() {
         <div className="max-w-7xl mx-auto px-6 lg:px-20">
           <div className="flex items-center justify-between h-16">
             <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity" aria-label={`${SITE.brandName} home`}>
-              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+              <div className="w-8 h-8 bg-aurora-button rounded-lg flex items-center justify-center shadow-brand">
                 <span className="text-primary-foreground font-bold text-xs">TP</span>
               </div>
               <span className="font-semibold text-lg">{SITE.brandName}</span>
@@ -168,7 +168,7 @@ export function RootLayout() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
             <div>
               <Link to="/" className="flex items-center gap-2 mb-4 hover:opacity-80 transition-opacity w-fit" aria-label={`${SITE.brandName} home`}>
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+                <div className="w-8 h-8 bg-aurora-button rounded-lg flex items-center justify-center shadow-brand">
                   <span className="text-primary-foreground font-bold text-xs">TP</span>
                 </div>
                 <span className="font-semibold text-lg">{SITE.brandName}</span>

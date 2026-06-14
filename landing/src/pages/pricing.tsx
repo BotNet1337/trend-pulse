@@ -50,7 +50,7 @@ export function PricingPage() {
           <Badge variant="secondary" className="mb-6">
             Simple Pricing
           </Badge>
-          <h1 className="text-4xl md:text-5xl font-bold mb-6">Choose Your Plan</h1>
+          <h1 className="text-aurora-gradient text-4xl md:text-5xl font-bold mb-6">Choose Your Plan</h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-4">
             Start free. Upgrade when you need more channels, topics, or history.
             All plans include Telegram alert delivery. Public channels only.
@@ -75,7 +75,7 @@ export function PricingPage() {
                   className={[
                     'bg-card border rounded-xl p-8 relative flex flex-col transition-all',
                     isPopular
-                      ? 'border-primary shadow-lg scale-105'
+                      ? 'border-primary shadow-brand scale-105'
                       : 'border-border hover:border-primary/50 hover:shadow-md hover:-translate-y-0.5',
                   ].join(' ')}
                 >

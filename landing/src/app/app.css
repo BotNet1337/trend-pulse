@@ -3,82 +3,119 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ─── Aurora Design System — dark-only ──────────────────────────────────────
+ * Ported from the SPA (frontend/src/app/app.css) so the marketing landing and
+ * the app share ONE palette. The site is always Aurora dark: both :root and
+ * .dark resolve to the same tokens, so first paint is dark regardless of the
+ * (now inert) theme class — no FOUC, no broken light mode.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
 :root {
   --font-size: 16px;
-  --background: #ffffff;
-  --foreground: oklch(0.145 0 0);
-  --card: #ffffff;
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: #2563eb;
+  --radius: 0.625rem;
+  color-scheme: dark;
+
+  /* Aurora palette */
+  --aurora-blue:        #3b82f6;
+  --aurora-violet:      #7c3aed;
+  --aurora-cyan:        #22d3ee;
+  --aurora-cyan-bright: #67e8f9;
+  --aurora-text:        #eaeefb;
+  --aurora-text-muted:  #8994b8;
+  --aurora-text-faint:  #4e5a78;
+  --aurora-border:      rgba(255,255,255,0.10);
+  --aurora-glass:       rgba(255,255,255,0.05);
+  --aurora-glass-solid: #0d1432;
+  --aurora-grad-btn:    linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+  --aurora-grad-text:   linear-gradient(92deg, #7cb3fc 0%, #b39cfc 50%, #5eead4 100%);
+  --aurora-container:   1200px;
+
+  /* Tailwind token → Aurora dark mapping */
+  --background:    #070b1d;
+  --foreground:    #eaeefb;
+  --card:          rgba(255,255,255,0.05);
+  --card-foreground:    #eaeefb;
+  --popover:       rgba(7,11,29,0.97);
+  --popover-foreground: #eaeefb;
+  --primary:       #3b82f6;
   --primary-foreground: #ffffff;
-  --secondary: oklch(0.95 0.0058 264.53);
-  --secondary-foreground: #030213;
-  --muted: #ececf0;
-  --muted-foreground: #717182;
-  --accent: #e9ebef;
-  --accent-foreground: #030213;
-  --destructive: #d4183d;
+  --secondary:     rgba(255,255,255,0.07);
+  --secondary-foreground: #eaeefb;
+  --muted:         rgba(255,255,255,0.07);
+  --muted-foreground: #8994b8;
+  --accent:        rgba(34,211,238,0.12);
+  --accent-foreground: #67e8f9;
+  --destructive:   #f87171;
   --destructive-foreground: #ffffff;
-  --border: rgba(0, 0, 0, 0.1);
-  --input: transparent;
-  --input-background: #f3f3f5;
-  --switch-background: #cbced4;
+  --border:        rgba(255,255,255,0.10);
+  --input:         rgba(255,255,255,0.07);
+  --input-background: rgba(255,255,255,0.05);
+  --switch-background: rgba(255,255,255,0.14);
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: #2563eb;
+  --ring:          rgba(59,130,246,0.45);
+
+  --chart-1: #3b82f6;
+  --chart-2: #22d3ee;
+  --chart-3: #a78bfa;
+  --chart-4: #34d399;
+  --chart-5: #f59e0b;
+
+  --sidebar:            rgba(7,11,29,0.95);
+  --sidebar-foreground: #eaeefb;
+  --sidebar-primary:    #3b82f6;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-accent:     rgba(255,255,255,0.06);
+  --sidebar-accent-foreground: #eaeefb;
+  --sidebar-border:     rgba(255,255,255,0.08);
+  --sidebar-ring:       rgba(59,130,246,0.45);
+
+  /* Brand — Aurora indigo-violet gradient (matches aurora-grad-btn) */
+  --brand:          #4F46E5;
+  --brand-foreground: #FFFFFF;
+  --brand-soft:     #818CF8;
+  --brand-deep:     #4338CA;
+  --brand-gradient: linear-gradient(140deg, #2563eb 0%, #7c3aed 60%, #a855f7 100%);
+  --brand-glow:     radial-gradient(120% 120% at 0% 0%, rgba(255,255,255,0.14), transparent 60%),
+                    radial-gradient(80% 80% at 100% 100%, rgba(0,0,0,0.25), transparent 70%);
+
+  /* Hero / final-CTA aurora glow */
+  --aurora-hero-glow: radial-gradient(60% 80% at 50% 0%, rgba(59,130,246,0.18), transparent 70%),
+                      radial-gradient(50% 60% at 80% 20%, rgba(124,58,237,0.16), transparent 70%),
+                      radial-gradient(40% 50% at 15% 30%, rgba(34,211,238,0.12), transparent 70%);
 }
 
+/* Dark class is a no-op now — we're always Aurora dark */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.145 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.145 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: #3b82f6;
+  --background:    #070b1d;
+  --foreground:    #eaeefb;
+  --card:          rgba(255,255,255,0.05);
+  --card-foreground:    #eaeefb;
+  --popover:       rgba(7,11,29,0.97);
+  --popover-foreground: #eaeefb;
+  --primary:       #3b82f6;
   --primary-foreground: #ffffff;
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.637 0.237 25.331);
-  --border: oklch(0.269 0 0);
-  --input: oklch(0.269 0 0);
-  --ring: oklch(0.439 0 0);
-  --font-weight-medium: 500;
-  --font-weight-normal: 400;
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: #3b82f6;
+  --secondary:     rgba(255,255,255,0.07);
+  --secondary-foreground: #eaeefb;
+  --muted:         rgba(255,255,255,0.07);
+  --muted-foreground: #8994b8;
+  --accent:        rgba(34,211,238,0.12);
+  --accent-foreground: #67e8f9;
+  --destructive:   #f87171;
+  --destructive-foreground: #ffffff;
+  --border:        rgba(255,255,255,0.10);
+  --input:         rgba(255,255,255,0.07);
+  --input-background: rgba(255,255,255,0.05);
+  --switch-background: rgba(255,255,255,0.14);
+  --ring:          rgba(59,130,246,0.45);
+  --sidebar:            rgba(7,11,29,0.95);
+  --sidebar-foreground: #eaeefb;
+  --sidebar-primary:    #3b82f6;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(0.269 0 0);
-  --sidebar-ring: oklch(0.439 0 0);
+  --sidebar-accent:     rgba(255,255,255,0.06);
+  --sidebar-accent-foreground: #eaeefb;
+  --sidebar-border:     rgba(255,255,255,0.08);
+  --sidebar-ring:       rgba(59,130,246,0.45);
 }
 
 @theme inline {
@@ -120,6 +157,9 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 }
 
 @layer base {
@@ -178,6 +218,56 @@
   }
 }
 
+/* ─── Aurora utilities ──────────────────────────────────────────────────────
+ * Gradient text / buttons / glow surfaces shared with the SPA. Applied via
+ * className only — content/markup unchanged.
+ * ─────────────────────────────────────────────────────────────────────────── */
+@layer utilities {
+  .bg-brand-gradient {
+    background-image: var(--brand-gradient);
+  }
+  .bg-brand-glow {
+    background-image: var(--brand-glow), var(--brand-gradient);
+  }
+  .text-brand-gradient {
+    background-image: var(--brand-gradient);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  /* Aurora gradient headline (matches SPA --aurora-grad-text) */
+  .text-aurora-gradient {
+    background-image: var(--aurora-grad-text);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  /* Aurora gradient CTA button (matches SPA --aurora-grad-btn) */
+  .bg-aurora-button {
+    background-image: var(--aurora-grad-btn);
+  }
+  .shadow-brand {
+    box-shadow:
+      0 4px 12px rgba(37,99,235,0.30),
+      inset 0 1px 0 rgba(255,255,255,0.14);
+  }
+  .shadow-brand-hover {
+    box-shadow:
+      0 6px 18px rgba(37,99,235,0.40),
+      inset 0 1px 0 rgba(255,255,255,0.18);
+  }
+  /* Subtle aurora glow backdrop for hero / final-CTA */
+  .bg-aurora-glow {
+    background-image: var(--aurora-hero-glow);
+  }
+  /* Glass card surface over the dark Aurora background */
+  .aurora-card {
+    background: var(--aurora-glass);
+    border: 1px solid var(--aurora-border);
+    border-radius: 14px;
+  }
+}
+
 html.home-scroll-snap {
   scroll-snap-type: y proximity;
   scroll-behavior: smooth;
@@ -204,5 +294,3 @@ html.home-scroll-snap main > section:last-of-type {
   scroll-snap-align: none;
   scroll-snap-stop: normal;
 }
-
-

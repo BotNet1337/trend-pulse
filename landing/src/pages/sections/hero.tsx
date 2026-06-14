@@ -10,13 +10,14 @@ export function HeroSection() {
   const showcaseTelegramUrl = (SITE as { showcaseTelegramUrl?: string }).showcaseTelegramUrl ?? '';
 
   return (
-    <section className="pt-32 pb-16 px-6 lg:px-20 snap-start scroll-mt-16">
+    <section className="relative overflow-hidden pt-32 pb-16 px-6 lg:px-20 snap-start scroll-mt-16">
+      <div className="pointer-events-none absolute inset-0 -z-10 bg-aurora-glow" aria-hidden="true" />
       <div className="max-w-4xl mx-auto text-center">
         <Badge variant="secondary" className="mb-6">
           Early Access · Public Telegram Channels Only
         </Badge>
 
-        <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-6 tracking-tight">
+        <h1 className="text-aurora-gradient text-4xl md:text-5xl lg:text-6xl font-bold mb-6 tracking-tight">
           Catch viral Telegram content<br className="hidden md:block" /> before it explodes
         </h1>
 

@@ -9,7 +9,7 @@ export function FinalCtaSection() {
   return (
     <section id="get-started" className="py-24 px-6 lg:px-20 scroll-mt-16">
       <div className="max-w-4xl mx-auto">
-        <div className="bg-linear-to-br from-primary/10 via-primary/5 to-background border border-border rounded-2xl p-12 text-center">
+        <div className="relative overflow-hidden bg-card bg-aurora-glow border border-border rounded-2xl p-12 text-center">
           <h2 className="text-3xl md:text-4xl font-bold mb-4">
             Ready to catch viral trends before everyone else?
           </h2>
