@@ -17,7 +17,7 @@ const content = { padding: '32px 36px 0' };
 const heading = {
   fontSize: '24px',
   fontWeight: 700 as const,
-  color: '#0F172A',
+  color: '#eaeefb',
   letterSpacing: '-0.03em',
   margin: '0 0 14px',
   lineHeight: '1.2',
@@ -26,21 +26,21 @@ const heading = {
 const bodyText = {
   fontSize: '15px',
   lineHeight: '26px',
-  color: '#475569',
+  color: '#8994b8',
   margin: '0 0 10px',
 };
 
 const stepsLabel = {
   fontSize: '15px',
   fontWeight: 600 as const,
-  color: '#0F172A',
+  color: '#eaeefb',
   margin: '20px 0 8px',
 };
 
 const stepsList = {
   fontSize: '14px',
   lineHeight: '28px',
-  color: '#475569',
+  color: '#8994b8',
   margin: '0',
   paddingLeft: '18px',
 };
@@ -48,12 +48,12 @@ const stepsList = {
 const muted = {
   fontSize: '13px',
   lineHeight: '22px',
-  color: '#94A3B8',
+  color: '#4e5a78',
   marginTop: '24px',
 };
 
 const link = {
-  color: '#6366F1',
+  color: '#7cb3fc',
   textDecoration: 'none' as const,
   fontWeight: 500 as const,
 };
@@ -61,14 +61,14 @@ const link = {
 export function WelcomeEmail({ userName, dashboardUrl, unsubscribeUrl }: WelcomeEmailProps) {
   return (
     <EmailLayout
-      previewText={`Welcome to TrendPulse, ${userName}`}
+      previewText={`Welcome to Foresignal, ${userName}`}
       tagline="Viral content detector"
       unsubscribeUrl={unsubscribeUrl}
     >
       <Section style={content}>
         <Heading style={heading}>Welcome, {userName}!</Heading>
         <Text style={bodyText}>
-          Your TrendPulse account is ready. Start tracking viral content from Telegram right now.
+          Your Foresignal account is ready. Start tracking viral content from Telegram right now.
         </Text>
         <Text style={stepsLabel}>Get started in 3 steps:</Text>
         <ol style={stepsList}>

@@ -17,7 +17,7 @@ const content = { padding: '32px 36px 0' };
 const heading = {
   fontSize: '24px',
   fontWeight: 700 as const,
-  color: '#0F172A',
+  color: '#eaeefb',
   letterSpacing: '-0.03em',
   margin: '0 0 14px',
   lineHeight: '1.2',
@@ -26,7 +26,7 @@ const heading = {
 const bodyText = {
   fontSize: '15px',
   lineHeight: '26px',
-  color: '#475569',
+  color: '#8994b8',
   margin: '0 0 10px',
 };
 
@@ -46,7 +46,7 @@ const emailBadge = {
 const muted = {
   fontSize: '13px',
   lineHeight: '22px',
-  color: '#94A3B8',
+  color: '#4e5a78',
 };
 
 export function EmailChangeRequestedEmail({
@@ -57,20 +57,20 @@ export function EmailChangeRequestedEmail({
 }: EmailChangeRequestedProps) {
   return (
     <EmailLayout
-      previewText="Confirm your new TrendPulse email address"
+      previewText="Confirm your new Foresignal email address"
       tagline="Security"
     >
       <Section style={content}>
         <Heading style={heading}>Confirm your new email</Heading>
         <Text style={bodyText}>
-          You requested to change the email on your TrendPulse account:
+          You requested to change the email on your Foresignal account:
         </Text>
         <Text style={{ ...bodyText, margin: '14px 0 6px' }}>
-          <span style={{ color: '#94A3B8', fontSize: '12px' }}>From:</span>{' '}
+          <span style={{ color: '#4e5a78', fontSize: '12px' }}>From:</span>{' '}
           <span style={emailBadge}>{oldEmail}</span>
         </Text>
         <Text style={{ ...bodyText, margin: '6px 0 0' }}>
-          <span style={{ color: '#94A3B8', fontSize: '12px' }}>To:</span>{' '}
+          <span style={{ color: '#4e5a78', fontSize: '12px' }}>To:</span>{' '}
           <span style={emailBadge}>{newEmail}</span>
         </Text>
         <Section style={{ marginTop: '24px' }}>

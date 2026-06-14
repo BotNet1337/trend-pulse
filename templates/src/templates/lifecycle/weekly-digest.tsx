@@ -27,7 +27,7 @@ const content = { padding: '32px 36px 0' };
 const heading = {
   fontSize: '24px',
   fontWeight: 700 as const,
-  color: '#0F172A',
+  color: '#eaeefb',
   letterSpacing: '-0.03em',
   margin: '0 0 14px',
   lineHeight: '1.2',
@@ -36,7 +36,7 @@ const heading = {
 const bodyText = {
   fontSize: '15px',
   lineHeight: '26px',
-  color: '#475569',
+  color: '#8994b8',
   margin: '0 0 10px',
 };
 
@@ -50,14 +50,14 @@ const itemRow = {
 const itemTopic = {
   fontSize: '14px',
   fontWeight: 600 as const,
-  color: '#0F172A',
+  color: '#eaeefb',
   margin: '0 0 2px',
   lineHeight: '22px',
 };
 
 const itemMeta = {
   fontSize: '12px',
-  color: '#94A3B8',
+  color: '#4e5a78',
   margin: '0',
   lineHeight: '18px',
 };

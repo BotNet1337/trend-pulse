@@ -14,7 +14,7 @@ const content = { padding: '32px 36px 0' };
 const heading = {
   fontSize: '24px',
   fontWeight: 700 as const,
-  color: '#0F172A',
+  color: '#eaeefb',
   letterSpacing: '-0.03em',
   margin: '0 0 14px',
   lineHeight: '1.2',
@@ -23,7 +23,7 @@ const heading = {
 const bodyText = {
   fontSize: '15px',
   lineHeight: '26px',
-  color: '#475569',
+  color: '#8994b8',
   margin: '0 0 10px',
 };
 
@@ -57,7 +57,7 @@ export function EmailChangedNoticeEmail({
 }: EmailChangedNoticeProps) {
   return (
     <EmailLayout
-      previewText="Your TrendPulse email was changed"
+      previewText="Your Foresignal email was changed"
       tagline="Security alert"
     >
       <Section style={content}>
@@ -66,13 +66,13 @@ export function EmailChangedNoticeEmail({
           Your account email was changed successfully.
         </Text>
         <Text style={{ ...bodyText, margin: '14px 0 6px' }}>
-          <span style={{ color: '#94A3B8', fontSize: '12px' }}>
+          <span style={{ color: '#4e5a78', fontSize: '12px' }}>
             Previous:
           </span>{' '}
           <span style={emailBadge}>{oldEmail}</span>
         </Text>
         <Text style={{ ...bodyText, margin: '6px 0 0' }}>
-          <span style={{ color: '#94A3B8', fontSize: '12px' }}>Current:</span>{' '}
+          <span style={{ color: '#4e5a78', fontSize: '12px' }}>Current:</span>{' '}
           <span style={emailBadge}>{newEmail}</span>
         </Text>
         <Text style={{ ...bodyText, marginTop: '16px' }}>
