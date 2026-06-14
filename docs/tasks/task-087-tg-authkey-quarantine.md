@@ -1,7 +1,7 @@
 ---
 id: TASK-087
 title: Починить AuthKeyDuplicated-спам — карантин мёртвых сессий пула + алерт ровно один раз
-status: in-progress    # planned → in-progress → review → done
+status: done           # planned → in-progress → review → done (PR #148, merged 9c77dd5)
 owner: backend
 created: 2026-06-14
 updated: 2026-06-14
@@ -120,6 +120,6 @@ tags: [collector, telegram, account-pool, auth-error, ops-alert, prod-critical, 
 - [x] G2 verify: `make test` 830 passed; покрытие изменённых модулей 91%; ci-fast (ruff
       format --check / ruff check / mypy 171 files) зелёный
 - [x] G3 review: code-reviewer, 0 CRITICAL, HIGH исправлен (см. выше)
-- [ ] G4 ship (PR)
+- [x] G4 ship: PR #148 merged (squash) → main `9c77dd5`; ветка удалена
 
-current_step: ship
+current_step: done
