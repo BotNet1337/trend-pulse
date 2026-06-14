@@ -7,10 +7,7 @@ import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 
 import { paths } from '@/app/router/path'
 import { apiClient } from '@/shared/api'
-import { Button } from '@/shared/components/button'
-import { Input } from '@/shared/components/input'
-import { Label } from '@/shared/components/label'
-import { BRAND_NAME } from '@/shared/config'
+import { AuthFrame } from './auth-frame'
 import { SomethingWentWrongPage } from '@/pages/error/something-went-wrong'
 
 export const ResetPasswordPage: React.FC = () => {
@@ -41,26 +38,28 @@ export const ResetPasswordPage: React.FC = () => {
   }
 
   return (
-    <div className="auth-light min-h-dvh flex items-center justify-center bg-background text-foreground px-4">
-      <div className="w-full max-w-sm flex flex-col gap-6">
-        <div className="flex flex-col gap-2 text-center">
-          <h1 className="text-2xl font-bold tracking-tight">{BRAND_NAME}</h1>
-          <h2 className="text-lg font-semibold">Reset password</h2>
-          <p className="text-sm text-muted-foreground">
-            Enter your new password below.
-          </p>
+    <AuthFrame>
+      <section className="fs-card fs-auth-card" aria-label="Reset password">
+        <div className="fs-auth-head">
+          <h1>Reset password</h1>
+          <p>Enter your new password below.</p>
         </div>
 
-        <form onSubmit={(e) => void onSubmit(e)} className="flex flex-col gap-4">
+        <form onSubmit={(e) => void onSubmit(e)} className="fs-auth-form">
           {email && (
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" value={email} disabled />
+            <div className="fs-field">
+              <label className="fs-label" htmlFor="email">
+                Email
+              </label>
+              <input className="fs-input" id="email" type="email" value={email} disabled />
             </div>
           )}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="password">New password</Label>
-            <Input
+          <div className="fs-field">
+            <label className="fs-label" htmlFor="password">
+              New password
+            </label>
+            <input
+              className="fs-input"
               id="password"
               type="password"
               autoComplete="new-password"
@@ -74,20 +73,22 @@ export const ResetPasswordPage: React.FC = () => {
           </div>
 
           {error && (
-            <p className="text-sm text-destructive" role="alert">{error}</p>
+            <p className="fs-error" role="alert">
+              {error}
+            </p>
           )}
 
-          <Button type="submit" disabled={pending} className="w-full">
+          <button type="submit" className="fs-btn fs-btn--primary fs-btn--block" disabled={pending}>
             {pending ? 'Resetting…' : 'Reset password'}
-          </Button>
+          </button>
         </form>
 
-        <div className="text-center text-sm text-muted-foreground">
-          <Link to={paths.auth.signIn} className="text-foreground underline underline-offset-2">
-            Back to Sign in
-          </Link>
+        <div className="fs-auth-links">
+          <span>
+            <Link to={paths.auth.signIn}>Back to Sign in</Link>
+          </span>
         </div>
-      </div>
-    </div>
+      </section>
+    </AuthFrame>
   )
 }

@@ -15,10 +15,7 @@ import { useQueryClient } from '@tanstack/react-query'
 
 import { paths } from '@/app/router/path'
 import { isSafeRedirect } from '@/shared/api'
-import { Button } from '@/shared/components/button'
-import { Input } from '@/shared/components/input'
-import { Label } from '@/shared/components/label'
-import { BRAND_NAME } from '@/shared/config'
+import { AuthFrame } from './auth-frame'
 import { useLogin, navigateToGoogleAuth } from '@/features/auth'
 import { CURRENT_USER_QUERY_KEY } from '@/entities/viewer/model'
 
@@ -54,20 +51,20 @@ export const SignInPage: React.FC = () => {
   const pending = loginMutation.isPending
 
   return (
-    <div className="auth-light min-h-dvh flex items-center justify-center bg-background text-foreground px-4">
-      <div className="w-full max-w-sm flex flex-col gap-6">
-        <div className="flex flex-col gap-2 text-center">
-          <h1 className="text-2xl font-bold tracking-tight">{BRAND_NAME}</h1>
-          <h2 className="text-lg font-semibold">Welcome back</h2>
-          <p className="text-sm text-muted-foreground">
-            Enter your credentials to sign in to your account
-          </p>
+    <AuthFrame>
+      <section className="fs-card fs-auth-card" aria-label="Sign in">
+        <div className="fs-auth-head">
+          <h1>Welcome back</h1>
+          <p>Enter your credentials to sign in to your account</p>
         </div>
 
-        <form onSubmit={(e) => void onSubmit(e)} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="email">Email</Label>
-            <Input
+        <form onSubmit={(e) => void onSubmit(e)} className="fs-auth-form">
+          <div className="fs-field">
+            <label className="fs-label" htmlFor="email">
+              Email
+            </label>
+            <input
+              className="fs-input"
               id="email"
               type="email"
               autoComplete="email"
@@ -78,9 +75,12 @@ export const SignInPage: React.FC = () => {
               placeholder="you@example.com"
             />
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="password">Password</Label>
-            <Input
+          <div className="fs-field">
+            <label className="fs-label" htmlFor="password">
+              Password
+            </label>
+            <input
+              className="fs-input"
               id="password"
               type="password"
               autoComplete="current-password"
@@ -93,25 +93,24 @@ export const SignInPage: React.FC = () => {
           </div>
 
           {error && (
-            <p className="text-sm text-destructive" role="alert">{error}</p>
+            <p className="fs-error" role="alert">
+              {error}
+            </p>
           )}
 
-          <Button type="submit" disabled={pending} className="w-full">
+          <button type="submit" className="fs-btn fs-btn--primary fs-btn--block" disabled={pending}>
             {pending ? 'Signing in…' : 'Sign in'}
-          </Button>
+          </button>
         </form>
 
         {/* Google OAuth — browser redirect, no fetch, no secrets in bundle */}
-        <div className="relative flex items-center">
-          <div className="flex-grow border-t border-border" />
-          <span className="mx-2 text-xs text-muted-foreground">or</span>
-          <div className="flex-grow border-t border-border" />
+        <div className="fs-auth-divider" aria-hidden="true">
+          or
         </div>
 
-        <Button
+        <button
           type="button"
-          variant="outline"
-          className="w-full flex items-center gap-2"
+          className="fs-btn fs-btn--secondary fs-btn--block"
           onClick={() => navigateToGoogleAuth()}
           aria-label="Sign in with Google"
         >
@@ -140,25 +139,17 @@ export const SignInPage: React.FC = () => {
             />
           </svg>
           Sign in with Google
-        </Button>
+        </button>
 
-        <div className="text-center text-sm text-muted-foreground flex flex-col gap-1">
+        <div className="fs-auth-links">
           <span>
-            Don&apos;t have an account?{' '}
-            <Link to={paths.auth.signUp} className="text-foreground underline underline-offset-2">
-              Sign up
-            </Link>
+            Don&apos;t have an account? <Link to={paths.auth.signUp}>Sign up</Link>
           </span>
           <span>
-            <Link
-              to={paths.auth.forgotPassword}
-              className="text-foreground underline underline-offset-2"
-            >
-              Forgot password?
-            </Link>
+            <Link to={paths.auth.forgotPassword}>Forgot password?</Link>
           </span>
         </div>
-      </div>
-    </div>
+      </section>
+    </AuthFrame>
   )
 }

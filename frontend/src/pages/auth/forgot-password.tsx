@@ -7,10 +7,7 @@ import { Link } from '@tanstack/react-router'
 
 import { paths } from '@/app/router/path'
 import { apiClient } from '@/shared/api'
-import { Button } from '@/shared/components/button'
-import { Input } from '@/shared/components/input'
-import { Label } from '@/shared/components/label'
-import { BRAND_NAME } from '@/shared/config'
+import { AuthFrame } from './auth-frame'
 
 export const ForgotPasswordPage: React.FC = () => {
   const [email, setEmail] = useState('')
@@ -33,25 +30,25 @@ export const ForgotPasswordPage: React.FC = () => {
   }
 
   return (
-    <div className="auth-light min-h-dvh flex items-center justify-center bg-background text-foreground px-4">
-      <div className="w-full max-w-sm flex flex-col gap-6">
-        <div className="flex flex-col gap-2 text-center">
-          <h1 className="text-2xl font-bold tracking-tight">{BRAND_NAME}</h1>
-          <h2 className="text-lg font-semibold">Forgot password</h2>
-          <p className="text-sm text-muted-foreground">
-            Enter your email and we&apos;ll send you a reset link
-          </p>
+    <AuthFrame>
+      <section className="fs-card fs-auth-card" aria-label="Forgot password">
+        <div className="fs-auth-head">
+          <h1>Forgot password</h1>
+          <p>Enter your email and we&apos;ll send you a reset link</p>
         </div>
 
         {sent ? (
-          <div className="rounded-lg border border-border bg-secondary/20 p-4 text-sm text-center text-muted-foreground">
+          <div className="fs-banner fs-banner--info" role="status" style={{ textAlign: 'center' }}>
             Check your email for a password reset link.
           </div>
         ) : (
-          <form onSubmit={(e) => void onSubmit(e)} className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="email">Email</Label>
-              <Input
+          <form onSubmit={(e) => void onSubmit(e)} className="fs-auth-form">
+            <div className="fs-field">
+              <label className="fs-label" htmlFor="email">
+                Email
+              </label>
+              <input
+                className="fs-input"
                 id="email"
                 type="email"
                 autoComplete="email"
@@ -64,22 +61,27 @@ export const ForgotPasswordPage: React.FC = () => {
             </div>
 
             {error && (
-              <p className="text-sm text-destructive" role="alert">{error}</p>
+              <p className="fs-error" role="alert">
+                {error}
+              </p>
             )}
 
-            <Button type="submit" disabled={pending} className="w-full">
+            <button
+              type="submit"
+              className="fs-btn fs-btn--primary fs-btn--block"
+              disabled={pending}
+            >
               {pending ? 'Sending…' : 'Send reset link'}
-            </Button>
+            </button>
           </form>
         )}
 
-        <div className="text-center text-sm text-muted-foreground">
-          Remember your password?{' '}
-          <Link to={paths.auth.signIn} className="text-foreground underline underline-offset-2">
-            Sign in
-          </Link>
+        <div className="fs-auth-links">
+          <span>
+            Remember your password? <Link to={paths.auth.signIn}>Sign in</Link>
+          </span>
         </div>
-      </div>
-    </div>
+      </section>
+    </AuthFrame>
   )
 }

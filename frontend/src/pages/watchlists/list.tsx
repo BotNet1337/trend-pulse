@@ -7,19 +7,15 @@
  */
 
 import React, { useState } from 'react';
-import { useNavigate, Link } from '@tanstack/react-router';
+import { useNavigate } from '@tanstack/react-router';
 import { useWatchlists, useDeleteWatchlist } from '@/features/watchlists';
 import { PacksBlock } from '@/features/packs';
 import { WatchlistCard } from '@/entities/watchlist';
 import { Button } from '@/shared/components/button';
 import { EmptyState } from '@/shared/components/empty-state';
-import { BRAND_NAME } from '@/shared/config';
-import { useLogout } from '@/features/auth';
-import { paths } from '@/app/router/path';
 
 export const WatchlistsListPage: React.FC = () => {
   const navigate = useNavigate();
-  const logoutMutation = useLogout();
   const { data: watchlists, isLoading, error } = useWatchlists();
   const deleteMutation = useDeleteWatchlist();
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -42,30 +38,8 @@ export const WatchlistsListPage: React.FC = () => {
   };
 
   return (
-    <div className="auth-light min-h-dvh flex flex-col bg-background text-foreground">
-      <header className="border-b border-border px-6 py-3 flex items-center gap-3">
-        <span className="font-semibold text-sm flex-1">{BRAND_NAME}</span>
-        <nav className="flex items-center gap-3 text-sm">
-          <Link
-            to={paths.account.settings}
-            className="text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Settings
-          </Link>
-        </nav>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={logoutMutation.isPending}
-          onClick={() => logoutMutation.mutate()}
-          aria-label="Sign out"
-        >
-          {logoutMutation.isPending ? 'Signing out…' : 'Sign out'}
-        </Button>
-      </header>
-
-      <main className="flex-1 container max-w-3xl mx-auto px-4 py-8">
+    <main className="fs-main">
+      <div className="mx-auto max-w-3xl px-4">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold">Watchlists</h1>
           <Button type="button" onClick={handleCreate}>
@@ -119,7 +93,7 @@ export const WatchlistsListPage: React.FC = () => {
 
         {/* Curated channel packs block (TASK-038) */}
         <PacksBlock />
-      </main>
-    </div>
+      </div>
+    </main>
   );
 };

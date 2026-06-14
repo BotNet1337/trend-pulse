@@ -11,20 +11,17 @@
  */
 
 import React from 'react';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { useNavigate } from '@tanstack/react-router';
 import { useAlerts } from '@/features/alerts';
 import { AlertCard } from '@/entities/alert';
 import { Button } from '@/shared/components/button';
 import { EmptyState } from '@/shared/components/empty-state';
 import { UpsellBanner } from '@/shared/components/upsell-banner';
-import { BRAND_NAME } from '@/shared/config';
-import { useLogout } from '@/features/auth';
 import { useCurrentUser } from '@/entities/viewer/model';
 import { paths } from '@/app/router/path';
 
 export const AlertsListPage: React.FC = () => {
   const navigate = useNavigate();
-  const logoutMutation = useLogout();
   const { data: viewer } = useCurrentUser();
   const {
     data,
@@ -46,36 +43,8 @@ export const AlertsListPage: React.FC = () => {
   };
 
   return (
-    <div className="auth-light min-h-dvh flex flex-col bg-background text-foreground">
-      <header className="border-b border-border px-6 py-3 flex items-center gap-3">
-        <span className="font-semibold text-sm flex-1">{BRAND_NAME}</span>
-        <nav className="flex items-center gap-3 text-sm">
-          <Link
-            to={paths.watchlists.list}
-            className="text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Watchlists
-          </Link>
-          <Link
-            to={paths.account.settings}
-            className="text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Settings
-          </Link>
-        </nav>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={logoutMutation.isPending}
-          onClick={() => logoutMutation.mutate()}
-          aria-label="Sign out"
-        >
-          {logoutMutation.isPending ? 'Signing out…' : 'Sign out'}
-        </Button>
-      </header>
-
-      <main className="flex-1 container max-w-3xl mx-auto px-4 py-8">
+    <main className="fs-main">
+      <div className="mx-auto max-w-3xl px-4">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold">Alerts</h1>
         </div>
@@ -149,7 +118,7 @@ export const AlertsListPage: React.FC = () => {
             )}
           </>
         )}
-      </main>
-    </div>
+      </div>
+    </main>
   );
 };

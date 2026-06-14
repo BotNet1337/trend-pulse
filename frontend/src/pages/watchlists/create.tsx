@@ -18,7 +18,6 @@ import type { BackendErrorState } from '@/shared/lib';
 import type { AlertConfig } from '@/entities/watchlist/model';
 import { useCurrentUser } from '@/entities/viewer/model';
 import { paths } from '@/app/router/path';
-import { BRAND_NAME } from '@/shared/config';
 
 const DEFAULT_ALERT_CONFIG: AlertConfig = {
   score_threshold: 70,
@@ -111,18 +110,8 @@ export const WatchlistCreatePage: React.FC = () => {
   const pending = createMutation.isPending;
 
   return (
-    <div className="auth-light min-h-dvh flex flex-col bg-background text-foreground">
-      <header className="border-b border-border px-6 py-3 flex items-center gap-3">
-        <span className="font-semibold text-sm flex-1">{BRAND_NAME}</span>
-        <Link
-          to="/watchlists"
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          ← Back to watchlists
-        </Link>
-      </header>
-
-      <main className="flex-1 container max-w-xl mx-auto px-4 py-8">
+    <main className="fs-main">
+      <div className="mx-auto max-w-xl px-4">
         <h1 className="text-2xl font-bold mb-6">New watchlist</h1>
 
         {/* 402 upsell banner */}
@@ -240,7 +229,7 @@ export const WatchlistCreatePage: React.FC = () => {
             </Button>
           </div>
         </form>
-      </main>
-    </div>
+      </div>
+    </main>
   );
 };

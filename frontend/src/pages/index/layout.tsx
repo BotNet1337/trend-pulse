@@ -1,6 +1,8 @@
 import { Outlet } from '@tanstack/react-router'
 import React from 'react'
 
+import { AppShell } from './app-shell'
+
 export const RootLayout: React.FC = () => {
   return (
     <main className="min-h-dvh">
@@ -10,9 +12,15 @@ export const RootLayout: React.FC = () => {
 }
 
 /**
- * Authenticated shell. Each protected page now owns its own chrome (top bar /
- * workspace switcher), so this layout is intentionally a thin pass-through.
+ * Authenticated shell. Renders the shared Aurora app chrome (sticky `.fs-appbar`
+ * with brand + nav + account dropdown, and the `.fs-appfooter` compliance
+ * footer) around the active protected page. Pages render only their own
+ * `<main className="fs-main">` content between the bar and footer.
  */
 export const ProtectedLayout: React.FC = () => {
-  return <Outlet />
+  return (
+    <AppShell>
+      <Outlet />
+    </AppShell>
+  )
 }

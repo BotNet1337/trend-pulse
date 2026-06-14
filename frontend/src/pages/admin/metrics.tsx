@@ -24,9 +24,6 @@ import {
   useBusinessMetrics,
 } from '@/features/admin-metrics';
 import type { FunnelDayRow } from '@/features/admin-metrics';
-import { useLogout } from '@/features/auth';
-import { Button } from '@/shared/components/button';
-import { BRAND_NAME } from '@/shared/config';
 import { NotFoundPage } from '@/pages/error';
 
 const FUNNEL_COLUMNS: Array<{ key: keyof FunnelDayRow; label: string }> = [
@@ -53,7 +50,6 @@ const MetricCard: React.FC<MetricCardProps> = ({ title, children }) => (
 );
 
 export const AdminMetricsPage: React.FC = () => {
-  const logoutMutation = useLogout();
   const { data: user, isLoading: isUserLoading } = useCurrentUser();
 
   const isSuperuser = user?.is_superuser === true;
@@ -75,22 +71,8 @@ export const AdminMetricsPage: React.FC = () => {
   const isLoading = isUserLoading || (isSuperuser && isMetricsLoading);
 
   return (
-    <div className="auth-light min-h-dvh flex flex-col bg-background text-foreground">
-      <header className="border-b border-border px-6 py-3 flex items-center gap-3">
-        <span className="font-semibold text-sm flex-1">{BRAND_NAME}</span>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={logoutMutation.isPending}
-          onClick={() => logoutMutation.mutate()}
-          aria-label="Sign out"
-        >
-          {logoutMutation.isPending ? 'Signing out…' : 'Sign out'}
-        </Button>
-      </header>
-
-      <main className="flex-1 container max-w-4xl mx-auto px-4 py-8 flex flex-col gap-6">
+    <main className="fs-main">
+      <div className="mx-auto max-w-4xl px-4 flex flex-col gap-6">
         {isLoading && (
           <div aria-busy="true" aria-label="Loading metrics" className="flex justify-center py-16">
             <span className="text-muted-foreground text-sm">Loading…</span>
@@ -186,7 +168,7 @@ export const AdminMetricsPage: React.FC = () => {
             </section>
           </>
         )}
-      </main>
-    </div>
+      </div>
+    </main>
   );
 };

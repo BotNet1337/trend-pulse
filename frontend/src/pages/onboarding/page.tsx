@@ -15,7 +15,6 @@ import { useNavigate } from '@tanstack/react-router';
 import { usePacks, useSubscribePack } from '@/features/packs';
 import { useTrending, TrendingList } from '@/features/trending';
 import { Button } from '@/shared/components/button';
-import { BRAND_NAME } from '@/shared/config';
 import { paths } from '@/app/router/path';
 
 export const OnboardingPage: React.FC = () => {
@@ -58,12 +57,8 @@ export const OnboardingPage: React.FC = () => {
   const selectedPack = packs?.find((p) => p.slug === effectiveSlug);
 
   return (
-    <div className="min-h-dvh flex flex-col bg-background text-foreground auth-light">
-      <header className="border-b border-border px-6 py-3 flex items-center">
-        <span className="font-semibold text-sm">{BRAND_NAME}</span>
-      </header>
-
-      <main className="flex-1 container max-w-2xl mx-auto px-4 py-10">
+    <main className="fs-main">
+      <div className="mx-auto max-w-2xl px-4">
         {/* Step header */}
         <div className="mb-8">
           <h1 className="text-2xl font-bold">Welcome!</h1>
@@ -171,7 +166,7 @@ export const OnboardingPage: React.FC = () => {
             </Button>
           </div>
         </section>
-      </main>
-    </div>
+      </div>
+    </main>
   );
 };
