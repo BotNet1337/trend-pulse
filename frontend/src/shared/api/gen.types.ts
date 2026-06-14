@@ -553,6 +553,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/signals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Signals
+         * @description Return recent actionable signals (independence-weighted, noise-excluded).
+         */
+        get: operations["list_signals_v1_signals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/trending": {
         parameters: {
             query?: never;
@@ -1029,6 +1049,12 @@ export interface components {
             };
         };
         /**
+         * EventCategory
+         * @description Coarse event taxonomy for a signal (str-enum: JSON/DB friendly).
+         * @enum {string}
+         */
+        EventCategory: "listing" | "hack" | "regulation" | "price_move" | "other";
+        /**
          * FunnelDayRow
          * @description One UTC calendar day's funnel counters (from business_metrics_daily).
          */
@@ -1177,6 +1203,42 @@ export interface components {
             referrer_id: number;
             /** Status */
             status: string;
+        };
+        /**
+         * SignalKind
+         * @description Noise classification of a cluster (str-enum: JSON/DB friendly).
+         * @enum {string}
+         */
+        SignalKind: "organic" | "promo" | "coordinated";
+        /**
+         * SignalOut
+         * @description One actionable signal (API boundary model).
+         */
+        SignalOut: {
+            category: components["schemas"]["EventCategory"];
+            /** Headline Score */
+            headline_score: number;
+            /** Independent Channels */
+            independent_channels: number;
+            /** Lead Time To Confirmation Seconds */
+            lead_time_to_confirmation_seconds: number | null;
+            /** Narrative */
+            narrative: string;
+            /** Origin At */
+            origin_at: number;
+            /** Origin Channel */
+            origin_channel: number;
+            signal_kind: components["schemas"]["SignalKind"];
+            /** Total Channels */
+            total_channels: number;
+        };
+        /**
+         * SignalsResponse
+         * @description Envelope for GET /signals (list of signals, newest/strongest first).
+         */
+        SignalsResponse: {
+            /** Signals */
+            signals: components["schemas"]["SignalOut"][];
         };
         /**
          * SourceKind
@@ -2229,6 +2291,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReferralMeRead"];
+                };
+            };
+        };
+    };
+    list_signals_v1_signals_get: {
+        parameters: {
+            query?: {
+                /** @description Max signals to return (1..100, default 20). */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignalsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
