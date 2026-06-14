@@ -5,16 +5,18 @@ import { safeHref } from './button.js';
 void React;
 
 const wrapper = {
-  padding: '0 36px 28px',
+  backgroundColor: '#ffffff',
+  padding: '28px 36px',
+  borderRadius: '0 0 16px 16px',
 };
 
 const divider = {
-  borderColor: 'rgba(255,255,255,0.08)',
-  margin: '0 0 20px',
+  borderColor: '#eef1f6',
+  margin: '0 0 14px',
 };
 
 const muted = {
-  color: '#4e5a78',
+  color: '#94a3b8',
   fontSize: '11px',
   lineHeight: '18px',
   margin: '0',
@@ -27,7 +29,7 @@ const copyright = {
 };
 
 const unsubscribeLink = {
-  color: '#67e8f9',
+  color: '#64748b',
   textDecoration: 'underline' as const,
 };
 

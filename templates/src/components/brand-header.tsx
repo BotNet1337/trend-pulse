@@ -7,20 +7,21 @@ export interface BrandHeaderProps {
   tagline?: string;
 }
 
+// Dark aurora header band (solid #070b1d fallback)
 const header = {
-  padding: '24px 36px',
-  borderBottom: '1px solid rgba(255,255,255,0.08)',
+  backgroundColor: '#070b1d',
+  background: 'linear-gradient(135deg,#070b1d 0%,#0c1228 50%,#1b2350 100%)',
+  padding: '22px 36px',
 };
 
 const markCell = {
   width: '44px',
   height: '44px',
-  borderRadius: '14px',
-  backgroundColor: '#2563eb',
-  background: 'linear-gradient(140deg, #2563eb 0%, #7c3aed 60%, #a855f7 100%)',
+  borderRadius: '12px',
+  backgroundColor: '#4f46e5',
+  background: 'linear-gradient(135deg,#2563eb 0%,#7c3aed 100%)',
   textAlign: 'center' as const,
   verticalAlign: 'middle' as const,
-  boxShadow: '0 4px 16px rgba(37,99,235,0.35)',
   fontSize: '22px',
   lineHeight: '44px',
 };
@@ -28,7 +29,7 @@ const markCell = {
 const nameText = {
   fontSize: '17px',
   fontWeight: 700 as const,
-  color: '#eaeefb',
+  color: '#ffffff',
   letterSpacing: '-0.02em',
   margin: '0',
   lineHeight: '1.2',
@@ -36,7 +37,7 @@ const nameText = {
 
 const taglineText = {
   fontSize: '12px',
-  color: '#8994b8',
+  color: '#a3aecb',
   margin: '2px 0 0',
   lineHeight: '1.4',
 };
@@ -55,7 +56,7 @@ export function BrandHeader({ tagline }: BrandHeaderProps) {
             <tbody>
               <tr>
                 <td style={markCell}>
-                  📡
+                  📈
                 </td>
               </tr>
             </tbody>

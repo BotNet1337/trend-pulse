@@ -12,28 +12,31 @@ export interface RenewalEmailProps {
   renewUrl: string;
 }
 
-const content = { padding: '32px 36px 0' };
+const content = {
+  backgroundColor: '#ffffff',
+  padding: '32px 36px 0',
+};
 
 const heading = {
   fontSize: '24px',
   fontWeight: 700 as const,
-  color: '#eaeefb',
+  color: '#0f172a',
   letterSpacing: '-0.03em',
   margin: '0 0 14px',
-  lineHeight: '1.2',
+  lineHeight: '1.25',
 };
 
 const bodyText = {
   fontSize: '15px',
   lineHeight: '26px',
-  color: '#8994b8',
+  color: '#475569',
   margin: '0 0 10px',
 };
 
 const urgencyText = {
   fontSize: '15px',
   lineHeight: '26px',
-  color: '#DC2626',
+  color: '#dc2626',
   fontWeight: 600 as const,
   margin: '0 0 20px',
 };
@@ -41,12 +44,12 @@ const urgencyText = {
 const muted = {
   fontSize: '13px',
   lineHeight: '22px',
-  color: '#4e5a78',
+  color: '#94a3b8',
   marginTop: '24px',
 };
 
 const link = {
-  color: '#7cb3fc',
+  color: '#4f46e5',
   textDecoration: 'none' as const,
   fontWeight: 500 as const,
 };
