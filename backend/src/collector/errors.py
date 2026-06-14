@@ -28,3 +28,25 @@ class PoolExhaustedError(CollectorError):
 
 class BufferWriteError(CollectorError):
     """A raw post could not be written to the Redis buffer (not silently dropped)."""
+
+
+class TwitterAPIError(CollectorError):
+    """A non-recoverable Twitter/X API error (non-2xx other than 404/429) — skip the ref."""
+
+
+class TwitterRateLimitError(CollectorError):
+    """Twitter/X API returned 429. Carries `retry_after_seconds` (from the
+    `x-rate-limit-reset` header when present) so the reader can back off inline
+    (short) or skip the ref (long) — mirrors the Telegram FLOOD_WAIT contract."""
+
+    def __init__(self, message: str, *, retry_after_seconds: float) -> None:
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
+
+
+class TwitterReadBudgetExceededError(SourceUnavailableError):
+    """The monthly Twitter read budget is exhausted — stop reading (spend backstop).
+
+    Subclasses `SourceUnavailableError` so `collect_tick` already skips the ref
+    cleanly (no tasks.py change), while remaining distinguishable for the once-only
+    ops alert."""

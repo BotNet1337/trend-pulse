@@ -109,6 +109,9 @@ _DEFAULT_SCORE_WINDOW_SECONDS: int = 86_400  # 24 hours
 # exponential backoff starting at `alert_retry_backoff_seconds`, capped at
 # `alert_retry_backoff_max_seconds`, after which the alert is marked `failed`.
 _DEFAULT_TELEGRAM_API_BASE_URL = "https://api.telegram.org"
+# Twitter/X API v2 base (TASK-031, ADR-001). Single source for the host so tests
+# can point the collector at a mock transport without touching call sites.
+_DEFAULT_TWITTER_API_BASE_URL = "https://api.twitter.com"
 # Billing — NOWPayments (task-010, ADR-004). The API base is the single source for
 # the URL (non-secret, not a magic literal at the call site). The API key + IPN
 # secret are secrets from sensitive.env; they DEFAULT to empty so the app boots
@@ -441,6 +444,15 @@ class Settings(BaseSettings):
     # TELEGRAM_POOL_SESSIONS. Secret — supplied via sensitive.env; NEVER a user
     # session_string (overview §2/§7). Parsed via `telegram_pool_sessions()`.
     telegram_pool_sessions: str = ""
+
+    # --- Twitter/X source (TASK-031, ADR-001). Optional: app boots without it
+    # (collector unregistered → ingest no-op for TWITTER refs, like an empty TG
+    # pool). app-only Bearer Token (read public tweets); secret from sensitive.env
+    # as TWITTER_BEARER_TOKEN, NEVER hardcoded/logged. X API 2026 is pay-per-use
+    # ($0.005/read) → the collector enforces a monthly read budget (see
+    # collector.constants.MAX_TWITTER_READS_PER_MONTH). ---
+    twitter_bearer_token: str | None = None
+    twitter_api_base_url: str = _DEFAULT_TWITTER_API_BASE_URL
 
     # --- Auth secrets (fastapi-users + httpx-oauth, ADR-003). ---
     # NO defaults on the SECRET fields → a missing env var fails fast at startup
