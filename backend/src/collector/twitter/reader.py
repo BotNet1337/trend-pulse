@@ -37,6 +37,7 @@ from collector.constants import (
     TWITTER_MAX_RESULTS_PER_TICK,
     TWITTER_MIN_READ_INTERVAL_SECONDS,
     TWITTER_RATE_LIMIT_INLINE_CAP_SECONDS,
+    TWITTER_RATE_LIMIT_PAUSE_CAP_SECONDS,
     TWITTER_READS_COUNTER_PREFIX,
     TWITTER_USERID_PREFIX,
     TWITTER_USERID_TTL_SECONDS,
@@ -93,8 +94,9 @@ class TwitterCollector:
         )
         # Month bucket already alerted for the read budget (once per month).
         self._budget_alerted_month = ""
-        # Monotonic deadline until which ALL Twitter reads are paused (402 credits).
-        self._credits_cooldown_until = 0.0
+        # Monotonic deadline until which ALL Twitter reads are paused (402 credits or
+        # a long 429 rate-limit) — avoids hammering the API account-by-account.
+        self._pause_until = 0.0
 
     async def aclose(self) -> None:
         """Release the underlying client transport (worker shutdown)."""
@@ -121,8 +123,8 @@ class TwitterCollector:
 
     async def read(self, refs: list[SourceRef], since: datetime | None) -> AsyncIterator[RawPost]:
         """Yield `RawPost`s for the unique union of TWITTER `refs` newer than `since`."""
-        if self._in_credits_cooldown():
-            # Billing paused — do not touch the API at all this tick (no spam, no calls).
+        if self._in_pause():
+            # Paused (no credits / rate-limited) — do not touch the API this tick.
             return
         for ref in unique_twitter_refs(refs):
             self._guard_read_budget()
@@ -134,12 +136,15 @@ class TwitterCollector:
         # Per-account cadence: skip accounts read within the min interval (no API call).
         if not self._should_read_account(ref.handle):
             return
+        # Stamp the attempt window from the PREVIOUS read, then mark NOW — so a
+        # failing account (402/429/dead) is NOT re-polled every 60s tick (cost +
+        # rate-limit safety). Applies on success AND failure.
+        effective_since = self._effective_since(ref.handle, since)
+        self._mark_account_read(ref.handle)
         try:
             user_id = await self._resolve_user_id_cached(ref)
             if user_id is None:
-                self._mark_account_read(ref.handle)  # avoid hammering a bad handle
                 return  # private / nonexistent / renamed — skip silently
-            effective_since = self._effective_since(ref.handle, since)
             tweets = await self._with_rate_limit(
                 lambda: self._client.fetch_tweets(
                     user_id,
@@ -150,11 +155,19 @@ class TwitterCollector:
                 ref,
             )
         except TwitterCreditsDepletedError as exc:
-            self._enter_credits_cooldown()
+            self._enter_pause(
+                TWITTER_CREDITS_COOLDOWN_SECONDS,
+                reason="twitter_credits",
+                text=(
+                    "Twitter: нет кредитов на X API (HTTP 402 CreditsDepleted) — ингест "
+                    f"Twitter на паузе {TWITTER_CREDITS_COOLDOWN_SECONDS // 60} мин. "
+                    "Пополни баланс X API."
+                ),
+                alert=True,
+            )
             raise SourceUnavailableError(
                 f"twitter credits depleted while reading {ref.handle} — paused"
             ) from exc
-        self._mark_account_read(ref.handle)
         self._charge_read_budget(len(tweets))
         for tweet in tweets:
             # `start_time` already bounds the API result; double-guard the cutoff.
@@ -187,8 +200,17 @@ class TwitterCollector:
         except TwitterRateLimitError as exc:
             wait = exc.retry_after_seconds
             if wait > TWITTER_RATE_LIMIT_INLINE_CAP_SECONDS:
+                # Long reset → PAUSE all reads until it clears (don't let the other
+                # accounts each hit 429 this tick). No ops alert (rate-limit is
+                # expected/transient), just a throttled-by-cooldown pause.
+                self._enter_pause(
+                    min(wait, TWITTER_RATE_LIMIT_PAUSE_CAP_SECONDS),
+                    reason="twitter_rate_limit",
+                    text="",
+                    alert=False,
+                )
                 raise SourceUnavailableError(
-                    f"twitter rate-limited for {ref.handle} (reset {int(wait)}s) — skip ref"
+                    f"twitter rate-limited for {ref.handle} (reset {int(wait)}s) — paused"
                 ) from exc
             await self._sleep(wait)
             try:
@@ -204,24 +226,21 @@ class TwitterCollector:
                 f"twitter error for {ref.handle} ({type(exc).__name__}) — skip ref"
             ) from exc
 
-    # --- 402 credits cooldown -----------------------------------------------------
+    # --- global pause (402 credits / long 429 rate-limit) -------------------------
 
-    def _in_credits_cooldown(self) -> bool:
-        return self._monotonic() < self._credits_cooldown_until
+    def _in_pause(self) -> bool:
+        return self._monotonic() < self._pause_until
 
-    def _enter_credits_cooldown(self) -> None:
-        """Pause all Twitter reads for the cooldown and alert ops ONCE per entry."""
-        already = self._in_credits_cooldown()
-        self._credits_cooldown_until = self._monotonic() + TWITTER_CREDITS_COOLDOWN_SECONDS
-        if not already:
-            self._notify_ops_best_effort(
-                reason="twitter_credits",
-                text=(
-                    "Twitter: нет кредитов на X API (HTTP 402 CreditsDepleted) — ингест Twitter "
-                    f"приостановлен на {TWITTER_CREDITS_COOLDOWN_SECONDS // 60} мин. "
-                    "Пополни баланс X API."
-                ),
-            )
+    def _enter_pause(self, seconds: float, *, reason: str, text: str, alert: bool) -> None:
+        """Pause ALL Twitter reads for `seconds`; alert ops ONCE on first entry.
+
+        Used for both 402 CreditsDepleted (alert=True) and a long 429 rate-limit
+        (alert=False — expected/transient). Extends an existing pause, never shortens.
+        """
+        was_paused = self._in_pause()
+        self._pause_until = max(self._pause_until, self._monotonic() + seconds)
+        if alert and not was_paused:
+            self._notify_ops_best_effort(reason=reason, text=text)
 
     # --- per-account cadence + user-id cache --------------------------------------
 

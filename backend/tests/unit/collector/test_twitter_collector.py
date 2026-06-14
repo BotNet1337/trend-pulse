@@ -582,29 +582,79 @@ async def test_credits_depleted_pauses_reads_and_alerts_once(
 
 @pytest.mark.asyncio
 async def test_credits_cooldown_expires_resumes_reads() -> None:
-    from collector.constants import TWITTER_CREDITS_COOLDOWN_SECONDS
+    from collector.constants import (
+        TWITTER_CREDITS_COOLDOWN_SECONDS,
+        TWITTER_MIN_READ_INTERVAL_SECONDS,
+    )
 
-    # resolve always 402s; we verify the API is NOT hit during cooldown and IS hit
-    # again once the cooldown elapses (reads resume).
+    # resolve always 402s; we verify the API is NOT hit during the pause and IS hit
+    # again once both the pause AND the per-account interval elapse (reads resume).
     client = FakeTwitterClient(resolve_raises=TwitterCreditsDepletedError("402"))
     redis = _FakeRedis()
-    clock = {"t": 1000.0}
-    collector = TwitterCollector(client, redis=redis, monotonic=lambda: clock["t"])
+    mono = {"t": 1000.0}
+    epoch = {"t": 1_000_000.0}
+    collector = TwitterCollector(
+        client,
+        redis=redis,
+        monotonic=lambda: mono["t"],
+        now=lambda: datetime.fromtimestamp(epoch["t"], tz=UTC),
+    )
 
     with pytest.raises(SourceUnavailableError):
         _ = [p async for p in collector.read([_REF], since=None)]
     assert client.resolve_calls == 1  # attempted once
 
-    # Within cooldown: no API call.
+    # Within pause: no API call.
     posts = [p async for p in collector.read([_REF], since=None)]
     assert posts == []
     assert client.resolve_calls == 1  # unchanged — paused
 
-    # After cooldown: reads resume (API hit again).
-    clock["t"] += TWITTER_CREDITS_COOLDOWN_SECONDS + 1
+    # After pause + interval: reads resume (API hit again).
+    step = max(TWITTER_CREDITS_COOLDOWN_SECONDS, TWITTER_MIN_READ_INTERVAL_SECONDS) + 1
+    mono["t"] += step
+    epoch["t"] += step
     with pytest.raises(SourceUnavailableError):
         _ = [p async for p in collector.read([_REF], since=None)]
     assert client.resolve_calls == 2  # resumed
+
+
+@pytest.mark.asyncio
+async def test_failing_account_not_repolled_within_interval() -> None:
+    # A failing account (generic API error) must be stamped so it is NOT re-polled
+    # every tick — the cost/rate-limit safety fix.
+    client = FakeTwitterClient(resolve_raises=TwitterAPIError("500"))
+    redis = _FakeRedis()
+    epoch = {"t": 1_000_000.0}
+    collector = TwitterCollector(
+        client, redis=redis, now=lambda: datetime.fromtimestamp(epoch["t"], tz=UTC)
+    )
+
+    with pytest.raises(SourceUnavailableError):
+        _ = [p async for p in collector.read([_REF], since=None)]
+    assert client.resolve_calls == 1
+
+    # Immediate next tick: account is within its interval → skipped, NO API call.
+    posts = [p async for p in collector.read([_REF], since=None)]
+    assert posts == []
+    assert client.resolve_calls == 1  # not re-polled
+
+
+@pytest.mark.asyncio
+async def test_long_429_pauses_all_reads() -> None:
+    # A long 429 reset pauses ALL reads (not just a per-ref skip) so the other
+    # accounts don't each hit 429 this tick.
+    client = FakeTwitterClient(resolve_raises=TwitterRateLimitError("429", retry_after_seconds=600))
+    redis = _FakeRedis()
+    collector = TwitterCollector(client, redis=redis, monotonic=lambda: 1000.0)
+
+    with pytest.raises(SourceUnavailableError):
+        _ = [p async for p in collector.read([_REF], since=None)]
+    assert client.resolve_calls == 1
+
+    # A different account in the same paused window: no API call.
+    posts = [p async for p in collector.read([SourceRef(SourceKind.TWITTER, "other")], since=None)]
+    assert posts == []
+    assert client.resolve_calls == 1
 
 
 @pytest.mark.asyncio

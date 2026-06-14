@@ -81,6 +81,11 @@ MAX_TWITTER_READS_PER_MONTH: Final = 100_000
 # the Telegram FLOOD_WAIT inline cap — a long reset must not park the collect tick.
 TWITTER_RATE_LIMIT_INLINE_CAP_SECONDS: Final = 60
 
+# On a long 429 (reset above the inline cap) PAUSE all Twitter reads until the reset,
+# capped here (seconds) so one bad header can't pause forever. Stops a burst of 43
+# accounts each hitting 429 every tick — pause once, resume after the window.
+TWITTER_RATE_LIMIT_PAUSE_CAP_SECONDS: Final = 15 * 60  # 15 minutes
+
 # Redis key prefix for the monthly read-budget counter: twitter:reads:{YYYY-MM}.
 TWITTER_READS_COUNTER_PREFIX: Final = "twitter:reads"
 
