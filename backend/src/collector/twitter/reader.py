@@ -26,7 +26,7 @@ import asyncio
 import logging
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, TypeVar, cast
 
 from collector.base import RawPost, SourceKind, SourceRef
@@ -273,26 +273,32 @@ class TwitterCollector:
             logger.warning("twitter lastread stamp update failed (ignored)")
 
     def _effective_since(self, handle: str, caller_since: datetime | None) -> datetime | None:
-        """Read window for this account: since its previous read, else the caller's.
+        """Read window for this account: since its previous read, with a min lookback.
 
-        Using the per-account previous-read time (not the ~60s shared tick `since`)
-        means a 15-min-spaced read still captures the full window since last time.
+        Twitter accounts post infrequently, and the shared collect tick's `since` is
+        only ~60s old — too narrow to catch anything. So the window floors to one
+        read-interval (`now - TWITTER_MIN_READ_INTERVAL_SECONDS`): on the FIRST read
+        of an account (no stamp) AND in steady state (stamp ~one interval old) this
+        captures the whole period since we last looked. An even older `caller_since`
+        (outage catch-up) widens it further. `max_results` caps the cost regardless.
         """
-        if self._redis is None:
-            return caller_since
-        try:
-            raw = cast("bytes | str | None", self._redis.get(f"{TWITTER_LASTREAD_PREFIX}:{handle}"))
-        except Exception:
-            return caller_since
-        if raw is None:
-            return caller_since
-        try:
-            last_dt = datetime.fromtimestamp(float(raw), tz=UTC)
-        except (TypeError, ValueError, OSError):
-            return caller_since
-        if caller_since is None:
-            return last_dt
-        return min(caller_since, last_dt)
+        floor = self._now() - timedelta(seconds=TWITTER_MIN_READ_INTERVAL_SECONDS)
+        base = floor
+        if self._redis is not None:
+            try:
+                raw = cast(
+                    "bytes | str | None",
+                    self._redis.get(f"{TWITTER_LASTREAD_PREFIX}:{handle}"),
+                )
+                if raw is not None:
+                    base = datetime.fromtimestamp(float(raw), tz=UTC)
+            except Exception:
+                base = floor
+        # Never start NEWER than one interval ago; honor an older caller_since.
+        candidates = [base, floor]
+        if caller_since is not None:
+            candidates.append(caller_since)
+        return min(candidates)
 
     def _cached_user_id(self, handle: str) -> str | None:
         if self._redis is None:
