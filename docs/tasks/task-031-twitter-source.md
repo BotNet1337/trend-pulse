@@ -4,11 +4,42 @@ title: Twitter/X source readiness — второй SourceCollector (ADR-001), р
 status: planned             # planned → in-progress → review → done
 owner: backend
 created: 2026-06-09
-updated: 2026-06-09
+updated: 2026-06-14
 baseline_commit: ""
 branch: "gsd/phase-031-twitter-source"
-tags: [epic-d, backend, collector, source-abstraction]
+tags: [epic-d, backend, collector, source-abstraction, twitter-loop]
 ---
+
+# TASK-031 — Twitter/X source readiness (Epic D / twitter-loop ФАЗА C ядро C1-C4)
+
+## Update 2026-06-14 (ФАЗА B research — twitter-source loop)
+> Этот task = зонтик ядра Twitter-источника (C1 config + C2 collector + C3 registry/celery +
+> C4 scoring-passthrough). Дополнения по итогам research-брифа
+> ([../research/twitter-source-research-brief.md](../research/twitter-source-research-brief.md)):
+>
+> 1. **X API экономика (2026):** legacy Basic/$200 и Pro/$5000 ЗАКРЫТЫ для новых; дефолт —
+>    **pay-per-use ($0.005/чтение, кап 2M/мес)**. → read-budget = центральное ограничение.
+>    Добавить в config именованные константы: **кадэнс Twitter-тика 15 мин** (НЕ 60с как TG),
+>    маленький `max_results`, **`MAX_TWITTER_READS_PER_MONTH`** (setting) + Redis-счётчик; при
+>    превышении — collector no-op + ops-алерт (как FLOOD/quarantine). Эндпоинты: `GET
+>    /2/users/by/username/:u`, `GET /2/users/:id/tweets` (`since_id`/`start_time`,
+>    `tweet.fields=public_metrics,created_at,referenced_tweets`).
+> 2. **Env-ключ РЕШЁН: `TWITTER_BEARER_TOKEN`** (app-only Bearer; в config.py optional None-guard,
+>    + `.env.example`).
+> 3. **ПРЕРЕКВИЗИТ (добавлен в scope):** `storage/models/channels.py::SourceKind` содержит ТОЛЬКО
+>    `TELEGRAM` — добавить `TWITTER` (+ миграция, если колонка нативный PG enum; проверить тип
+>    столбца `Channel.source_kind`). Без этого Twitter-Channel не сохранить.
+> 4. **ПРЕРЕКВИЗИТ:** watchlist handle-валидация Telegram-only (`TELEGRAM_HANDLE_PATTERN`,
+>    '@'+4-32). Twitter username = 1-15 [A-Za-z0-9_] → добавить per-source `TWITTER_HANDLE_PATTERN`
+>    и валидацию по `source_kind` в `api/watchlist/schemas.py`.
+> 5. **Celery:** новый таск НЕ нужен — `collector/tasks.py::collect_watched_sources` уже
+>    source-agnostic (группирует refs by_kind, зовёт registry.get(kind).read). После регистрации
+>    TWITTER + twitter-refs в watchlist ингест идёт тем же тиком.
+> 6. **Лимиты планов:** оставляем **суммарный** `Resource.CHANNELS` (осознанно, минимальный путь) —
+>    зафиксировать в ADR-001 §schema.
+> 7. **Pack/docs/graph вынесены в отдельные задачи:** C5→[TASK-089](./task-089-twitter-seed-pack.md),
+>    C6→[TASK-090](./task-090-twitter-data-instructions.md), C7→[TASK-091](./task-091-twitter-virality-graph.md)
+>    (post-MVP). live-валидация аккаунтов требует реального ключа → owner-gated.
 
 # TASK-031 — Twitter/X source readiness (Epic D)
 
