@@ -15,9 +15,12 @@ from storage.models.channels import SourceKind
 # handles are bare lowercase usernames (1-15) — TASK-031/089.
 _TELEGRAM_HANDLE_RE = re.compile(r"^@[A-Za-z0-9_]{4,32}$")
 _TWITTER_HANDLE_RE = re.compile(r"^[a-z0-9_]{1,15}$")
+# Reddit pack handles are bare lowercase subreddit names (3-21) — TASK-092/093.
+_REDDIT_HANDLE_RE = re.compile(r"^[a-z0-9_]{3,21}$")
 _HANDLE_RE_BY_KIND = {
     SourceKind.TELEGRAM: _TELEGRAM_HANDLE_RE,
     SourceKind.TWITTER: _TWITTER_HANDLE_RE,
+    SourceKind.REDDIT: _REDDIT_HANDLE_RE,
 }
 
 
@@ -67,6 +70,18 @@ def test_crypto_twitter_pack_is_all_twitter_kind() -> None:
     assert all(ch.kind is SourceKind.TWITTER for ch in pack.channels)
     # No '@' / uppercase — stored in the collector's canonical bare-lowercase form.
     assert all(ch.handle == ch.handle.lower().lstrip("@") for ch in pack.channels)
+
+
+def test_crypto_reddit_pack_is_all_reddit_kind() -> None:
+    pack = get_pack("crypto-reddit")
+    assert pack is not None
+    assert pack.topic == "crypto"
+    assert len(pack.channels) >= 15, "seed reddit pack should have ~20 candidate subreddits"
+    assert all(ch.kind is SourceKind.REDDIT for ch in pack.channels)
+    # No 'r/' prefix / uppercase — stored in the collector's canonical bare-lowercase form.
+    assert all(
+        ch.handle == ch.handle.lower() and not ch.handle.startswith("r/") for ch in pack.channels
+    )
 
 
 def test_all_pack_fields_non_empty() -> None:

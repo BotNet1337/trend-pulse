@@ -10,11 +10,13 @@ validated by `TELEGRAM_HANDLE_PATTERN` (watchlist/schemas.py): '@' + 4-32 of
 [A-Za-z0-9_]. Dead handles are silently skipped by the collector (ADR-001).
 
 Two packs are required by TASK-038 as a baseline, a third added 2026-06-12, a
-fourth (Twitter/X) added 2026-06-14 (TASK-031/089):
+fourth (Twitter/X) added 2026-06-14 (TASK-031/089), a fifth (Reddit) added
+2026-06-14 (TASK-092/093):
   - crypto-ru       (~29 handles): Russian-language crypto / DeFi Telegram channels
   - tech-en         (~6 handles):  English-language tech / startup Telegram channels
   - crypto-en       (~8 handles):  English-language crypto / on-chain Telegram channels
   - crypto-twitter  (~40 handles): crypto Twitter/X accounts (RU+EN), kind=TWITTER
+  - crypto-reddit   (~22 subs):    crypto subreddits (mostly EN), kind=REDDIT
 
 The Twitter pack handles are CANDIDATES (well-known accounts); live existence is
 not pre-validated here because it requires TWITTER_BEARER_TOKEN (owner-gated). Dead
@@ -23,6 +25,13 @@ None → skip), exactly like dead Telegram handles. When the key is configured a
 follow-up run prunes the dead ones via TwitterCollector.validate_ref (TASK-089).
 Handles are stored bare + lowercased (the collector's canonical form) and are ≤15
 chars (X username limit).
+
+The Reddit pack subreddits are likewise CANDIDATES; live existence is owner-gated on
+REDDIT_CLIENT_ID/SECRET/USER_AGENT and pruned via RedditCollector.validate_ref
+(TASK-093). Subreddit handles are stored bare + lowercased without the `r/` prefix
+(the collector's canonical form) and are 3-21 chars of [a-z0-9_] (subreddit-name
+rules — no hyphens). RU-only crypto subreddits are scarce (most RU audience is on
+Telegram); dead/private subs are silently skipped at read time.
 
 Known limitation (by design, task doc §Discussion): subscribing a pack snapshot
 the current handle list; if a pack is updated later, users must unsubscribe and
@@ -190,6 +199,36 @@ _CRYPTO_TWITTER_CHANNELS: tuple[PackChannel, ...] = (
     PackChannel("cryptohacker_ru", kind=SourceKind.TWITTER),
 )
 
+# Reddit crypto subreddits (TASK-093). Bare lowercased subreddit names (no `r/`),
+# 3-21 of [a-z0-9_] (REDDIT_HANDLE_PATTERN). Candidates — private/dead subs are
+# silently skipped by the collector; live pruning is owner-gated on Reddit creds.
+_CRYPTO_REDDIT_CHANNELS: tuple[PackChannel, ...] = (
+    # -- EN: broad crypto / markets --
+    PackChannel("cryptocurrency", kind=SourceKind.REDDIT),  # r/CryptoCurrency — ~9M
+    PackChannel("cryptomarkets", kind=SourceKind.REDDIT),  # r/CryptoMarkets
+    PackChannel("bitcoin", kind=SourceKind.REDDIT),  # r/Bitcoin — ~7M
+    PackChannel("bitcoinmarkets", kind=SourceKind.REDDIT),  # r/BitcoinMarkets
+    PackChannel("ethereum", kind=SourceKind.REDDIT),  # r/ethereum
+    PackChannel("ethtrader", kind=SourceKind.REDDIT),  # r/ethtrader
+    PackChannel("ethfinance", kind=SourceKind.REDDIT),  # r/ethfinance
+    PackChannel("defi", kind=SourceKind.REDDIT),  # r/defi
+    PackChannel("cryptocurrencytrading", kind=SourceKind.REDDIT),  # r/CryptoCurrencyTrading
+    PackChannel("altcoin", kind=SourceKind.REDDIT),  # r/altcoin
+    PackChannel("crypto_com", kind=SourceKind.REDDIT),  # r/Crypto_com
+    PackChannel("binance", kind=SourceKind.REDDIT),  # r/binance
+    PackChannel("solana", kind=SourceKind.REDDIT),  # r/solana
+    PackChannel("cardanocoin", kind=SourceKind.REDDIT),  # r/CardanoCoin
+    PackChannel("monero", kind=SourceKind.REDDIT),  # r/Monero
+    PackChannel("litecoin", kind=SourceKind.REDDIT),  # r/litecoin
+    PackChannel("dogecoin", kind=SourceKind.REDDIT),  # r/dogecoin
+    PackChannel("cryptomoonshots", kind=SourceKind.REDDIT),  # r/CryptoMoonShots
+    PackChannel("satoshistreetbets", kind=SourceKind.REDDIT),  # r/SatoshiStreetBets
+    PackChannel("bitcoinbeginners", kind=SourceKind.REDDIT),  # r/BitcoinBeginners
+    # -- RU: scarce; validated live, dead ones pruned --
+    PackChannel("bitcoin_ru", kind=SourceKind.REDDIT),  # r/Bitcoin_ru
+    PackChannel("cryptocurrencyru", kind=SourceKind.REDDIT),  # r/CryptoCurrencyRU
+)
+
 # The catalog is a frozen tuple — immutable at runtime (CONVENTIONS: no mutable globals).
 PACK_CATALOG: tuple[PackDef, ...] = (
     PackDef(
@@ -215,6 +254,12 @@ PACK_CATALOG: tuple[PackDef, ...] = (
         title="Crypto Twitter (RU+EN)",
         topic="crypto",
         channels=_CRYPTO_TWITTER_CHANNELS,
+    ),
+    PackDef(
+        slug="crypto-reddit",
+        title="Crypto Reddit (RU+EN)",
+        topic="crypto",
+        channels=_CRYPTO_REDDIT_CHANNELS,
     ),
 )
 
