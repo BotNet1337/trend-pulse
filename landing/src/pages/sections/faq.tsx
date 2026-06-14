@@ -95,9 +95,10 @@ export function FaqSection() {
   ];
 
   return (
-    <section id="faq" className="py-24 px-6 lg:px-20 snap-start scroll-mt-16">
+    <section id="faq" className="py-20 md:py-24 px-6 lg:px-20 snap-start scroll-mt-16">
       <div className="max-w-3xl mx-auto">
-        <div className="text-center mb-16">
+        <div className="text-center mb-12">
+          <p className="fs-eyebrow justify-center mb-4">FAQ</p>
           <h2 className="text-3xl md:text-4xl font-bold mb-4">Frequently Asked Questions</h2>
           <p className="text-lg text-muted-foreground">Everything you need to know about {brand}</p>
         </div>

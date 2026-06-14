@@ -30,21 +30,23 @@ function formatLeadTime(leadTimeSeconds: number): string {
 
 function CaseCard({ caseItem }: { caseItem: CaseItem }) {
   return (
-    <div className="bg-card border border-border rounded-xl p-5 shadow-sm font-mono text-sm text-left">
-      <p className="text-foreground leading-relaxed">
-        <span className="text-primary">&quot;{caseItem.title}&quot;</span>
-      </p>
-      <p className="text-muted-foreground mt-2">
+    <article className="fs-glass fs-card-hover p-6 text-left">
+      <h3 className="mb-2.5 text-base font-semibold text-[color:var(--aurora-cyan-bright)]">
+        &quot;{caseItem.title}&quot;
+      </h3>
+      <p className="mb-3 text-sm tabular-nums text-muted-foreground">
         detected <strong className="text-foreground">{formatUtcTime(caseItem.first_seen)}</strong>
         {' → '}
         mainstream <strong className="text-foreground">{formatUtcTime(caseItem.mainstream_at)}</strong>
         <span className="text-xs"> UTC</span>
       </p>
-      <p className="text-muted-foreground mt-1">
-        <strong className="text-foreground">{formatLeadTime(caseItem.lead_time_seconds)}</strong> ahead
-        &nbsp;·&nbsp; Score: <strong className="text-foreground">{Math.round(caseItem.viral_score)}</strong>
+      <p className="m-0 inline-flex items-baseline gap-1.5 font-bold">
+        <span className="fs-grad-text text-2xl tracking-[-0.02em]">{formatLeadTime(caseItem.lead_time_seconds)}</span>
+        <span className="text-sm font-medium text-muted-foreground">
+          ahead &nbsp;·&nbsp; Score: {Math.round(caseItem.viral_score)}
+        </span>
       </p>
-    </div>
+    </article>
   );
 }
 
@@ -54,22 +56,22 @@ export function ProofOfSpeedSection() {
   if (cases.length < MIN_CASES_TO_SHOW) return null;
 
   return (
-    <section id="proof-of-speed" className="py-16 px-6 lg:px-20 snap-start scroll-mt-16">
+    <section id="proof-of-speed" className="py-20 md:py-24 px-6 lg:px-20 snap-start scroll-mt-16">
       <div className="max-w-6xl mx-auto">
-        <div className="text-center mb-10">
+        <div className="text-center max-w-2xl mx-auto mb-12">
           <h2 className="text-3xl md:text-4xl font-bold mb-4 tracking-tight">Proof of speed</h2>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+          <p className="text-lg text-muted-foreground">
             Real detections: spotted in public Telegram channels before they hit mainstream media.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {cases.map((caseItem) => (
             <CaseCard key={`${caseItem.title}-${caseItem.first_seen}`} caseItem={caseItem} />
           ))}
         </div>
 
-        <p className="text-xs text-muted-foreground text-center mt-6">
+        <p className="text-sm text-[color:var(--aurora-text-faint)] text-center mt-7">
           Times in UTC. Only public channels monitored — raw content discarded after 48 h.
         </p>
       </div>

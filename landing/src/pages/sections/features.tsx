@@ -41,28 +41,30 @@ export function FeaturesSection() {
   ];
 
   return (
-    <section id="features" className="py-24 px-6 lg:px-20 snap-start scroll-mt-16">
+    <section id="features" className="py-20 md:py-24 px-6 lg:px-20 snap-start scroll-mt-16">
       <div className="max-w-6xl mx-auto">
-        <div className="text-center mb-16">
+        <div className="text-center max-w-2xl mx-auto mb-12">
+          <p className="fs-eyebrow justify-center mb-4">Features</p>
           <h2 className="text-3xl md:text-4xl font-bold mb-4">Everything you need to catch the wave early</h2>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+          <p className="text-lg text-muted-foreground">
             From real-time detection to automated delivery — built for speed, transparency, and privacy.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {features.map((feature) => {
             const Icon = feature.icon;
             return (
-              <div key={feature.title} className="group">
-                <div className="bg-card border border-border rounded-lg p-6 h-full transition-all hover:shadow-md hover:border-primary/50">
-                  <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
-                    <Icon className="h-6 w-6 text-primary" aria-hidden="true" />
-                  </div>
-                  <h3 className="mb-2">{feature.title}</h3>
-                  <p className="text-sm text-muted-foreground">{feature.description}</p>
-                </div>
-              </div>
+              <article
+                key={feature.title}
+                className="fs-glass fs-card-hover h-full p-6 hover:bg-white/[0.08]"
+              >
+                <span className="fs-feature-icon mb-4 flex h-12 w-12 items-center justify-center rounded-[14px]" aria-hidden="true">
+                  <Icon className="h-5 w-5" />
+                </span>
+                <h3 className="mb-1.5 text-lg font-bold">{feature.title}</h3>
+                <p className="text-sm text-muted-foreground">{feature.description}</p>
+              </article>
             );
           })}
         </div>

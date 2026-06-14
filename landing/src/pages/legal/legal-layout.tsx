@@ -14,7 +14,7 @@ export function LegalLayout(
     <div className="pt-24 pb-16">
       <div className="max-w-7xl mx-auto px-6 lg:px-20">
         <div className="mb-12">
-          <h1 className="text-4xl font-bold mb-4">{props.title}</h1>
+          <h1 className="text-4xl font-bold tracking-tight mb-4">{props.title}</h1>
           <p className="text-sm text-muted-foreground">Last updated: {props.lastUpdated}</p>
         </div>
 
@@ -41,7 +41,7 @@ export function LegalLayout(
           </aside>
 
           <div className="lg:hidden mb-8">
-            <details className="bg-card border border-border rounded-lg p-4">
+            <details className="fs-glass p-4">
               <summary className="cursor-pointer font-medium">Table of Contents</summary>
               <nav className="space-y-2 mt-4">
                 {props.sections.map((section) => (

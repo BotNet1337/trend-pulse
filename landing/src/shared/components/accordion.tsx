@@ -2,7 +2,7 @@ import * as React from 'react';
 import { ChevronDown } from 'lucide-react';
 
 export function Accordion(props: { children: React.ReactNode; className?: string }) {
-  return <div className={['space-y-4', props.className].filter(Boolean).join(' ')}>{props.children}</div>;
+  return <div className={['grid gap-3.5', props.className].filter(Boolean).join(' ')}>{props.children}</div>;
 }
 
 export function AccordionItem(props: {
@@ -13,7 +13,7 @@ export function AccordionItem(props: {
   const [isOpen, setIsOpen] = React.useState(Boolean(props.defaultOpen));
 
   return (
-    <div className="border border-border rounded-lg overflow-hidden bg-card">
+    <div className="fs-glass overflow-hidden">
       <button
         type="button"
         onClick={() => {
@@ -22,21 +22,21 @@ export function AccordionItem(props: {
 
           if (import.meta.env.DEV) {
             try {
-               
+
               console.debug('[landing] accordion toggle', { title: props.title, open: next });
             } catch {
               // ignore
             }
           }
         }}
-        className="w-full flex items-center justify-between p-6 text-left hover:bg-muted/50 transition-colors"
+        className="w-full flex items-center justify-between gap-4 px-6 py-5 text-left hover:bg-white/[0.04] transition-colors"
         aria-expanded={isOpen}
       >
-        <span className="font-semibold text-lg">{props.title}</span>
+        <span className="font-semibold text-base">{props.title}</span>
         <ChevronDown
           className={[
-            'h-5 w-5 text-muted-foreground transition-transform duration-200',
-            isOpen ? 'rotate-180' : '',
+            'h-[18px] w-[18px] flex-none transition-transform duration-200',
+            isOpen ? 'rotate-180 text-[color:var(--aurora-cyan-bright)]' : 'text-[color:var(--aurora-text-faint)]',
           ].join(' ')}
         />
       </button>
@@ -50,7 +50,7 @@ export function AccordionItem(props: {
         <div className="overflow-hidden">
           <div
             className={[
-              'px-6 pb-6 pt-2 text-muted-foreground space-y-4 transition-opacity duration-200',
+              'px-6 pb-5 pt-0 text-sm text-muted-foreground space-y-4 transition-opacity duration-200',
               isOpen ? 'opacity-100' : 'opacity-0',
             ].join(' ')}
           >
