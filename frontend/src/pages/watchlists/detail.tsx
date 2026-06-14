@@ -7,7 +7,7 @@
  */
 
 import React, { useState } from 'react';
-import { useNavigate, useParams, Link } from '@tanstack/react-router';
+import { useNavigate, useParams } from '@tanstack/react-router';
 import { useWatchlist, useUpdateWatchlist, AlertConfigForm } from '@/features/watchlists';
 import { validateAlertConfig } from '@/features/watchlists';
 import { Button } from '@/shared/components/button';
@@ -16,7 +16,6 @@ import { Label } from '@/shared/components/label';
 import { mapBackendError } from '@/shared/lib';
 import type { BackendErrorState } from '@/shared/lib';
 import type { AlertConfig, WatchlistRead } from '@/entities/watchlist/model';
-import { BRAND_NAME } from '@/shared/config';
 import { UpsellBanner } from '@/shared/components/upsell-banner';
 import { useCurrentUser } from '@/entities/viewer/model';
 
@@ -205,17 +204,8 @@ export const WatchlistDetailPage: React.FC = () => {
 
   if (is404) {
     return (
-      <div className="auth-light min-h-dvh flex flex-col bg-background text-foreground">
-        <header className="border-b border-border px-6 py-3 flex items-center gap-3">
-          <span className="font-semibold text-sm flex-1">{BRAND_NAME}</span>
-          <Link
-            to="/watchlists"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Back to watchlists
-          </Link>
-        </header>
-        <main className="flex-1 container max-w-xl mx-auto px-4 py-16 text-center">
+      <main className="fs-main">
+        <div className="mx-auto max-w-xl px-4 py-16 text-center">
           <h1 className="text-xl font-semibold mb-2">Watchlist not found</h1>
           <p className="text-muted-foreground text-sm mb-6">
             This watchlist does not exist or you do not have access to it.
@@ -223,24 +213,14 @@ export const WatchlistDetailPage: React.FC = () => {
           <Button type="button" onClick={() => void navigate({ to: '/watchlists' })}>
             Back to watchlists
           </Button>
-        </main>
-      </div>
+        </div>
+      </main>
     );
   }
 
   return (
-    <div className="auth-light min-h-dvh flex flex-col bg-background text-foreground">
-      <header className="border-b border-border px-6 py-3 flex items-center gap-3">
-        <span className="font-semibold text-sm flex-1">{BRAND_NAME}</span>
-        <Link
-          to="/watchlists"
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          ← Back to watchlists
-        </Link>
-      </header>
-
-      <main className="flex-1 container max-w-xl mx-auto px-4 py-8">
+    <main className="fs-main">
+      <div className="mx-auto max-w-xl px-4">
         <h1 className="text-2xl font-bold mb-6">Edit watchlist</h1>
 
         {isLoading && (
@@ -259,7 +239,7 @@ export const WatchlistDetailPage: React.FC = () => {
         {!isLoading && watchlist && (
           <WatchlistEditForm watchlist={watchlist} onSaved={handleSaved} />
         )}
-      </main>
-    </div>
+      </div>
+    </main>
   );
 };

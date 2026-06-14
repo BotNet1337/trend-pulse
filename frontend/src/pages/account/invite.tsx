@@ -7,12 +7,9 @@
  */
 
 import * as React from 'react';
-import { useNavigate } from '@tanstack/react-router';
 
-import { useLogout } from '@/features/auth';
 import { useReferralMe, type ReferralRewardItem } from '@/features/referral';
 import { Button } from '@/shared/components/button';
-import { BRAND_NAME } from '@/shared/config';
 
 /** Map reward status to a human-readable label. */
 function statusLabel(status: string): string {
@@ -50,8 +47,6 @@ const RewardRow: React.FC<{ reward: ReferralRewardItem }> = ({ reward }) => (
 
 export const InvitePage: React.FC = () => {
   const { data, isLoading, isError } = useReferralMe();
-  const logoutMutation = useLogout();
-  const navigate = useNavigate();
   const [copied, setCopied] = React.useState(false);
 
   const handleCopy = () => {
@@ -63,32 +58,8 @@ export const InvitePage: React.FC = () => {
   };
 
   return (
-    <div className="auth-light h-screen flex flex-col bg-background text-foreground overflow-hidden">
-      <header className="border-b border-border px-8 py-3 flex items-center gap-3">
-        <span className="font-semibold text-sm flex-1">{BRAND_NAME}</span>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => void navigate({ to: '/account/settings' })}
-          aria-label="Account settings"
-        >
-          Settings
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={logoutMutation.isPending}
-          onClick={() => logoutMutation.mutate()}
-          aria-label="Sign out"
-        >
-          {logoutMutation.isPending ? 'Signing out…' : 'Sign out'}
-        </Button>
-      </header>
-
-      <main className="flex-1 min-w-0 bg-background overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-[640px] flex-col gap-8 px-8 py-8">
+    <main className="fs-main">
+      <div className="mx-auto flex w-full max-w-[640px] flex-col gap-8 px-8 py-8">
           <header className="flex flex-col gap-2">
             <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground font-medium">
               Referrals
@@ -174,8 +145,7 @@ export const InvitePage: React.FC = () => {
               </section>
             </>
           )}
-        </div>
-      </main>
-    </div>
+      </div>
+    </main>
   );
 };

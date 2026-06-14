@@ -11,9 +11,6 @@ import React from 'react';
 import { Link, useParams } from '@tanstack/react-router';
 import { useAlert, useSendFeedback } from '@/features/alerts';
 import type { FeedbackVerdict } from '@/features/alerts';
-import { Button } from '@/shared/components/button';
-import { BRAND_NAME } from '@/shared/config';
-import { useLogout } from '@/features/auth';
 import { paths } from '@/app/router/path';
 
 function formatFirstSeen(iso: string): string {
@@ -118,7 +115,6 @@ const AlertFeedbackButtons: React.FC<AlertFeedbackButtonsProps> = ({
 export const AlertDetailPage: React.FC = () => {
   const { alertId } = useParams({ strict: false }) as { alertId?: string };
   const numericId = alertId ? parseInt(alertId, 10) : NaN;
-  const logoutMutation = useLogout();
 
   const { data: alert, isLoading, error } = useAlert(numericId);
 
@@ -127,30 +123,8 @@ export const AlertDetailPage: React.FC = () => {
     (error as { response?: { status?: number } } | null)?.response?.status === 404;
 
   return (
-    <div className="auth-light min-h-dvh flex flex-col bg-background text-foreground">
-      <header className="border-b border-border px-6 py-3 flex items-center gap-3">
-        <span className="font-semibold text-sm flex-1">{BRAND_NAME}</span>
-        <nav className="flex items-center gap-3 text-sm">
-          <Link
-            to={paths.alerts.list}
-            className="text-muted-foreground hover:text-foreground transition-colors"
-          >
-            ← All alerts
-          </Link>
-        </nav>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={logoutMutation.isPending}
-          onClick={() => logoutMutation.mutate()}
-          aria-label="Sign out"
-        >
-          {logoutMutation.isPending ? 'Signing out…' : 'Sign out'}
-        </Button>
-      </header>
-
-      <main className="flex-1 container max-w-2xl mx-auto px-4 py-8">
+    <main className="fs-main">
+      <div className="mx-auto max-w-2xl px-4">
         {isLoading && (
           <div aria-busy="true" aria-label="Loading alert" className="flex justify-center py-16">
             <span className="text-muted-foreground text-sm">Loading…</span>
@@ -253,7 +227,7 @@ export const AlertDetailPage: React.FC = () => {
             </dl>
           </article>
         )}
-      </main>
-    </div>
+      </div>
+    </main>
   );
 };
