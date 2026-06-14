@@ -2,7 +2,7 @@
   {
     "eventName": "auth.verify_email",
     "templatePath": "auth/verify-email",
-    "subject": "Verify your TrendPulse email",
+    "subject": "Verify your Foresignal email",
     "schema": {
       "type": "object",
       "properties": {
@@ -21,7 +21,7 @@
   {
     "eventName": "auth.reset_password",
     "templatePath": "auth/reset-password",
-    "subject": "Reset your TrendPulse password",
+    "subject": "Reset your Foresignal password",
     "schema": {
       "type": "object",
       "properties": {
@@ -40,7 +40,7 @@
   {
     "eventName": "auth.welcome",
     "templatePath": "auth/welcome",
-    "subject": "Welcome to TrendPulse, {{userName}}!",
+    "subject": "Welcome to Foresignal, {{userName}}!",
     "schema": {
       "type": "object",
       "properties": {
@@ -59,7 +59,7 @@
   {
     "eventName": "auth.email_change_requested",
     "templatePath": "auth/email-change-requested",
-    "subject": "Confirm your new TrendPulse email",
+    "subject": "Confirm your new Foresignal email",
     "schema": {
       "type": "object",
       "properties": {
@@ -80,7 +80,7 @@
   {
     "eventName": "auth.email_changed",
     "templatePath": "auth/email-changed",
-    "subject": "Your TrendPulse email was changed",
+    "subject": "Your Foresignal email was changed",
     "schema": {
       "type": "object",
       "properties": {
@@ -97,7 +97,7 @@
   {
     "eventName": "billing.renewal",
     "templatePath": "billing/renewal",
-    "subject": "Your TrendPulse subscription is expiring soon",
+    "subject": "Your Foresignal subscription is expiring soon",
     "schema": {
       "type": "object",
       "properties": {
