@@ -21,23 +21,29 @@ export interface EmailLayoutProps {
 }
 
 const body = {
-  backgroundColor: '#070b1d',
+  margin: '0',
+  padding: '0',
+  wordSpacing: 'normal',
+  backgroundColor: '#eef1fb',
   fontFamily:
-    '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif',
+    "'Inter','Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif",
 };
 
 const container = {
   margin: '0 auto',
-  padding: '40px 20px',
-  maxWidth: '560px',
+  padding: '32px 12px',
+  width: '600px',
+  maxWidth: '600px',
 };
 
-const card = {
-  backgroundColor: '#0d1432',
-  border: '1px solid rgba(255,255,255,0.09)',
-  borderRadius: '24px',
-  overflow: 'hidden' as const,
-  boxShadow: '0 24px 64px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.06) inset',
+// Aurora accent bar (flat gradient, solid #7c3aed fallback)
+const accentBar = {
+  height: '5px',
+  lineHeight: '5px',
+  fontSize: '1px',
+  backgroundColor: '#7c3aed',
+  background: 'linear-gradient(90deg,#2563eb 0%,#7c3aed 50%,#22d3ee 100%)',
+  borderRadius: '16px 16px 0 0',
 };
 
 export function EmailLayout({
@@ -52,11 +58,10 @@ export function EmailLayout({
       <Preview>{previewText}</Preview>
       <Body style={body}>
         <Container style={container}>
-          <Section style={card}>
-            <BrandHeader tagline={tagline} />
-            {children}
-            <EmailFooter unsubscribeUrl={unsubscribeUrl} />
-          </Section>
+          <Section style={accentBar}>&nbsp;</Section>
+          <BrandHeader tagline={tagline} />
+          {children}
+          <EmailFooter unsubscribeUrl={unsubscribeUrl} />
         </Container>
       </Body>
     </Html>

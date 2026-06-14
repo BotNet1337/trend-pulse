@@ -9,27 +9,35 @@ export interface EmailChangedNoticeProps {
   newEmail: string;
 }
 
-const content = { padding: '32px 36px 0' };
+const content = {
+  backgroundColor: '#ffffff',
+  padding: '32px 36px 0',
+};
 
 const heading = {
   fontSize: '24px',
   fontWeight: 700 as const,
-  color: '#eaeefb',
+  color: '#0f172a',
   letterSpacing: '-0.03em',
   margin: '0 0 14px',
-  lineHeight: '1.2',
+  lineHeight: '1.25',
 };
 
 const bodyText = {
   fontSize: '15px',
   lineHeight: '26px',
-  color: '#8994b8',
+  color: '#475569',
   margin: '0 0 10px',
+};
+
+const emailLabel = {
+  color: '#94a3b8',
+  fontSize: '12px',
 };
 
 const emailBadge = {
   display: 'inline-block' as const,
-  backgroundColor: '#F8FAFC',
+  backgroundColor: '#f8fafc',
   padding: '4px 12px',
   borderRadius: '8px',
   fontFamily:
@@ -37,17 +45,17 @@ const emailBadge = {
   fontSize: '13px',
   fontWeight: 500 as const,
   color: '#334155',
-  border: '1px solid #E2E8F0',
+  border: '1px solid #e2e8f0',
 };
 
 const dangerBox = {
   fontSize: '13px',
   lineHeight: '22px',
-  color: '#DC2626',
-  backgroundColor: '#FEF2F2',
+  color: '#dc2626',
+  backgroundColor: '#fef2f2',
   padding: '14px 20px',
   borderRadius: '14px',
-  border: '1px solid #FECACA',
+  border: '1px solid #fecaca',
   marginTop: '24px',
 };
 
@@ -66,13 +74,11 @@ export function EmailChangedNoticeEmail({
           Your account email was changed successfully.
         </Text>
         <Text style={{ ...bodyText, margin: '14px 0 6px' }}>
-          <span style={{ color: '#4e5a78', fontSize: '12px' }}>
-            Previous:
-          </span>{' '}
+          <span style={emailLabel}>Previous:</span>{' '}
           <span style={emailBadge}>{oldEmail}</span>
         </Text>
         <Text style={{ ...bodyText, margin: '6px 0 0' }}>
-          <span style={{ color: '#4e5a78', fontSize: '12px' }}>Current:</span>{' '}
+          <span style={emailLabel}>Current:</span>{' '}
           <span style={emailBadge}>{newEmail}</span>
         </Text>
         <Text style={{ ...bodyText, marginTop: '16px' }}>

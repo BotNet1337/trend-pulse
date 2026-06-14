@@ -12,27 +12,35 @@ export interface EmailChangeRequestedProps {
   expiresAt: string;
 }
 
-const content = { padding: '32px 36px 0' };
+const content = {
+  backgroundColor: '#ffffff',
+  padding: '32px 36px 0',
+};
 
 const heading = {
   fontSize: '24px',
   fontWeight: 700 as const,
-  color: '#eaeefb',
+  color: '#0f172a',
   letterSpacing: '-0.03em',
   margin: '0 0 14px',
-  lineHeight: '1.2',
+  lineHeight: '1.25',
 };
 
 const bodyText = {
   fontSize: '15px',
   lineHeight: '26px',
-  color: '#8994b8',
+  color: '#475569',
   margin: '0 0 10px',
+};
+
+const emailLabel = {
+  color: '#94a3b8',
+  fontSize: '12px',
 };
 
 const emailBadge = {
   display: 'inline-block' as const,
-  backgroundColor: '#F8FAFC',
+  backgroundColor: '#f8fafc',
   padding: '4px 12px',
   borderRadius: '8px',
   fontFamily:
@@ -40,13 +48,13 @@ const emailBadge = {
   fontSize: '13px',
   fontWeight: 500 as const,
   color: '#334155',
-  border: '1px solid #E2E8F0',
+  border: '1px solid #e2e8f0',
 };
 
 const muted = {
   fontSize: '13px',
   lineHeight: '22px',
-  color: '#4e5a78',
+  color: '#94a3b8',
 };
 
 export function EmailChangeRequestedEmail({
@@ -66,11 +74,11 @@ export function EmailChangeRequestedEmail({
           You requested to change the email on your Foresignal account:
         </Text>
         <Text style={{ ...bodyText, margin: '14px 0 6px' }}>
-          <span style={{ color: '#4e5a78', fontSize: '12px' }}>From:</span>{' '}
+          <span style={emailLabel}>From:</span>{' '}
           <span style={emailBadge}>{oldEmail}</span>
         </Text>
         <Text style={{ ...bodyText, margin: '6px 0 0' }}>
-          <span style={{ color: '#4e5a78', fontSize: '12px' }}>To:</span>{' '}
+          <span style={emailLabel}>To:</span>{' '}
           <span style={emailBadge}>{newEmail}</span>
         </Text>
         <Section style={{ marginTop: '24px' }}>

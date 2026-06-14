@@ -22,27 +22,33 @@ export interface WeeklyDigestEmailProps {
   unsubscribeUrl: string;
 }
 
-const content = { padding: '32px 36px 0' };
+const content = {
+  backgroundColor: '#ffffff',
+  padding: '32px 36px 0',
+};
 
 const heading = {
   fontSize: '24px',
   fontWeight: 700 as const,
-  color: '#eaeefb',
+  color: '#0f172a',
   letterSpacing: '-0.03em',
   margin: '0 0 14px',
-  lineHeight: '1.2',
+  lineHeight: '1.25',
 };
 
 const bodyText = {
   fontSize: '15px',
   lineHeight: '26px',
-  color: '#8994b8',
+  color: '#475569',
   margin: '0 0 10px',
 };
 
-const itemRow = {
+// Aurora-cycled left borders (blue / violet / cyan) — border-left is email-safe.
+const accentColors = ['#2563eb', '#7c3aed', '#0891b2'] as const;
+
+const itemRowBase = {
   padding: '12px 16px',
-  backgroundColor: '#F8FAFC',
+  backgroundColor: '#f8fafc',
   borderRadius: '12px',
   marginBottom: '8px',
 };
@@ -50,14 +56,14 @@ const itemRow = {
 const itemTopic = {
   fontSize: '14px',
   fontWeight: 600 as const,
-  color: '#eaeefb',
+  color: '#0f172a',
   margin: '0 0 2px',
   lineHeight: '22px',
 };
 
 const itemMeta = {
   fontSize: '12px',
-  color: '#4e5a78',
+  color: '#94a3b8',
   margin: '0',
   lineHeight: '18px',
 };
@@ -81,7 +87,13 @@ export function WeeklyDigestEmail({
           Here are the top signals your packs caught over the last 7 days:
         </Text>
         {items.map((item, index) => (
-          <Section key={`${item.topic}-${index}`} style={itemRow}>
+          <Section
+            key={`${item.topic}-${index}`}
+            style={{
+              ...itemRowBase,
+              borderLeft: `3px solid ${accentColors[index % accentColors.length]}`,
+            }}
+          >
             <Text style={itemTopic}>{item.topic}</Text>
             <Text style={itemMeta}>
               Score {item.score}

@@ -11,38 +11,41 @@ export interface ResetPasswordEmailProps {
   expiresAt: string;
 }
 
-const content = { padding: '32px 36px 0' };
+const content = {
+  backgroundColor: '#ffffff',
+  padding: '32px 36px 0',
+};
 
 const heading = {
   fontSize: '24px',
   fontWeight: 700 as const,
-  color: '#eaeefb',
+  color: '#0f172a',
   letterSpacing: '-0.03em',
   margin: '0 0 14px',
-  lineHeight: '1.2',
+  lineHeight: '1.25',
 };
 
 const bodyText = {
   fontSize: '15px',
   lineHeight: '26px',
-  color: '#8994b8',
+  color: '#475569',
   margin: '0 0 10px',
 };
 
 const muted = {
   fontSize: '13px',
   lineHeight: '22px',
-  color: '#4e5a78',
+  color: '#94a3b8',
 };
 
 const infoBox = {
   fontSize: '13px',
   lineHeight: '22px',
-  color: '#64748B',
-  backgroundColor: '#F8FAFC',
+  color: '#64748b',
+  backgroundColor: '#f8fafc',
   padding: '14px 20px',
   borderRadius: '14px',
-  border: '1px solid #F1F5F9',
+  border: '1px solid #eef1f6',
   marginTop: '24px',
 };
 

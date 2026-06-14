@@ -12,11 +12,12 @@ export interface EmailButtonProps {
   label: string;
 }
 
+// Bulletproof gradient CTA (solid #4f46e5 fallback for Outlook / no-gradient clients)
 const button = {
-  backgroundColor: '#2563eb',
-  background: 'linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)',
-  borderRadius: '100px',
-  color: '#fff',
+  backgroundColor: '#4f46e5',
+  background: 'linear-gradient(135deg,#2563eb 0%,#7c3aed 100%)',
+  borderRadius: '999px',
+  color: '#ffffff',
   fontSize: '14px',
   fontWeight: '600' as const,
   letterSpacing: '0.01em',
@@ -24,7 +25,6 @@ const button = {
   textAlign: 'center' as const,
   display: 'inline-block',
   padding: '14px 40px',
-  boxShadow: '0 4px 20px rgba(37,99,235,0.35)',
 };
 
 export function EmailPrimaryButton({ href, label }: EmailButtonProps) {
