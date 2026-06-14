@@ -16,15 +16,12 @@ void React;
 export interface EmailLayoutProps {
   previewText: string;
   tagline?: string;
-  /** Optional unsubscribe URL (TASK-069) — forwarded to the footer link. */
   unsubscribeUrl?: string;
   children: ReactNode;
 }
 
 const body = {
-  backgroundColor: '#F5F3FF',
-  background:
-    'linear-gradient(160deg, #EDE9FE 0%, #F5F3FF 30%, #FAF5FF 60%, #F0F4FF 100%)',
+  backgroundColor: '#070b1d',
   fontFamily:
     '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif',
 };
@@ -36,11 +33,11 @@ const container = {
 };
 
 const card = {
-  backgroundColor: '#FFFFFF',
-  border: '1px solid #E2E8F0',
+  backgroundColor: '#0d1432',
+  border: '1px solid rgba(255,255,255,0.09)',
   borderRadius: '24px',
   overflow: 'hidden' as const,
-  boxShadow: '0 8px 32px rgba(0,0,0,0.06), 0 1px 4px rgba(0,0,0,0.04)',
+  boxShadow: '0 24px 64px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.06) inset',
 };
 
 export function EmailLayout({

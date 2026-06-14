@@ -3,11 +3,6 @@ import { Button as EmailButton } from '@react-email/components';
 
 void React;
 
-/**
- * Allow only http(s) URLs in email links. react-email escapes text content but
- * NOT the `href` scheme, so a `javascript:`/`data:` URL in a url-prop would render
- * a clickable XSS/phishing link. Anything that is not http(s) collapses to `#`.
- */
 export function safeHref(url: string): string {
   return /^https?:\/\//i.test(url) ? url : '#';
 }
@@ -18,8 +13,8 @@ export interface EmailButtonProps {
 }
 
 const button = {
-  backgroundColor: '#6366F1',
-  background: 'linear-gradient(140deg, #6366F1 0%, #8B5CF6 100%)',
+  backgroundColor: '#2563eb',
+  background: 'linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)',
   borderRadius: '100px',
   color: '#fff',
   fontSize: '14px',
@@ -29,7 +24,7 @@ const button = {
   textAlign: 'center' as const,
   display: 'inline-block',
   padding: '14px 40px',
-  boxShadow: '0 4px 14px rgba(99,102,241,0.25)',
+  boxShadow: '0 4px 20px rgba(37,99,235,0.35)',
 };
 
 export function EmailPrimaryButton({ href, label }: EmailButtonProps) {

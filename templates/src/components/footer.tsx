@@ -9,12 +9,12 @@ const wrapper = {
 };
 
 const divider = {
-  borderColor: '#F1F5F9',
+  borderColor: 'rgba(255,255,255,0.08)',
   margin: '0 0 20px',
 };
 
 const muted = {
-  color: '#CBD5E1',
+  color: '#4e5a78',
   fontSize: '11px',
   lineHeight: '18px',
   margin: '0',
@@ -27,16 +27,11 @@ const copyright = {
 };
 
 const unsubscribeLink = {
-  color: '#94A3B8',
+  color: '#67e8f9',
   textDecoration: 'underline' as const,
 };
 
 export interface EmailFooterProps {
-  /**
-   * Optional unsubscribe URL (TASK-069): rendered as a footer link on
-   * lifecycle emails (welcome / weekly digest / win-back). Transactional
-   * emails omit the prop — the footer renders exactly as before.
-   */
   unsubscribeUrl?: string;
 }
 
@@ -45,7 +40,7 @@ export function EmailFooter({ unsubscribeUrl }: EmailFooterProps = {}) {
     <Section style={wrapper}>
       <Hr style={divider} />
       <Text style={muted}>
-        TrendPulse &middot; You received this email because of activity on your
+        Foresignal &middot; You received this email because of activity on your
         account.
       </Text>
       {unsubscribeUrl ? (
@@ -57,7 +52,7 @@ export function EmailFooter({ unsubscribeUrl }: EmailFooterProps = {}) {
           reset, billing) are not affected.
         </Text>
       ) : null}
-      <Text style={copyright}>&copy; 2026 TrendPulse</Text>
+      <Text style={copyright}>&copy; 2026 Foresignal</Text>
     </Section>
   );
 }
