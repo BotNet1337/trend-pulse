@@ -1,45 +1,34 @@
+/**
+ * Aurora dark-only (TASK-074 landing). The marketing site is always dark to
+ * match the SPA. The theme API is kept for compatibility, but resolves to
+ * 'dark' unconditionally — there is no light mode and no stored preference.
+ */
 export type ThemeMode = 'system' | 'light' | 'dark';
 
-const KEY = 'theme';
-
 export function getStoredTheme(): ThemeMode {
-  try {
-    const v = localStorage.getItem(KEY);
-    if (v === 'light' || v === 'dark' || v === 'system') return v;
-  } catch {
-    // ignore
-  }
-  return 'system';
+  return 'dark';
 }
 
 export function setStoredTheme(mode: ThemeMode) {
+  void mode; // no-op: the site is always Aurora dark
+}
+
+export function resolveTheme(mode: ThemeMode): 'light' | 'dark' {
+  void mode;
+  return 'dark';
+}
+
+export function applyTheme(mode: ThemeMode) {
+  void mode;
+  // Always Aurora dark. Tailwind uses the `.dark` ancestor; we set it on both
+  // <html> and <body> to avoid edge cases (mirrors the SSR theme-script).
   try {
-    localStorage.setItem(KEY, mode);
+    const root = document.documentElement;
+    const body = document.body;
+    root.classList.add('dark');
+    body?.classList.add('dark');
+    root.style.colorScheme = 'dark';
   } catch {
     // ignore
   }
 }
-
-export function resolveTheme(mode: ThemeMode): 'light' | 'dark' {
-  if (mode === 'light' || mode === 'dark') return mode;
-  const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)')?.matches ?? false;
-  return prefersDark ? 'dark' : 'light';
-}
-
-export function applyTheme(mode: ThemeMode) {
-  const resolved = resolveTheme(mode);
-  // Tailwind uses `.dark` ancestor. We set it on both <html> and <body> to avoid edge cases.
-  const root = document.documentElement;
-  const body = document.body;
-  if (resolved === 'dark') {
-    root.classList.add('dark');
-    body?.classList.add('dark');
-    root.style.colorScheme = 'dark';
-  } else {
-    root.classList.remove('dark');
-    body?.classList.remove('dark');
-    root.style.colorScheme = 'light';
-  }
-}
-
-

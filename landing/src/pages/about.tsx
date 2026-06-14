@@ -57,7 +57,7 @@ export function AboutPage() {
           <Badge variant="secondary" className="mb-6">
             About {SITE.brandName}
           </Badge>
-          <h1 className="text-4xl md:text-5xl font-bold mb-6">Your personal viral radar for Telegram</h1>
+          <h1 className="text-aurora-gradient text-4xl md:text-5xl font-bold mb-6">Your personal viral radar for Telegram</h1>
           <p className="text-lg text-muted-foreground mb-8">
             We&apos;re building the fastest way to detect viral content in public Telegram channels. {SITE.brandName}{' '}
             monitors public channels continuously and alerts you the moment a topic crosses the viral threshold.

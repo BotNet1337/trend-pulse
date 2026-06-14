@@ -1,20 +1,13 @@
 (() => {
+  // Aurora dark-only (TASK-074 landing). The site is always dark to match the SPA.
+  // We force the `.dark` class on first paint so Tailwind `dark:` variants resolve
+  // to dark immediately — no FOUC, no broken light mode, regardless of any stored
+  // theme preference or OS setting.
   try {
-    const stored = localStorage.getItem('theme'); // 'light' | 'dark' | 'system' | null
-    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const resolved = stored === 'light' || stored === 'dark' ? stored : prefersDark ? 'dark' : 'light';
-    if (resolved === 'dark') {
-      document.documentElement.classList.add('dark');
-      document.body && document.body.classList.add('dark');
-      document.documentElement.style.colorScheme = 'dark';
-    } else {
-      document.documentElement.classList.remove('dark');
-      document.body && document.body.classList.remove('dark');
-      document.documentElement.style.colorScheme = 'light';
-    }
+    document.documentElement.classList.add('dark');
+    document.body && document.body.classList.add('dark');
+    document.documentElement.style.colorScheme = 'dark';
   } catch {
     // ignore
   }
 })();
-
-

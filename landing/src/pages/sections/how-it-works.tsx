@@ -44,7 +44,7 @@ export function HowItWorksSection() {
             return (
               <div key={step.title} className="group relative">
                 <div className="bg-card border border-border rounded-lg p-8 text-center relative z-10 transition-all hover:shadow-md hover:border-primary/50 hover:-translate-y-0.5">
-                  <div className="w-16 h-16 bg-primary text-primary-foreground rounded-full flex items-center justify-center mx-auto mb-4 text-xl font-bold">
+                  <div className="w-16 h-16 bg-aurora-button text-primary-foreground rounded-full flex items-center justify-center mx-auto mb-4 text-xl font-bold shadow-brand">
                     {index + 1}
                   </div>
                   <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mx-auto mb-4 transition-colors group-hover:bg-primary/20">
