@@ -54,6 +54,7 @@ from collector.constants import (
 from collector.errors import (
     AllAccountsFloodWaitError,
     PoolConfigError,
+    PoolExhaustedError,
     SourceUnavailableError,
 )
 from collector.locks import collect_tick_lock
@@ -159,8 +160,14 @@ async def _collect_refs(
             async for post in collector.read([ref], since):
                 write_post(redis, post)
                 written += 1
-        except (AllAccountsFloodWaitError, SourceUnavailableError) as exc:
-            # The reader already rotated/backed off; skip this ref, keep the rest.
+        except (
+            AllAccountsFloodWaitError,
+            PoolExhaustedError,
+            SourceUnavailableError,
+        ) as exc:
+            # The reader already rotated/backed off/quarantined; skip this ref, keep
+            # the rest. PoolExhaustedError (all sessions dead, TASK-087) skips here
+            # too — the per-account dead-session alert already told ops to re-mint.
             logger.warning(
                 "collect_tick: source skipped kind=%s handle=%s (%s)",
                 ref.kind.value,

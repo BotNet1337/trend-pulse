@@ -71,7 +71,10 @@ def emit_pool_health(pool: AccountPool, settings: Settings) -> dict[str, object]
     """
     size: int = pool.size
     cooling: int = pool.cooling_count
-    healthy: int = size - cooling
+    quarantined: int = pool.quarantined_count
+    # Quarantined (dead) accounts are neither cooling nor healthy — subtract both so
+    # `healthy` reflects accounts that can actually serve a read (TASK-087).
+    healthy: int = size - cooling - quarantined
     target: int = settings.pool_min_healthy
     degraded: bool = healthy < target
 
@@ -79,6 +82,7 @@ def emit_pool_health(pool: AccountPool, settings: Settings) -> dict[str, object]
         "pool_health",
         size=size,
         cooling=cooling,
+        quarantined=quarantined,
         healthy=healthy,
         target=target,
         degraded=degraded,
@@ -86,6 +90,7 @@ def emit_pool_health(pool: AccountPool, settings: Settings) -> dict[str, object]
     return {
         "size": size,
         "cooling": cooling,
+        "quarantined": quarantined,
         "healthy": healthy,
         "target": target,
         "degraded": degraded,

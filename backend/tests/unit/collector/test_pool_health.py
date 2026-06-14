@@ -100,10 +100,16 @@ def test_emit_pool_health_logs_aggregates(caplog: pytest.LogCaptureFixture) -> N
     # 2 healthy < 3 target → degraded
     assert result["degraded"] is True
 
-    # Returned dict must contain EXACTLY the five aggregate fields — no extras.
-    assert set(result.keys()) == {"size", "cooling", "healthy", "target", "degraded"}, (
-        f"Unexpected keys in emit_pool_health result: {set(result.keys())}"
-    )
+    # Returned dict must contain EXACTLY the aggregate fields — no extras.
+    # `quarantined` added in TASK-087 (dead-session count, non-secret).
+    assert set(result.keys()) == {
+        "size",
+        "cooling",
+        "quarantined",
+        "healthy",
+        "target",
+        "degraded",
+    }, f"Unexpected keys in emit_pool_health result: {set(result.keys())}"
 
     # None of the keys may be a secret/PII carrier.
     secret_patterns = {"token", "session", "text", "content"}

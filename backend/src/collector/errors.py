@@ -17,5 +17,14 @@ class AllAccountsFloodWaitError(CollectorError):
     """Every pool account is cooling down under FLOOD_WAIT; caller should back off."""
 
 
+class PoolExhaustedError(CollectorError):
+    """Every pool account is quarantined (dead sessions) — re-mint required (TASK-087).
+
+    Distinct from `AllAccountsFloodWaitError`: cooling accounts recover after their
+    cooldown, quarantined ones never do. The reader must NOT retry/sleep on this —
+    the tick skips the ref (like SourceUnavailableError) until sessions are re-minted.
+    """
+
+
 class BufferWriteError(CollectorError):
     """A raw post could not be written to the Redis buffer (not silently dropped)."""
