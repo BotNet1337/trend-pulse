@@ -94,6 +94,7 @@ extend-ignore = ["B008"]
 "src/scorer/categorize.py" = ["RUF001", "RUF002"]
 "tests/unit/test_categorize.py" = ["RUF001"]
 "tests/unit/test_signal_payload.py" = ["RUF001"]
+"tests/unit/test_signals_api.py" = ["RUF001"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
