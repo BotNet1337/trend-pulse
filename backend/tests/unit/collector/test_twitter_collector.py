@@ -25,6 +25,7 @@ from collector.errors import (
     PoolConfigError,
     SourceUnavailableError,
     TwitterAPIError,
+    TwitterCreditsDepletedError,
     TwitterRateLimitError,
     TwitterReadBudgetExceededError,
 )
@@ -484,6 +485,164 @@ async def test_client_server_error_raises_api_error() -> None:
     client = _client_with(lambda req: httpx.Response(500, json={}))
     with pytest.raises(TwitterAPIError):
         await client.fetch_tweets("111", start_time=None, max_results=10)
+    await client.aclose()
+
+
+# ---------------------------------------------------------------------------
+# Cost controls: 402 credits cooldown, per-account interval, user-id cache
+# ---------------------------------------------------------------------------
+
+
+class _FakeRedis:
+    """Tiny dict-backed Redis fake (distinguishes keys, unlike a single MagicMock)."""
+
+    def __init__(self) -> None:
+        self.store: dict[str, str] = {}
+
+    def get(self, key: str) -> str | None:
+        return self.store.get(key)
+
+    def set(
+        self, key: str, value: object, *, nx: bool = False, ex: int | None = None
+    ) -> bool | None:
+        # Mimic SET NX: return None if the key already exists (throttle "not acquired").
+        if nx and key in self.store:
+            return None
+        self.store[key] = str(value)
+        return True
+
+    def incrby(self, key: str, n: int) -> int:
+        self.store[key] = str(int(self.store.get(key, "0")) + n)
+        return int(self.store[key])
+
+    def expire(self, key: str, ttl: int) -> bool:
+        return True
+
+    def pipeline(self) -> _FakePipe:
+        return _FakePipe(self)
+
+
+class _FakePipe:
+    def __init__(self, r: _FakeRedis) -> None:
+        self._r = r
+        self._ops: list[tuple[str, str, int]] = []
+
+    def incrby(self, key: str, n: int) -> _FakePipe:
+        self._ops.append(("incrby", key, n))
+        return self
+
+    def expire(self, key: str, ttl: int) -> _FakePipe:
+        self._ops.append(("expire", key, ttl))
+        return self
+
+    def execute(self) -> None:
+        for op, key, val in self._ops:
+            if op == "incrby":
+                self._r.incrby(key, val)
+        self._ops = []
+
+
+def _capture_ops_post(monkeypatch: pytest.MonkeyPatch, sink: list[object]) -> None:
+    def _fake_post(url: str, **kwargs: object) -> MagicMock:
+        sink.append(kwargs.get("json"))
+        resp = MagicMock()
+        resp.status_code = 200
+        return resp
+
+    monkeypatch.setattr("observability.pool_health.httpx.post", _fake_post)
+
+
+@pytest.mark.asyncio
+async def test_credits_depleted_pauses_reads_and_alerts_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # First account hits 402 → cooldown entered, ref skipped; subsequent reads during
+    # cooldown make NO API calls and alert fires exactly once.
+    client = FakeTwitterClient(fetch_raises=[TwitterCreditsDepletedError("402")])
+    redis = _FakeRedis()
+    sent: list[object] = []
+    _capture_ops_post(monkeypatch, sent)
+    clock = {"t": 1000.0}
+    collector = TwitterCollector(
+        client, settings=_settings(), redis=redis, monotonic=lambda: clock["t"]
+    )
+
+    with pytest.raises(SourceUnavailableError):
+        _ = [p async for p in collector.read([_REF], since=None)]
+    calls_after_first = client.resolve_calls + client.fetch_calls
+
+    # A later tick within cooldown: read() returns immediately, no API calls.
+    posts = [p async for p in collector.read([SourceRef(SourceKind.TWITTER, "other")], since=None)]
+    assert posts == []
+    assert client.resolve_calls + client.fetch_calls == calls_after_first  # no new calls
+
+    credits_alerts = [s for s in sent if "кредит" in str(s) or "402" in str(s)]
+    assert len(credits_alerts) == 1
+
+
+@pytest.mark.asyncio
+async def test_credits_cooldown_expires_resumes_reads() -> None:
+    from collector.constants import TWITTER_CREDITS_COOLDOWN_SECONDS
+
+    # resolve always 402s; we verify the API is NOT hit during cooldown and IS hit
+    # again once the cooldown elapses (reads resume).
+    client = FakeTwitterClient(resolve_raises=TwitterCreditsDepletedError("402"))
+    redis = _FakeRedis()
+    clock = {"t": 1000.0}
+    collector = TwitterCollector(client, redis=redis, monotonic=lambda: clock["t"])
+
+    with pytest.raises(SourceUnavailableError):
+        _ = [p async for p in collector.read([_REF], since=None)]
+    assert client.resolve_calls == 1  # attempted once
+
+    # Within cooldown: no API call.
+    posts = [p async for p in collector.read([_REF], since=None)]
+    assert posts == []
+    assert client.resolve_calls == 1  # unchanged — paused
+
+    # After cooldown: reads resume (API hit again).
+    clock["t"] += TWITTER_CREDITS_COOLDOWN_SECONDS + 1
+    with pytest.raises(SourceUnavailableError):
+        _ = [p async for p in collector.read([_REF], since=None)]
+    assert client.resolve_calls == 2  # resumed
+
+
+@pytest.mark.asyncio
+async def test_account_skipped_within_min_interval_and_userid_cached() -> None:
+    from collector.constants import TWITTER_MIN_READ_INTERVAL_SECONDS
+
+    client = FakeTwitterClient(tweets=[_tweet("7")])
+    redis = _FakeRedis()
+    epoch = {"t": 1_000_000.0}
+    collector = TwitterCollector(
+        client, redis=redis, now=lambda: datetime.fromtimestamp(epoch["t"], tz=UTC)
+    )
+
+    # First read: resolves, fetches, stamps last-read + caches user-id.
+    posts = [p async for p in collector.read([_REF], since=None)]
+    assert [p.external_id for p in posts] == ["7"]
+    assert client.fetch_calls == 1
+    assert client.resolve_calls == 1
+
+    # Immediate second read (within interval): skipped, no API calls.
+    posts2 = [p async for p in collector.read([_REF], since=None)]
+    assert posts2 == []
+    assert client.fetch_calls == 1
+    assert client.resolve_calls == 1
+
+    # Past the interval: reads again, but user-id is cached → resolve NOT repeated.
+    epoch["t"] += TWITTER_MIN_READ_INTERVAL_SECONDS + 1
+    posts3 = [p async for p in collector.read([_REF], since=None)]
+    assert [p.external_id for p in posts3] == ["7"]
+    assert client.fetch_calls == 2
+    assert client.resolve_calls == 1  # cached
+
+
+@pytest.mark.asyncio
+async def test_client_402_raises_credits_depleted() -> None:
+    client = _client_with(lambda req: httpx.Response(402, json={"title": "CreditsDepleted"}))
+    with pytest.raises(TwitterCreditsDepletedError):
+        await client.resolve_user_id("jack")
     await client.aclose()
 
 

@@ -34,6 +34,14 @@ class TwitterAPIError(CollectorError):
     """A non-recoverable Twitter/X API error (non-2xx other than 404/429) — skip the ref."""
 
 
+class TwitterCreditsDepletedError(CollectorError):
+    """X API returned 402 CreditsDepleted — the pay-per-use account has no credits.
+
+    A PERSISTENT billing state (not transient): every read is rejected until the
+    owner tops up. The collector pauses all Twitter reads for a cooldown and alerts
+    ops ONCE rather than re-failing every account every tick (TASK-031)."""
+
+
 class TwitterRateLimitError(CollectorError):
     """Twitter/X API returned 429. Carries `retry_after_seconds` (from the
     `x-rate-limit-reset` header when present) so the reader can back off inline
