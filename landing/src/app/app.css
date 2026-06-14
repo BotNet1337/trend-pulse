@@ -15,19 +15,28 @@
   --radius: 0.625rem;
   color-scheme: dark;
 
-  /* Aurora palette */
-  --aurora-blue:        #3b82f6;
-  --aurora-violet:      #7c3aed;
+  /* Aurora palette — values locked to designs/trendPulse/landing mockups */
+  --aurora-bg:          #070b1d;
+  --aurora-bg-elevated: #0c1228;
+  --aurora-blue:        #60a5fa;
+  --aurora-violet:      #a78bfa;
   --aurora-cyan:        #22d3ee;
   --aurora-cyan-bright: #67e8f9;
   --aurora-text:        #eaeefb;
-  --aurora-text-muted:  #8994b8;
-  --aurora-text-faint:  #4e5a78;
-  --aurora-border:      rgba(255,255,255,0.10);
-  --aurora-glass:       rgba(255,255,255,0.05);
+  --aurora-text-muted:  #a3aecb;
+  --aurora-text-faint:  #7d89aa;
+  --aurora-border:        rgba(255,255,255,0.10);
+  --aurora-border-strong: rgba(255,255,255,0.18);
+  --aurora-glass:         rgba(255,255,255,0.05);
+  --aurora-glass-strong:  rgba(255,255,255,0.08);
   --aurora-glass-solid: #0d1432;
-  --aurora-grad-btn:    linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+  --aurora-grad-btn:       linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+  --aurora-grad-btn-hover: linear-gradient(135deg, #1d4ed8 0%, #6d28d9 100%);
   --aurora-grad-text:   linear-gradient(92deg, #7cb3fc 0%, #b39cfc 50%, #5eead4 100%);
+  --aurora-radius-lg:   20px;
+  --aurora-radius-xl:   28px;
+  --aurora-radius-pill: 999px;
+  --aurora-shadow-soft: 0 8px 40px rgba(3, 7, 24, 0.55);
   --aurora-container:   1200px;
 
   /* Tailwind token → Aurora dark mapping */
@@ -37,12 +46,12 @@
   --card-foreground:    #eaeefb;
   --popover:       rgba(7,11,29,0.97);
   --popover-foreground: #eaeefb;
-  --primary:       #3b82f6;
+  --primary:       #60a5fa;
   --primary-foreground: #ffffff;
   --secondary:     rgba(255,255,255,0.07);
   --secondary-foreground: #eaeefb;
   --muted:         rgba(255,255,255,0.07);
-  --muted-foreground: #8994b8;
+  --muted-foreground: #a3aecb;
   --accent:        rgba(34,211,238,0.12);
   --accent-foreground: #67e8f9;
   --destructive:   #f87171;
@@ -53,7 +62,7 @@
   --switch-background: rgba(255,255,255,0.14);
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --ring:          rgba(59,130,246,0.45);
+  --ring:          rgba(96,165,250,0.45);
 
   --chart-1: #3b82f6;
   --chart-2: #22d3ee;
@@ -93,12 +102,12 @@
   --card-foreground:    #eaeefb;
   --popover:       rgba(7,11,29,0.97);
   --popover-foreground: #eaeefb;
-  --primary:       #3b82f6;
+  --primary:       #60a5fa;
   --primary-foreground: #ffffff;
   --secondary:     rgba(255,255,255,0.07);
   --secondary-foreground: #eaeefb;
   --muted:         rgba(255,255,255,0.07);
-  --muted-foreground: #8994b8;
+  --muted-foreground: #a3aecb;
   --accent:        rgba(34,211,238,0.12);
   --accent-foreground: #67e8f9;
   --destructive:   #f87171;
@@ -107,7 +116,7 @@
   --input:         rgba(255,255,255,0.07);
   --input-background: rgba(255,255,255,0.05);
   --switch-background: rgba(255,255,255,0.14);
-  --ring:          rgba(59,130,246,0.45);
+  --ring:          rgba(96,165,250,0.45);
   --sidebar:            rgba(7,11,29,0.95);
   --sidebar-foreground: #eaeefb;
   --sidebar-primary:    #3b82f6;
@@ -158,7 +167,7 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 }
 
@@ -169,10 +178,21 @@
 
   html {
     font-size: var(--font-size);
+    scroll-behavior: smooth;
+    scroll-padding-top: 84px;
   }
 
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, h4 {
+    letter-spacing: -0.02em;
   }
 
   h1 {
@@ -246,6 +266,9 @@
   .bg-aurora-button {
     background-image: var(--aurora-grad-btn);
   }
+  .bg-aurora-button-hover {
+    background-image: var(--aurora-grad-btn-hover);
+  }
   .shadow-brand {
     box-shadow:
       0 4px 12px rgba(37,99,235,0.30),
@@ -266,6 +289,223 @@
     border: 1px solid var(--aurora-border);
     border-radius: 14px;
   }
+}
+
+/* ─── Aurora design-system component classes ────────────────────────────────
+ * Faithful port of designs/trendPulse/landing mockup CSS. Applied via
+ * className only — markup/content unchanged. Prefixed `fs-` (Foresignal).
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+/* Aurora gradient backdrop with drifting blobs (decorative, fixed) */
+.fs-aurora {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(1100px 700px at 85% -10%, rgba(124, 58, 237, 0.16), transparent 60%),
+    radial-gradient(900px 600px at -10% 20%, rgba(37, 99, 235, 0.17), transparent 60%),
+    radial-gradient(800px 700px at 60% 110%, rgba(34, 211, 238, 0.10), transparent 60%),
+    var(--aurora-bg);
+}
+.fs-aurora .fs-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.5;
+  will-change: transform;
+}
+.fs-aurora .fs-blob-1 {
+  width: 48vw; height: 48vw;
+  min-width: 420px; min-height: 420px;
+  left: -12vw; top: -14vw;
+  background: radial-gradient(circle at 30% 30%, rgba(59, 130, 246, 0.55), transparent 65%);
+  animation: fs-drift-a 26s ease-in-out infinite alternate;
+}
+.fs-aurora .fs-blob-2 {
+  width: 42vw; height: 42vw;
+  min-width: 380px; min-height: 380px;
+  right: -14vw; top: 8vh;
+  background: radial-gradient(circle at 60% 40%, rgba(139, 92, 246, 0.5), transparent 65%);
+  animation: fs-drift-b 32s ease-in-out infinite alternate;
+}
+.fs-aurora .fs-blob-3 {
+  width: 38vw; height: 38vw;
+  min-width: 340px; min-height: 340px;
+  left: 28vw; bottom: -22vw;
+  background: radial-gradient(circle at 50% 50%, rgba(34, 211, 238, 0.35), transparent 65%);
+  animation: fs-drift-c 38s ease-in-out infinite alternate;
+}
+@keyframes fs-drift-a {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(7vw, 6vh, 0) scale(1.12); }
+}
+@keyframes fs-drift-b {
+  from { transform: translate3d(0, 0, 0) scale(1.08); }
+  to   { transform: translate3d(-6vw, 9vh, 0) scale(0.94); }
+}
+@keyframes fs-drift-c {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(5vw, -6vh, 0) scale(1.15); }
+}
+
+/* Glass surface (blurred translucent card with soft shadow) */
+.fs-glass {
+  background: var(--aurora-glass);
+  border: 1px solid var(--aurora-border);
+  border-radius: var(--aurora-radius-lg);
+  box-shadow: var(--aurora-shadow-soft);
+}
+@supports (backdrop-filter: blur(16px)) or (-webkit-backdrop-filter: blur(16px)) {
+  .fs-glass {
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+  }
+}
+@supports not ((backdrop-filter: blur(16px)) or (-webkit-backdrop-filter: blur(16px))) {
+  .fs-glass { background: rgba(16, 22, 48, 0.92); }
+}
+
+/* Eyebrow — small uppercase label with leading gradient bar */
+.fs-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--aurora-cyan-bright);
+}
+.fs-eyebrow::before {
+  content: "";
+  width: 22px; height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--aurora-blue), var(--aurora-cyan));
+}
+
+/* Aurora gradient headline text */
+.fs-grad-text {
+  background: var(--aurora-grad-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Pill chip (metric badge) */
+.fs-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--aurora-text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--aurora-border);
+  border-radius: var(--aurora-radius-pill);
+  padding: 0.32rem 0.7rem;
+  font-variant-numeric: tabular-nums;
+}
+.fs-chip strong { color: var(--aurora-cyan-bright); font-weight: 700; }
+.fs-chip-hot strong { color: #fda4af; }
+
+/* Hero alert card gradient border ring */
+.fs-alert-card {
+  position: relative;
+  border-radius: var(--aurora-radius-xl);
+  animation: fs-float-a 7s ease-in-out infinite;
+}
+.fs-alert-card::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(96, 165, 250, 0.5), rgba(167, 139, 250, 0.35) 50%, rgba(34, 211, 238, 0.4));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+.fs-float-velocity { animation: fs-float-b 8s ease-in-out infinite; }
+.fs-float-zscore { animation: fs-float-c 9s ease-in-out infinite; }
+@keyframes fs-float-a {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+@keyframes fs-float-b {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+@keyframes fs-float-c {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(5px); }
+}
+
+/* Pulsing live dot */
+.fs-dot {
+  background: var(--aurora-cyan);
+  box-shadow: 0 0 10px var(--aurora-cyan);
+  animation: fs-pulse-dot 2.4s ease-in-out infinite;
+}
+@keyframes fs-pulse-dot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.7); opacity: 0.6; }
+}
+
+/* Step number / feature icon tiles */
+.fs-step-num {
+  background: var(--aurora-grad-btn);
+  color: #fff;
+  box-shadow: 0 4px 18px rgba(99, 102, 241, 0.4);
+}
+.fs-feature-icon {
+  background: linear-gradient(135deg, rgba(96, 165, 250, 0.18), rgba(167, 139, 250, 0.16));
+  border: 1px solid rgba(150, 170, 255, 0.22);
+  color: var(--aurora-cyan-bright);
+}
+
+/* Featured pricing plan surface */
+.fs-plan-featured {
+  border-color: rgba(139, 122, 255, 0.45) !important;
+  background: linear-gradient(180deg, rgba(124, 92, 240, 0.12), rgba(255, 255, 255, 0.04) 45%);
+  box-shadow: 0 12px 56px rgba(99, 102, 241, 0.28);
+}
+.fs-popular-badge {
+  background: var(--aurora-grad-btn);
+  color: #fff;
+  box-shadow: 0 4px 18px rgba(99, 102, 241, 0.5);
+}
+
+/* Inner radial glow for showcase / final-CTA panels */
+.fs-panel-glow::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(520px 280px at 50% -20%, rgba(124, 58, 237, 0.22), transparent 70%),
+    radial-gradient(420px 260px at 85% 110%, rgba(34, 211, 238, 0.14), transparent 70%);
+}
+
+/* Card hover lift — for glass cards in grids */
+.fs-card-hover {
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+.fs-card-hover:hover {
+  transform: translateY(-4px);
+  border-color: var(--aurora-border-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fs-aurora .fs-blob,
+  .fs-alert-card,
+  .fs-float-velocity,
+  .fs-float-zscore,
+  .fs-dot { animation: none !important; }
 }
 
 html.home-scroll-snap {

@@ -39,36 +39,37 @@ export function SecurityPrivacySection() {
   ];
 
   return (
-    <section id="security-privacy" className="py-24 px-6 lg:px-20 snap-start scroll-mt-16">
+    <section id="security-privacy" className="py-20 md:py-24 px-6 lg:px-20 snap-start scroll-mt-16">
       <div className="max-w-6xl mx-auto">
-        <div className="text-center mb-16">
+        <div className="text-center max-w-2xl mx-auto mb-12">
+          <p className="fs-eyebrow justify-center mb-4">Security &amp; Privacy</p>
           <h2 className="text-3xl md:text-4xl font-bold mb-4">Security &amp; Privacy First</h2>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+          <p className="text-lg text-muted-foreground">
             {SITE.brandName} is designed around compliance from day one — public channels only, 48-hour retention, honest policies.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {highlights.map((highlight) => {
             const Icon = highlight.icon;
             return (
-              <div
+              <article
                 key={highlight.title}
-                className="group bg-card border border-border rounded-lg p-6 flex gap-4 transition-all hover:shadow-md hover:border-primary/50 hover:-translate-y-0.5"
+                className="fs-glass fs-card-hover flex gap-4 p-6 hover:bg-white/[0.08]"
               >
-                <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center shrink-0 transition-colors group-hover:bg-primary/20">
-                  <Icon className="h-6 w-6 text-primary" aria-hidden="true" />
-                </div>
+                <span className="fs-feature-icon flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px]" aria-hidden="true">
+                  <Icon className="h-5 w-5" />
+                </span>
                 <div>
-                  <h3 className="mb-2">{highlight.title}</h3>
+                  <h3 className="mb-1.5 text-lg font-bold">{highlight.title}</h3>
                   <p className="text-sm text-muted-foreground">{highlight.description}</p>
                 </div>
-              </div>
+              </article>
             );
           })}
         </div>
 
-        <div className="mt-8 bg-muted/50 border border-border rounded-lg p-6 text-center">
+        <div className="fs-glass mt-8 p-6 text-center">
           <p className="text-sm text-muted-foreground">
             <strong>Note:</strong> {SITE.brandName} is in active development. Please review our{' '}
             <Link to="/security" className="text-primary hover:underline">

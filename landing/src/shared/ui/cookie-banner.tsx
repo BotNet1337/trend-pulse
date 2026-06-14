@@ -104,11 +104,11 @@ export function CookieBanner() {
   return (
     <>
       {isVisible ? (
-        <div className="fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border shadow-lg">
+        <div className="fixed bottom-0 left-0 right-0 z-50 bg-[rgba(10,14,33,0.92)] backdrop-blur-xl border-t border-white/10 shadow-[0_-8px_40px_rgba(3,7,24,0.55)]">
           <div className="max-w-7xl mx-auto px-6 lg:px-20 py-6">
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative">
               <div className="flex-1">
-                <h3 className="mb-2">Cookie Consent</h3>
+                <h3 className="mb-2 font-bold">Cookie Consent</h3>
                 <p className="text-sm text-muted-foreground">
                   We use cookies to enhance your experience, analyze site traffic, and personalize content. You can manage
                   your preferences or accept all cookies.
@@ -142,8 +142,8 @@ export function CookieBanner() {
 
       {showPreferences ? (
         <div className="fixed inset-0 z-[60] flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setShowPreferences(false)} />
-          <div className="relative bg-card rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setShowPreferences(false)} />
+          <div className="relative bg-[rgba(12,18,40,0.96)] backdrop-blur-xl border border-white/10 rounded-[20px] shadow-[0_20px_70px_rgba(3,7,24,0.7)] max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex items-start justify-between mb-6">
                 <div>
@@ -158,7 +158,7 @@ export function CookieBanner() {
               </div>
 
               <div className="space-y-6">
-                <div className="flex items-start justify-between gap-4 pb-4 border-b border-border">
+                <div className="flex items-start justify-between gap-4 pb-4 border-b border-white/10">
                   <div className="flex-1">
                     <h4 className="mb-1">Essential Cookies</h4>
                     <p className="text-sm text-muted-foreground">
@@ -168,7 +168,7 @@ export function CookieBanner() {
                   <Switch checked disabled />
                 </div>
 
-                <div className="flex items-start justify-between gap-4 pb-4 border-b border-border">
+                <div className="flex items-start justify-between gap-4 pb-4 border-b border-white/10">
                   <div className="flex-1">
                     <h4 className="mb-1">Analytics</h4>
                     <p className="text-sm text-muted-foreground">
@@ -196,7 +196,7 @@ export function CookieBanner() {
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3 mt-6 pt-6 border-t border-border">
+              <div className="flex justify-end gap-3 mt-6 pt-6 border-t border-white/10">
                 <Button variant="ghost" onClick={() => setShowPreferences(false)}>
                   Cancel
                 </Button>

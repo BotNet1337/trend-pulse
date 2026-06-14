@@ -15,7 +15,7 @@ export function BlogArticleLayout(props: { meta: BlogArticleMeta; children: Reac
           <Link to="/blog" className="text-sm text-primary hover:underline">
             ← Blog
           </Link>
-          <h1 className="text-4xl md:text-5xl font-bold mt-4 mb-4 tracking-tight">
+          <h1 className="text-4xl md:text-5xl font-bold mt-4 mb-4 tracking-[-0.02em] fs-grad-text">
             {props.meta.title}
           </h1>
           <p className="text-muted-foreground text-sm">
@@ -27,7 +27,7 @@ export function BlogArticleLayout(props: { meta: BlogArticleMeta; children: Reac
           {props.children}
         </div>
 
-        <div className="mt-12 pt-8 border-t border-border flex flex-col sm:flex-row gap-4 sm:items-center sm:justify-between">
+        <div className="mt-12 pt-8 border-t border-white/10 flex flex-col sm:flex-row gap-4 sm:items-center sm:justify-between">
           <Link to="/blog" className="text-sm text-primary hover:underline">
             ← All articles
           </Link>

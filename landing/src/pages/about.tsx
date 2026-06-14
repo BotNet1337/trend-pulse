@@ -54,10 +54,10 @@ export function AboutPage() {
     <div className="pt-24 pb-16">
       <section className="py-16 px-6 lg:px-20">
         <div className="max-w-4xl mx-auto text-center">
-          <Badge variant="secondary" className="mb-6">
-            About {SITE.brandName}
-          </Badge>
-          <h1 className="text-aurora-gradient text-4xl md:text-5xl font-bold mb-6">Your personal viral radar for Telegram</h1>
+          <p className="fs-eyebrow justify-center mb-4">About {SITE.brandName}</p>
+          <h1 className="text-4xl md:text-5xl font-extrabold tracking-[-0.03em] mb-6">
+            Your personal <span className="fs-grad-text">viral radar</span> for Telegram
+          </h1>
           <p className="text-lg text-muted-foreground mb-8">
             We&apos;re building the fastest way to detect viral content in public Telegram channels. {SITE.brandName}{' '}
             monitors public channels continuously and alerts you the moment a topic crosses the viral threshold.
@@ -65,7 +65,7 @@ export function AboutPage() {
         </div>
       </section>
 
-      <section className="py-16 px-6 lg:px-20 bg-muted/20">
+      <section className="py-16 px-6 lg:px-20">
         <div className="max-w-6xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
             <div>
@@ -79,8 +79,8 @@ export function AboutPage() {
                 {SITE.brandName} solves this: we watch public channels for you and surface the signal when it matters.
               </p>
             </div>
-            <div className="bg-card border border-border rounded-lg p-8">
-              <h3 className="mb-4">Why We&apos;re Building This</h3>
+            <div className="fs-glass p-8">
+              <h3 className="mb-4 text-lg font-bold">Why We&apos;re Building This</h3>
               <ul className="space-y-3">
                 <li className="flex items-start gap-2">
                   <div className="w-1.5 h-1.5 bg-primary rounded-full mt-2 shrink-0" />
@@ -118,10 +118,10 @@ export function AboutPage() {
               const Icon = value.icon;
               return (
                 <div key={value.title} className="text-center">
-                  <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Icon className="h-8 w-8 text-primary" />
-                  </div>
-                  <h3 className="mb-2">{value.title}</h3>
+                  <span className="fs-feature-icon mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl">
+                    <Icon className="h-7 w-7" />
+                  </span>
+                  <h3 className="mb-2 text-lg font-bold">{value.title}</h3>
                   <p className="text-sm text-muted-foreground">{value.description}</p>
                 </div>
               );
@@ -130,7 +130,7 @@ export function AboutPage() {
         </div>
       </section>
 
-      <section className="py-16 px-6 lg:px-20 bg-muted/20">
+      <section className="py-16 px-6 lg:px-20">
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-3xl font-bold mb-6">Built by a Small Team</h2>
           <p className="text-lg text-muted-foreground mb-8">
@@ -157,9 +157,9 @@ export function AboutPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {roadmap.map((phase) => (
-              <div key={phase.quarter} className="bg-card border border-border rounded-lg p-6">
+              <div key={phase.quarter} className="fs-glass fs-card-hover p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h3>{phase.quarter}</h3>
+                  <h3 className="text-base font-bold">{phase.quarter}</h3>
                   <Badge variant={phase.status === 'Completed' ? 'default' : phase.status === 'In Progress' ? 'secondary' : 'outline'}>
                     {phase.status}
                   </Badge>
@@ -187,17 +187,19 @@ export function AboutPage() {
         </div>
       </section>
 
-      <section className="py-16 px-6 lg:px-20 bg-muted/20">
+      <section className="py-16 px-6 lg:px-20">
         <div className="max-w-4xl mx-auto">
-          <div className="bg-card border border-primary/50 rounded-lg p-8 text-center">
-            <h3 className="mb-4">Join Us in Early Access</h3>
-            <p className="text-muted-foreground mb-6">
-              By joining now, you&apos;ll get early access to viral Telegram alerts, help shape the product roadmap, and
-              be among the first to ride waves before everyone else.
-            </p>
-            <Link to="/" hash="get-started" className="text-primary hover:underline font-medium">
-              Get started today →
-            </Link>
+          <div className="fs-glass fs-panel-glow relative overflow-hidden p-10 text-center">
+            <div className="relative z-10">
+              <h3 className="mb-4 text-2xl font-bold">Join Us in Early Access</h3>
+              <p className="text-muted-foreground mb-6">
+                By joining now, you&apos;ll get early access to viral Telegram alerts, help shape the product roadmap, and
+                be among the first to ride waves before everyone else.
+              </p>
+              <Link to="/" hash="get-started" className="text-primary hover:underline font-medium">
+                Get started today →
+              </Link>
+            </div>
           </div>
         </div>
       </section>
