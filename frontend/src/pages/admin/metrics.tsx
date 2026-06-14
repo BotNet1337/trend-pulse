@@ -43,8 +43,8 @@ interface MetricCardProps {
 }
 
 const MetricCard: React.FC<MetricCardProps> = ({ title, children }) => (
-  <section className="border border-border rounded-lg p-4 flex flex-col gap-2">
-    <h2 className="text-xs uppercase tracking-wide text-muted-foreground">{title}</h2>
+  <section className="fs-card metric-card">
+    <h2 className="metric-card__title">{title}</h2>
     {children}
   </section>
 );
@@ -72,37 +72,42 @@ export const AdminMetricsPage: React.FC = () => {
 
   return (
     <main className="fs-main">
-      <div className="mx-auto max-w-4xl px-4 flex flex-col gap-6">
+      <div className="fs-container">
         {isLoading && (
-          <div aria-busy="true" aria-label="Loading metrics" className="flex justify-center py-16">
-            <span className="text-muted-foreground text-sm">Loading…</span>
+          <div aria-busy="true" aria-label="Loading metrics" className="fs-center" style={{ padding: '4rem 0' }}>
+            <span className="fs-muted">Loading…</span>
           </div>
         )}
 
         {!isLoading && error && errorStatus !== 403 && (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="fs-error">
             Failed to load metrics. Please refresh.
           </p>
         )}
 
         {!isLoading && metrics && (
           <>
-            <h1 className="text-xl font-bold">Business metrics</h1>
+            <div className="fs-page-head">
+              <h1 className="fs-page-head__title">
+                Business metrics
+                <span className="fs-badge fs-badge--info admin-badge">Admin</span>
+              </h1>
+            </div>
 
             {/* Money cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="metric-grid">
               <MetricCard title="MRR">
-                <p className="text-2xl font-bold">{formatUsd(metrics.mrr)}</p>
+                <p className="metric-card__value">{formatUsd(metrics.mrr)}</p>
               </MetricCard>
 
               <MetricCard title="Active subscriptions">
-                <p className="text-2xl font-bold">
+                <p className="metric-card__value">
                   {totalActiveSubscriptions(metrics.active_subscriptions_by_plan)} active
                 </p>
-                <ul className="text-sm text-muted-foreground flex flex-col gap-1">
+                <ul className="metric-card__list">
                   {planEntries(metrics.active_subscriptions_by_plan).map(([plan, count]) => (
-                    <li key={plan} className="flex justify-between gap-2">
-                      <span className="capitalize">{plan}</span>
+                    <li key={plan}>
+                      <span className="plan-name">{plan}</span>
                       <span>{count}</span>
                     </li>
                   ))}
@@ -110,42 +115,39 @@ export const AdminMetricsPage: React.FC = () => {
               </MetricCard>
 
               <MetricCard title="Avg check (30d)">
-                <p className="text-2xl font-bold">{formatUsd(metrics.avg_check_30d)}</p>
+                <p className="metric-card__value">{formatUsd(metrics.avg_check_30d)}</p>
               </MetricCard>
             </div>
 
             {/* Retention + conversion */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="metric-grid metric-grid--2">
               <MetricCard title="Repeat payment rate">
-                <p className="text-2xl font-bold">
+                <p className="metric-card__value">
                   {formatRetention(metrics.repeat_payment_rate)}
                 </p>
               </MetricCard>
 
               <MetricCard title="Conversion Free → Paid (30d)">
-                <p className="text-2xl font-bold">
+                <p className="metric-card__value">
                   {formatPercent(metrics.funnel_last_30d.conversion_free_to_paid)}
                 </p>
               </MetricCard>
             </div>
 
             {/* Activation funnel — daily rows */}
-            <section className="flex flex-col gap-2">
-              <h2 className="text-sm font-semibold">Activation funnel — last 30 days</h2>
+            <section className="funnel-section" aria-labelledby="funnel-heading">
+              <h2 id="funnel-heading">Activation funnel — last 30 days</h2>
               {metrics.funnel_last_30d.daily.length === 0 ? (
-                <p className="text-sm text-muted-foreground border border-border rounded-lg p-4">
+                <p className="fs-muted fs-card fs-card--pad-sm">
                   No funnel data yet.
                 </p>
               ) : (
-                <div className="overflow-x-auto border border-border rounded-lg">
-                  <table className="w-full text-sm">
+                <div className="fs-table-wrap">
+                  <table className="fs-table fs-table--hover funnel-table">
                     <thead>
-                      <tr className="border-b border-border text-left">
+                      <tr>
                         {FUNNEL_COLUMNS.map((col) => (
-                          <th
-                            key={col.key}
-                            className="px-3 py-2 font-medium text-muted-foreground whitespace-nowrap"
-                          >
+                          <th key={col.key} scope="col">
                             {col.label}
                           </th>
                         ))}
@@ -153,11 +155,9 @@ export const AdminMetricsPage: React.FC = () => {
                     </thead>
                     <tbody>
                       {metrics.funnel_last_30d.daily.map((row) => (
-                        <tr key={row.day} className="border-b border-border last:border-b-0">
+                        <tr key={row.day}>
                           {FUNNEL_COLUMNS.map((col) => (
-                            <td key={col.key} className="px-3 py-2 whitespace-nowrap">
-                              {row[col.key]}
-                            </td>
+                            <td key={col.key}>{row[col.key]}</td>
                           ))}
                         </tr>
                       ))}

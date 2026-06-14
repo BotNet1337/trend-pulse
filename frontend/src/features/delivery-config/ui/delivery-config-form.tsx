@@ -94,22 +94,11 @@ export const DeliveryConfigForm: React.FC<DeliveryConfigFormProps> = ({
     <form
       data-testid="delivery-config-form"
       onSubmit={(e) => { void handleSubmit(e); }}
-      className="flex flex-col gap-5"
     >
-      {/* Telegram Bot Token (write-only) */}
-      <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-[1fr_320px]">
-        <div className="flex flex-col gap-1">
-          <span className="text-sm font-semibold">Telegram bot token</span>
-          <span className="text-xs text-muted-foreground">
-            {current.telegram_bot_token_masked
-              ? `Current: ${current.telegram_bot_token_masked} — enter a new value to change.`
-              : 'Set a bot token to receive Telegram notifications.'}
-          </span>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="delivery-bot-token" className="sr-only">
-            Bot token
-          </Label>
+      <div className="fs-form-section__body">
+        {/* Telegram Bot Token (write-only) */}
+        <div className="fs-field">
+          <Label htmlFor="delivery-bot-token">Telegram bot token</Label>
           <Input
             id="delivery-bot-token"
             type="password"
@@ -122,23 +111,19 @@ export const DeliveryConfigForm: React.FC<DeliveryConfigFormProps> = ({
                 : 'Enter bot token'
             }
             disabled={isSaving}
+            className="fs-input--mono"
             aria-label="Telegram bot token"
           />
+          <p className="fs-hint">
+            {current.telegram_bot_token_masked
+              ? `Current: ${current.telegram_bot_token_masked} — enter a new value to change.`
+              : 'Set a bot token to receive Telegram notifications.'}
+          </p>
         </div>
-      </div>
 
-      {/* Telegram Chat ID */}
-      <div className="grid grid-cols-1 items-start gap-3 border-t border-border pt-5 md:grid-cols-[1fr_320px]">
-        <div className="flex flex-col gap-1">
-          <span className="text-sm font-semibold">Telegram chat ID</span>
-          <span className="text-xs text-muted-foreground">
-            The Telegram chat or channel ID to send alerts to (e.g. -100123456789).
-          </span>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="delivery-chat-id" className="sr-only">
-            Chat ID
-          </Label>
+        {/* Telegram Chat ID */}
+        <div className="fs-field">
+          <Label htmlFor="delivery-chat-id">Telegram chat ID</Label>
           <Input
             id="delivery-chat-id"
             type="text"
@@ -146,27 +131,19 @@ export const DeliveryConfigForm: React.FC<DeliveryConfigFormProps> = ({
             onChange={(e) => setChatId(e.target.value)}
             placeholder="e.g. -100123456789"
             disabled={isSaving}
+            className="fs-input--mono"
             aria-label="Telegram chat ID"
           />
+          <p className="fs-hint">
+            The Telegram chat or channel ID to send alerts to (e.g. -100123456789).
+          </p>
         </div>
-      </div>
 
-      {/* Webhook URL (Pro+ only) */}
-      <div className="grid grid-cols-1 items-start gap-3 border-t border-border pt-5 md:grid-cols-[1fr_320px]">
-        <div className="flex flex-col gap-1">
-          <span className="text-sm font-semibold">Webhook URL</span>
-          <span className="text-xs text-muted-foreground">
-            {hasPro
-              ? 'POST alerts to a public HTTPS endpoint. Must not be a private/localhost address.'
-              : 'Webhook delivery is available on Pro and Team plans.'}
-          </span>
-        </div>
-        <div className="flex flex-col gap-1.5">
+        {/* Webhook URL (Pro+ only) */}
+        <div className="fs-field">
+          <Label htmlFor="delivery-webhook-url">Webhook URL</Label>
           {hasPro ? (
             <>
-              <Label htmlFor="delivery-webhook-url" className="sr-only">
-                Webhook URL
-              </Label>
               <Input
                 id="delivery-webhook-url"
                 type="url"
@@ -174,34 +151,43 @@ export const DeliveryConfigForm: React.FC<DeliveryConfigFormProps> = ({
                 onChange={(e) => handleWebhookChange(e.target.value)}
                 placeholder="https://your-server.com/webhook"
                 disabled={isSaving}
+                className="fs-input--mono"
                 aria-label="Webhook URL"
                 aria-invalid={webhookError !== null}
                 aria-describedby={webhookError ? 'webhook-url-error' : undefined}
               />
               {webhookError && (
-                <span
+                <p
                   id="webhook-url-error"
                   role="alert"
-                  className="text-xs text-destructive"
+                  className="fs-error"
                   data-testid="webhook-url-error"
                 >
                   {webhookError}
-                </span>
+                </p>
               )}
+              <p className="fs-hint">
+                POST alerts to a public HTTPS endpoint. Must not be a private/localhost address.
+              </p>
             </>
           ) : (
-            <div
-              className="flex h-9 items-center rounded-md border border-border bg-secondary/40 px-3 text-sm text-muted-foreground"
-              aria-label="Webhook delivery requires Pro plan"
-              data-testid="webhook-pro-upsell"
-            >
-              Upgrade to Pro to use webhooks
-            </div>
+            <>
+              <div
+                className="setting-row__value"
+                aria-label="Webhook delivery requires Pro plan"
+                data-testid="webhook-pro-upsell"
+              >
+                Upgrade to Pro to use webhooks
+              </div>
+              <p className="fs-hint">
+                Webhook delivery is available on Pro and Team plans.
+              </p>
+            </>
           )}
         </div>
       </div>
 
-      <div className="flex justify-end border-t border-border pt-5">
+      <div className="fs-form-section__foot">
         <Button
           type="submit"
           disabled={isSaving}

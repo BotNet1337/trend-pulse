@@ -58,27 +58,25 @@ export const OnboardingPage: React.FC = () => {
 
   return (
     <main className="fs-main">
-      <div className="mx-auto max-w-2xl px-4">
+      <div className="fs-container ob-container">
         {/* Step header */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold">Welcome!</h1>
-          <p className="text-sm text-muted-foreground mt-1">
+        <div className="fs-page-head">
+          <h1 className="fs-page-head__title">Welcome!</h1>
+          <p className="fs-page-head__sub">
             Pick a topic — and see what went viral in the last 24 hours.
           </p>
         </div>
 
         {/* Pack selector */}
-        <section aria-labelledby="pack-selector-heading" className="mb-6">
-          <h2 id="pack-selector-heading" className="text-sm font-semibold mb-2 uppercase tracking-wide text-muted-foreground">
+        <section aria-labelledby="pack-selector-heading">
+          <h2 id="pack-selector-heading" className="ob-step-title">
             Step 1 — Pick a pack
           </h2>
 
-          {packsLoading && (
-            <p className="text-sm text-muted-foreground">Loading packs…</p>
-          )}
+          {packsLoading && <p className="fs-muted">Loading packs…</p>}
 
           {!packsLoading && packs && (
-            <div className="flex flex-wrap gap-2" role="group" aria-label="Pack selection">
+            <div className="fs-segment pack-segment" role="group" aria-label="Pack selection">
               {packs.map((pack) => {
                 const isActive = pack.slug === effectiveSlug;
                 return (
@@ -87,12 +85,6 @@ export const OnboardingPage: React.FC = () => {
                     type="button"
                     onClick={() => setSelectedSlug(pack.slug)}
                     aria-pressed={isActive}
-                    className={[
-                      'px-4 py-2 rounded-full border text-sm font-medium transition-colors',
-                      isActive
-                        ? 'bg-primary text-primary-foreground border-primary'
-                        : 'bg-background border-border text-foreground hover:bg-muted',
-                    ].join(' ')}
                   >
                     {pack.title}
                   </button>
@@ -104,13 +96,11 @@ export const OnboardingPage: React.FC = () => {
 
         {/* Trending preview */}
         {effectiveSlug && (
-          <section aria-labelledby="trending-heading" className="mb-8">
-            <h2 id="trending-heading" className="text-sm font-semibold mb-3 uppercase tracking-wide text-muted-foreground">
+          <section aria-labelledby="trending-heading" className="fs-section">
+            <h2 id="trending-heading" className="ob-step-title">
               Step 2 — Viral in the last 24 hours
               {selectedPack && (
-                <span className="normal-case ml-1 font-normal">
-                  · {selectedPack.title}
-                </span>
+                <span className="ob-step-note"> · {selectedPack.title}</span>
               )}
             </h2>
 
@@ -124,22 +114,22 @@ export const OnboardingPage: React.FC = () => {
         )}
 
         {/* CTA */}
-        <section aria-labelledby="cta-heading">
-          <h2 id="cta-heading" className="text-sm font-semibold mb-3 uppercase tracking-wide text-muted-foreground">
+        <section aria-labelledby="cta-heading" className="fs-section">
+          <h2 id="cta-heading" className="ob-step-title">
             Step 3 — Connect a pack
           </h2>
-          <p className="text-sm text-muted-foreground mb-4">
+          <p className="fs-muted" style={{ fontSize: '0.9rem', maxWidth: '60ch', marginBottom: '1rem' }}>
             Connect a pack to get personal signals when its topics start spreading virally
             on Telegram.
           </p>
 
           {subscribeError && (
-            <p role="alert" className="text-sm text-destructive mb-3">
+            <p role="alert" className="fs-error" style={{ marginBottom: '0.75rem' }}>
               {subscribeError}
             </p>
           )}
 
-          <div className="flex gap-3 flex-wrap">
+          <div className="fs-row">
             <Button
               type="button"
               disabled={!effectiveSlug || subscribeMutation.isPending || subscribed}

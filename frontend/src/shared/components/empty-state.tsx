@@ -19,13 +19,24 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   onCta,
 }) => {
   return (
-    <div className="flex flex-col items-center justify-center gap-4 py-16 px-4 text-center">
-      <div className="flex flex-col gap-2">
-        <h2 className="text-lg font-semibold text-foreground">{title}</h2>
-        {description && (
-          <p className="text-sm text-muted-foreground max-w-sm">{description}</p>
-        )}
+    <div className="fs-empty">
+      <div className="fs-empty__icon" aria-hidden="true">
+        <svg
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M3 3v18h18" />
+          <path d="m19 9-5 5-4-4-3 3" />
+        </svg>
       </div>
+      <h2 className="fs-empty__title">{title}</h2>
+      {description && <p className="fs-empty__text">{description}</p>}
       {ctaLabel && onCta && (
         <Button type="button" onClick={onCta}>
           {ctaLabel}

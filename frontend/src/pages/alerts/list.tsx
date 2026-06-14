@@ -44,14 +44,14 @@ export const AlertsListPage: React.FC = () => {
 
   return (
     <main className="fs-main">
-      <div className="mx-auto max-w-3xl px-4">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold">Alerts</h1>
+      <div className="fs-container">
+        <div className="fs-page-head">
+          <h1 className="fs-page-head__title">Alerts</h1>
         </div>
 
         {/* History unavailable (Free plan) — upsell banner */}
         {historyUnavailable && (
-          <div className="mb-6">
+          <div style={{ marginBottom: '1.5rem' }}>
             <UpsellBanner
               message="Alert history is available on Pro and Team plans. Upgrade to see your full alert history."
               currentPlan={viewer?.plan}
@@ -63,14 +63,15 @@ export const AlertsListPage: React.FC = () => {
           <div
             aria-busy="true"
             aria-label="Loading alerts"
-            className="flex justify-center py-16"
+            className="fs-center"
+            style={{ padding: '4rem 0' }}
           >
-            <span className="text-muted-foreground text-sm">Loading…</span>
+            <span className="fs-muted">Loading…</span>
           </div>
         )}
 
         {!isLoading && error && (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="fs-error">
             Failed to load alerts. Please refresh.
           </p>
         )}
@@ -96,7 +97,7 @@ export const AlertsListPage: React.FC = () => {
         {/* Alerts list */}
         {!isLoading && !error && allItems.length > 0 && (
           <>
-            <ul className="flex flex-col gap-4" aria-label="Your alerts">
+            <ul className="fs-list" aria-label="Your alerts">
               {allItems.map((alert) => (
                 <li key={alert.id}>
                   <AlertCard alert={alert} onClick={handleAlertClick} />
@@ -105,7 +106,7 @@ export const AlertsListPage: React.FC = () => {
             </ul>
 
             {hasNextPage && (
-              <div className="flex justify-center mt-6">
+              <div className="fs-load-more">
                 <Button
                   type="button"
                   variant="outline"

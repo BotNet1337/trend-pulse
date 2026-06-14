@@ -96,45 +96,38 @@ export const PlanComparison: React.FC<PlanComparisonProps> = ({
   isUpgrading = false,
 }) => {
   return (
-    <div className="flex flex-col gap-4">
+    <div className="fs-stack">
       {/* Billing period toggle (TASK-047): affects paid cards only. */}
-      <div
-        role="group"
-        aria-label="Billing period"
-        data-testid="billing-period-toggle"
-        className="inline-flex self-start rounded-lg border border-border p-1 gap-1"
-      >
-        {BILLING_PERIODS.map((p) => {
-          const isSelected = p === period;
-          const savings = BILLING_PERIOD_SAVINGS_NOTE[p];
-          return (
-            <button
-              key={p}
-              type="button"
-              aria-pressed={isSelected}
-              data-testid={`billing-period-${p}`}
-              onClick={() => onPeriodChange(p)}
-              className={[
-                'rounded-md px-3 py-1.5 text-sm transition-colors',
-                isSelected
-                  ? 'bg-primary text-primary-foreground font-semibold'
-                  : 'text-muted-foreground hover:text-foreground',
-              ].join(' ')}
-            >
-              {BILLING_PERIOD_LABEL[p]}
-              {savings ? (
-                <span className={isSelected ? 'ml-1 text-xs' : 'ml-1 text-xs text-green-600'}>
-                  {savings}
-                </span>
-              ) : null}
-            </button>
-          );
-        })}
+      <div className="plan-toggle-row">
+        <div
+          role="group"
+          aria-label="Billing period"
+          data-testid="billing-period-toggle"
+          className="fs-segment"
+        >
+          {BILLING_PERIODS.map((p) => {
+            const isSelected = p === period;
+            const savings = BILLING_PERIOD_SAVINGS_NOTE[p];
+            return (
+              <button
+                key={p}
+                type="button"
+                aria-pressed={isSelected}
+                data-testid={`billing-period-${p}`}
+                onClick={() => onPeriodChange(p)}
+              >
+                {BILLING_PERIOD_LABEL[p]}
+                {savings ? <span className="save">{savings}</span> : null}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div
         data-testid="plan-comparison"
-        className="grid grid-cols-1 gap-4 sm:grid-cols-3"
+        className="fs-plans"
+        aria-label="Plan comparison"
       >
         {PLAN_TIERS.map((plan) => {
           const isCurrent = plan === currentPlan;
@@ -144,82 +137,71 @@ export const PlanComparison: React.FC<PlanComparisonProps> = ({
           const features = planFeatures(plan);
 
           return (
-            <div
+            <article
               key={plan}
               data-testid={`plan-card-${plan}`}
               className={[
-                'flex flex-col gap-4 rounded-2xl border p-6',
-                plan === PLAN_PRO
-                  ? 'border-indigo-400/60 bg-indigo-50/60 dark:bg-indigo-900/20'
-                  : 'border-border bg-background',
-              ].join(' ')}
+                'fs-card fs-plan',
+                plan === PLAN_PRO ? 'fs-plan--featured' : '',
+              ].join(' ').trim()}
             >
-              <div className="flex flex-col gap-1">
-                <span className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
-                  {displayName}
-                </span>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-3xl font-bold">
-                    {isFree ? 'Free' : `$${pricing.amountUsd}`}
-                  </span>
-                  {!isFree && (
-                    <span className="text-sm text-muted-foreground">{pricing.suffix}</span>
-                  )}
-                </div>
-                {!isFree && (pricing.savingsNote || pricing.billedNote) ? (
-                  <p className="m-0 text-xs text-muted-foreground">
-                    {pricing.billedNote}
-                    {pricing.savingsNote ? (
-                      <span className="ml-1 font-medium text-green-600">
-                        · {pricing.savingsNote}
-                      </span>
-                    ) : null}
-                  </p>
-                ) : null}
-              </div>
+              {isCurrent && <span className="fs-plan__badge">Current plan</span>}
 
-              <ul className="flex flex-col gap-2 text-sm flex-1">
+              <span className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+                {displayName}
+              </span>
+              <div className="fs-plan__price-row">
+                <span className="fs-plan__price">
+                  {isFree ? 'Free' : `$${pricing.amountUsd}`}
+                </span>
+                {!isFree && <span className="fs-plan__period">{pricing.suffix}</span>}
+              </div>
+              {!isFree && (pricing.savingsNote || pricing.billedNote) ? (
+                <p className="fs-plan__note">
+                  {pricing.billedNote}
+                  {pricing.savingsNote ? (
+                    <span className="font-medium text-green-600"> · {pricing.savingsNote}</span>
+                  ) : null}
+                </p>
+              ) : (
+                <p className="fs-plan__note">&nbsp;</p>
+              )}
+
+              <ul className="fs-plan__features">
                 {features.map(({ label, enabled }) => (
-                  <li key={label} className="flex items-center gap-2">
-                    <span
-                      className={[
-                        'w-4 text-center',
-                        enabled ? 'text-green-600' : 'text-muted-foreground/40',
-                      ].join(' ')}
-                      aria-hidden="true"
-                    >
-                      {enabled ? '✓' : '✗'}
-                    </span>
-                    <span className={enabled ? '' : 'text-muted-foreground/60'}>
-                      {label}
-                    </span>
+                  <li key={label} className={enabled ? '' : 'is-off'}>
+                    {enabled ? (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M20 6 9 17l-5-5" />
+                      </svg>
+                    ) : (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M18 6 6 18M6 6l12 12" />
+                      </svg>
+                    )}
+                    <span>{label}</span>
                   </li>
                 ))}
               </ul>
 
               {isCurrent ? (
-                <div
-                  className="inline-flex h-10 items-center justify-center rounded-md border border-border bg-secondary/40 px-4 text-sm text-muted-foreground"
-                  aria-label={`Current plan: ${displayName}`}
-                >
+                <div className="plan-current" aria-label={`Current plan: ${displayName}`}>
                   Current plan
                 </div>
-              ) : isFree ? (
-                <div className="h-10" />
-              ) : (
+              ) : isFree ? null : (
                 <Button
                   type="button"
                   variant={plan === PLAN_PRO ? 'default' : 'outline'}
                   disabled={isUpgrading}
                   onClick={() => onUpgrade(plan)}
                   data-testid={`upgrade-button-${plan}`}
-                  className="w-full"
+                  className="fs-btn--block"
                   aria-label={`Upgrade to ${displayName} — $${pricing.amountUsd}${pricing.suffix}`}
                 >
                   {isUpgrading ? 'Processing…' : `Upgrade to ${displayName}`}
                 </Button>
               )}
-            </div>
+            </article>
           );
         })}
       </div>

@@ -90,7 +90,7 @@ const WatchlistEditForm: React.FC<EditFormProps> = ({ watchlist, onSaved }) => {
   const pending = updateMutation.isPending;
 
   return (
-    <form onSubmit={(e) => void onSubmit(e)} className="flex flex-col gap-6" noValidate>
+    <form onSubmit={(e) => void onSubmit(e)} className="wl-form" noValidate>
       {/* 402 upsell */}
       {backendState?.kind === 'quota' && (
         <UpsellBanner message={backendState.message} currentPlan={currentUser?.plan} />
@@ -98,74 +98,69 @@ const WatchlistEditForm: React.FC<EditFormProps> = ({ watchlist, onSaved }) => {
 
       {/* 403 feature gate */}
       {backendState?.kind === 'feature-gate' && (
-        <div
-          role="alert"
-          className="rounded-lg border border-border bg-muted px-4 py-3 text-sm"
-        >
-          <p className="font-medium">Feature not available</p>
-          <p className="text-muted-foreground mt-1">{backendState.message}</p>
+        <div role="alert" className="fs-banner" style={{ flexDirection: 'column' }}>
+          <p className="fs-label">Feature not available</p>
+          <p className="fs-muted fs-mt-0" style={{ marginTop: '0.25rem' }}>{backendState.message}</p>
         </div>
       )}
 
       {generalError && (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="fs-error">
           {generalError}
         </p>
       )}
 
       {successMsg && (
-        <p role="status" className="text-sm text-green-700 dark:text-green-400">
+        <p role="status" className="fs-banner fs-banner--success" style={{ display: 'block' }}>
           {successMsg}
         </p>
       )}
 
-      {/* Channel handle */}
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="edit-channel-handle">Channel handle</Label>
-        <Input
-          id="edit-channel-handle"
-          type="text"
-          value={handle}
-          onChange={(e) => setHandle(e.target.value)}
-          placeholder="@channelname"
-          disabled={pending}
-          aria-invalid={!!handleFieldError}
-          aria-describedby={handleFieldError ? 'edit-channel-handle-error' : undefined}
-        />
-        {handleFieldError && (
-          <p
-            id="edit-channel-handle-error"
-            role="alert"
-            className="text-xs text-destructive"
-          >
-            {handleFieldError}
-          </p>
-        )}
-      </div>
+      {/* Watchlist basics */}
+      <section className="fs-card fs-form-section" aria-label="Watchlist">
+        <div className="fs-form-section__body">
+          {/* Channel handle */}
+          <div className="fs-field">
+            <Label htmlFor="edit-channel-handle">Channel handle</Label>
+            <Input
+              id="edit-channel-handle"
+              type="text"
+              value={handle}
+              onChange={(e) => setHandle(e.target.value)}
+              placeholder="@channelname"
+              disabled={pending}
+              className="fs-input--mono"
+              aria-invalid={!!handleFieldError}
+              aria-describedby={handleFieldError ? 'edit-channel-handle-error' : undefined}
+            />
+            {handleFieldError && (
+              <p id="edit-channel-handle-error" role="alert" className="fs-error">
+                {handleFieldError}
+              </p>
+            )}
+          </div>
 
-      {/* Topic */}
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="edit-watchlist-topic">Topic</Label>
-        <Input
-          id="edit-watchlist-topic"
-          type="text"
-          value={topic}
-          onChange={(e) => setTopic(e.target.value)}
-          placeholder="e.g. bitcoin"
-          disabled={pending}
-          aria-invalid={!!topicFieldError}
-          aria-describedby={topicFieldError ? 'edit-watchlist-topic-error' : undefined}
-        />
-        {topicFieldError && (
-          <p
-            id="edit-watchlist-topic-error"
-            role="alert"
-            className="text-xs text-destructive"
-          >
-            {topicFieldError}
-          </p>
-        )}
-      </div>
+          {/* Topic */}
+          <div className="fs-field">
+            <Label htmlFor="edit-watchlist-topic">Topic</Label>
+            <Input
+              id="edit-watchlist-topic"
+              type="text"
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+              placeholder="e.g. bitcoin"
+              disabled={pending}
+              aria-invalid={!!topicFieldError}
+              aria-describedby={topicFieldError ? 'edit-watchlist-topic-error' : undefined}
+            />
+            {topicFieldError && (
+              <p id="edit-watchlist-topic-error" role="alert" className="fs-error">
+                {topicFieldError}
+              </p>
+            )}
+          </div>
+        </div>
+      </section>
 
       {/* Alert config */}
       <AlertConfigForm
@@ -175,8 +170,8 @@ const WatchlistEditForm: React.FC<EditFormProps> = ({ watchlist, onSaved }) => {
         disabled={pending}
       />
 
-      <div className="flex gap-3">
-        <Button type="submit" disabled={pending} className="flex-1">
+      <div className="wl-form-actions">
+        <Button type="submit" disabled={pending}>
           {pending ? 'Saving…' : 'Save changes'}
         </Button>
       </div>
@@ -205,14 +200,16 @@ export const WatchlistDetailPage: React.FC = () => {
   if (is404) {
     return (
       <main className="fs-main">
-        <div className="mx-auto max-w-xl px-4 py-16 text-center">
-          <h1 className="text-xl font-semibold mb-2">Watchlist not found</h1>
-          <p className="text-muted-foreground text-sm mb-6">
-            This watchlist does not exist or you do not have access to it.
-          </p>
-          <Button type="button" onClick={() => void navigate({ to: '/watchlists' })}>
-            Back to watchlists
-          </Button>
+        <div className="fs-container" style={{ maxWidth: '640px' }}>
+          <div className="fs-empty">
+            <h1 className="fs-empty__title">Watchlist not found</h1>
+            <p className="fs-empty__text">
+              This watchlist does not exist or you do not have access to it.
+            </p>
+            <Button type="button" onClick={() => void navigate({ to: '/watchlists' })}>
+              Back to watchlists
+            </Button>
+          </div>
         </div>
       </main>
     );
@@ -220,17 +217,19 @@ export const WatchlistDetailPage: React.FC = () => {
 
   return (
     <main className="fs-main">
-      <div className="mx-auto max-w-xl px-4">
-        <h1 className="text-2xl font-bold mb-6">Edit watchlist</h1>
+      <div className="fs-container" style={{ maxWidth: '640px' }}>
+        <div className="fs-page-head">
+          <h1 className="fs-page-head__title">Edit watchlist</h1>
+        </div>
 
         {isLoading && (
-          <div aria-busy="true" className="flex justify-center py-16">
-            <span className="text-muted-foreground text-sm">Loading…</span>
+          <div aria-busy="true" className="fs-center" style={{ padding: '4rem 0' }}>
+            <span className="fs-muted">Loading…</span>
           </div>
         )}
 
         {!isLoading && error && !is404 && (
-          <p role="alert" className="text-sm text-destructive mb-4">
+          <p role="alert" className="fs-error" style={{ marginBottom: '1rem' }}>
             Failed to load watchlist. Please refresh.
           </p>
         )}

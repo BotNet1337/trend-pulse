@@ -20,24 +20,24 @@ export const UpsellBanner: React.FC<UpsellBannerProps> = ({
   currentPlan,
 }) => {
   return (
-    <div
-      role="alert"
-      aria-live="polite"
-      className="rounded-lg border border-amber-400/50 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 flex flex-col gap-2 text-sm"
-    >
-      <p className="font-medium text-amber-800 dark:text-amber-300">
-        Plan limit reached
-        {currentPlan ? ` (current plan: ${currentPlan})` : ''}
-      </p>
-      <p className="text-amber-700 dark:text-amber-400">{message}</p>
-      {/* C5 billing route — stub link until billing UI is implemented */}
-      <Link
-        to="/billing"
-        className="inline-flex items-center gap-1 text-amber-800 dark:text-amber-300 underline underline-offset-2 font-medium hover:no-underline w-fit"
-        aria-label="Upgrade your plan"
-      >
-        Upgrade plan
-      </Link>
+    <div role="alert" aria-live="polite" className="fs-card fs-upsell">
+      <div>
+        <p className="fs-upsell__title">
+          Plan limit reached
+          {currentPlan ? ` (current plan: ${currentPlan})` : ''}
+        </p>
+        <p className="fs-upsell__text">{message}</p>
+      </div>
+      <div className="fs-upsell__actions">
+        {/* C5 billing route — stub link until billing UI is implemented */}
+        <Link
+          to="/billing"
+          className="fs-btn fs-btn--primary fs-btn--sm"
+          aria-label="Upgrade your plan"
+        >
+          Upgrade plan
+        </Link>
+      </div>
     </div>
   );
 };

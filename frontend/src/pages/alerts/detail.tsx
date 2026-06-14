@@ -25,9 +25,9 @@ function formatFirstSeen(iso: string): string {
 }
 
 const STATUS_STYLES: Record<string, string> = {
-  delivered: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
-  failed: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
-  pending: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+  delivered: 'fs-badge--success',
+  failed: 'fs-badge--danger',
+  pending: 'fs-badge--warning',
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -73,18 +73,14 @@ const AlertFeedbackButtons: React.FC<AlertFeedbackButtonsProps> = ({
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-2">
+      <div className="feedback">
         <button
           type="button"
           aria-pressed={feedback === 'up'}
           aria-label={FEEDBACK_UP_LABEL}
           disabled={mutation.isPending}
           onClick={() => rate(tokenUp, 'up')}
-          className={`inline-flex items-center justify-center rounded-full border min-h-11 min-w-11 text-lg transition-colors disabled:opacity-50 ${
-            feedback === 'up'
-              ? 'border-primary bg-primary/10 text-primary'
-              : 'border-border text-muted-foreground hover:text-foreground'
-          }`}
+          className="fs-btn fs-btn--ghost"
         >
           <span aria-hidden="true">👍</span>
         </button>
@@ -94,17 +90,13 @@ const AlertFeedbackButtons: React.FC<AlertFeedbackButtonsProps> = ({
           aria-label={FEEDBACK_DOWN_LABEL}
           disabled={mutation.isPending}
           onClick={() => rate(tokenDown, 'down')}
-          className={`inline-flex items-center justify-center rounded-full border min-h-11 min-w-11 text-lg transition-colors disabled:opacity-50 ${
-            feedback === 'down'
-              ? 'border-primary bg-primary/10 text-primary'
-              : 'border-border text-muted-foreground hover:text-foreground'
-          }`}
+          className="fs-btn fs-btn--ghost"
         >
           <span aria-hidden="true">👎</span>
         </button>
       </div>
       {mutation.isError && (
-        <p role="alert" className="text-xs text-destructive">
+        <p role="alert" className="fs-error">
           {FEEDBACK_ERROR_MESSAGE}
         </p>
       )}
@@ -124,108 +116,100 @@ export const AlertDetailPage: React.FC = () => {
 
   return (
     <main className="fs-main">
-      <div className="mx-auto max-w-2xl px-4">
+      <div className="fs-container">
         {isLoading && (
-          <div aria-busy="true" aria-label="Loading alert" className="flex justify-center py-16">
-            <span className="text-muted-foreground text-sm">Loading…</span>
+          <div aria-busy="true" aria-label="Loading alert" className="fs-center" style={{ padding: '4rem 0' }}>
+            <span className="fs-muted">Loading…</span>
           </div>
         )}
 
         {/* Not found state: foreign id, NaN, or 404 error */}
         {!isLoading && (is404 || (!alert && !error)) && (
-          <div className="flex flex-col items-center gap-4 py-16 text-center">
-            <h2 className="text-xl font-semibold">Alert not found</h2>
-            <p className="text-muted-foreground text-sm max-w-sm">
+          <div className="fs-empty">
+            <h2 className="fs-empty__title">Alert not found</h2>
+            <p className="fs-empty__text">
               This alert doesn&apos;t exist or you don&apos;t have access to it.
             </p>
-            <Link
-              to={paths.alerts.list}
-              className="text-primary underline underline-offset-2 text-sm"
-            >
+            <Link to={paths.alerts.list} className="back-link">
               Back to alerts
             </Link>
           </div>
         )}
 
         {!isLoading && !is404 && error && (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="fs-error">
             Failed to load alert. Please refresh.
           </p>
         )}
 
         {/* Alert detail */}
         {!isLoading && alert && (
-          <article className="flex flex-col gap-6">
-            <div className="flex items-start gap-4 flex-wrap">
-              {/* Score badge */}
-              <span
-                className="inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-bold px-3 py-1.5 min-w-[3rem]"
-                aria-label={`Score: ${Math.round(alert.score)}`}
-              >
-                {Math.round(alert.score)}
-              </span>
+          <>
+            <Link to={paths.alerts.list} className="back-link">
+              <span aria-hidden="true">←</span> All alerts
+            </Link>
 
-              <div className="flex-1 min-w-0">
+            <article className="alert-detail">
+              <div className="alert-head">
+                {/* Score badge */}
+                <span className="fs-score" aria-label={`Score: ${Math.round(alert.score)}`}>
+                  {Math.round(alert.score)}
+                </span>
+
                 {/* Topic — text node, JSX auto-escapes */}
-                <h1 className="text-xl font-bold text-foreground" title={alert.topic}>
+                <h1 className="alert-head__title" title={alert.topic}>
                   {alert.topic}
                 </h1>
+
+                {/* Delivery status badge */}
+                <span
+                  className={`fs-badge ${STATUS_STYLES[alert.delivery_status] ?? 'fs-badge--neutral'}`}
+                  aria-label={`Delivery status: ${STATUS_LABELS[alert.delivery_status] ?? alert.delivery_status}`}
+                >
+                  {/* Text rendered as-is — JSX auto-escapes */}
+                  {STATUS_LABELS[alert.delivery_status] ?? alert.delivery_status}
+                </span>
+
+                {/* 👍/👎 feedback (TASK-064) — hidden when tokens absent */}
+                <AlertFeedbackButtons
+                  alertId={alert.id}
+                  feedback={alert.feedback}
+                  tokenUp={alert.feedback_token_up}
+                  tokenDown={alert.feedback_token_down}
+                />
               </div>
 
-              {/* Delivery status badge */}
-              <span
-                className={`inline-flex items-center rounded-full text-xs font-medium px-2.5 py-1 ${STATUS_STYLES[alert.delivery_status] ?? 'bg-muted text-muted-foreground'}`}
-                aria-label={`Delivery status: ${STATUS_LABELS[alert.delivery_status] ?? alert.delivery_status}`}
-              >
-                {/* Text rendered as-is — JSX auto-escapes */}
-                {STATUS_LABELS[alert.delivery_status] ?? alert.delivery_status}
-              </span>
+              <div className="fs-card alert-meta-card">
+                <dl className="fs-meta">
+                  <div>
+                    <dt>First seen</dt>
+                    <dd>
+                      <time dateTime={alert.first_seen}>
+                        {formatFirstSeen(alert.first_seen)}
+                      </time>
+                    </dd>
+                  </div>
 
-              {/* 👍/👎 feedback (TASK-064) — hidden when tokens absent */}
-              <AlertFeedbackButtons
-                alertId={alert.id}
-                feedback={alert.feedback}
-                tokenUp={alert.feedback_token_up}
-                tokenDown={alert.feedback_token_down}
-              />
-            </div>
+                  <div>
+                    <dt>Channels</dt>
+                    <dd aria-label={`${alert.channels_count} channels`}>
+                      {alert.channels_count}
+                    </dd>
+                  </div>
 
-            <dl className="grid grid-cols-2 gap-4 border border-border rounded-lg p-4 text-sm">
-              <div>
-                <dt className="text-muted-foreground text-xs uppercase tracking-wide mb-1">
-                  First seen
-                </dt>
-                <dd>
-                  <time dateTime={alert.first_seen}>
-                    {formatFirstSeen(alert.first_seen)}
-                  </time>
-                </dd>
+                  <div>
+                    <dt>Score</dt>
+                    <dd>{alert.score.toFixed(2)}</dd>
+                  </div>
+
+                  <div>
+                    <dt>Alert ID</dt>
+                    <dd className="fs-mono">{alert.id}</dd>
+                  </div>
+                </dl>
               </div>
-
-              <div>
-                <dt className="text-muted-foreground text-xs uppercase tracking-wide mb-1">
-                  Channels
-                </dt>
-                <dd aria-label={`${alert.channels_count} channels`}>
-                  {alert.channels_count}
-                </dd>
-              </div>
-
-              <div>
-                <dt className="text-muted-foreground text-xs uppercase tracking-wide mb-1">
-                  Score
-                </dt>
-                <dd>{alert.score.toFixed(2)}</dd>
-              </div>
-
-              <div>
-                <dt className="text-muted-foreground text-xs uppercase tracking-wide mb-1">
-                  Alert ID
-                </dt>
-                <dd className="font-mono text-xs">{alert.id}</dd>
-              </div>
-            </dl>
-          </article>
+            </article>
+          </>
         )}
       </div>
     </main>

@@ -25,28 +25,25 @@ export const WatchlistCard: React.FC<WatchlistCardProps> = ({
 
   return (
     <article
-      className="border border-border rounded-lg p-4 flex flex-col gap-3 bg-card text-card-foreground"
+      className="fs-card wl-card"
       aria-label={`Watchlist: ${channel.handle} — ${topic}`}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex flex-col gap-1 min-w-0">
+      <div className="fs-card__head">
+        <div className="fs-list__main">
           {/* Handle rendered as text — JSX auto-escapes, no XSS risk */}
           <span
-            className="font-mono text-sm font-medium text-foreground truncate"
+            className="fs-card__title fs-mono fs-truncate"
             title={channel.handle}
           >
             {channel.handle}
           </span>
           {/* Topic rendered as text */}
-          <span
-            className="text-xs text-muted-foreground truncate"
-            title={topic}
-          >
+          <span className="fs-card__sub fs-truncate" title={topic}>
             {topic}
           </span>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="fs-card__actions">
           <Button
             type="button"
             variant="outline"
@@ -69,17 +66,17 @@ export const WatchlistCard: React.FC<WatchlistCardProps> = ({
         </div>
       </div>
 
-      <dl className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+      <dl className="fs-meta">
         <div>
-          <dt className="font-medium text-foreground/70">Score threshold</dt>
+          <dt>Score threshold</dt>
           <dd>{alert_config.score_threshold}</dd>
         </div>
         <div>
-          <dt className="font-medium text-foreground/70">Min channels</dt>
+          <dt>Min channels</dt>
           <dd>{alert_config.min_channels}</dd>
         </div>
         <div>
-          <dt className="font-medium text-foreground/70">Language</dt>
+          <dt>Language</dt>
           <dd>{alert_config.notification_lang}</dd>
         </div>
       </dl>

@@ -47,42 +47,36 @@ export const BillingPage: React.FC = () => {
 
   return (
     <main className="fs-main">
-      <div className="mx-auto flex w-full max-w-[960px] flex-col gap-8 px-8 py-8">
-          <header className="flex flex-col gap-2">
-            <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground font-medium">
-              Billing
-            </span>
-            <h1 className="m-0 text-2xl font-bold tracking-[-0.01em]">
-              Plans & billing
-            </h1>
+      <div className="fs-container">
+          <div className="fs-page-head">
+            <h1 className="fs-page-head__title">Plans &amp; billing</h1>
             {!isLoading && currentUser && (
-              <p className="m-0 text-sm text-muted-foreground">
+              <p className="fs-page-head__sub">
                 Current plan:{' '}
-                <span className="font-semibold text-foreground">
+                <strong style={{ color: 'var(--fs-text)' }}>
                   {currentPlanDisplay}
-                </span>
+                </strong>
               </p>
             )}
-          </header>
+          </div>
 
           {/* Invoice display (shown after upgrade click) */}
           {pendingInvoice && (
-            <InvoiceDisplay invoice={pendingInvoice} />
+            <div style={{ marginBottom: '1.5rem' }}>
+              <InvoiceDisplay invoice={pendingInvoice} />
+            </div>
           )}
 
           {/* Invoice error */}
           {createInvoiceMutation.isError && (
-            <div
-              role="alert"
-              className="rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive"
-            >
+            <div role="alert" className="fs-banner fs-banner--danger" style={{ marginBottom: '1.5rem' }}>
               {createInvoiceMutation.error?.message ?? 'Failed to create invoice. Please try again.'}
             </div>
           )}
 
           {/* Plan comparison */}
           {isLoading ? (
-            <div className="flex items-center justify-center py-16 text-muted-foreground text-sm">
+            <div className="fs-center fs-muted" style={{ padding: '4rem 0' }}>
               Loading plans…
             </div>
           ) : (

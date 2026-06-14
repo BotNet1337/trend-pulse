@@ -82,108 +82,97 @@ export const AlertConfigForm: React.FC<AlertConfigFormProps> = ({
     fieldErrors?.['alert_config.notification_lang'];
 
   return (
-    <fieldset className="flex flex-col gap-4 border border-border rounded-md p-4" disabled={disabled}>
-      <legend className="text-sm font-medium px-1">Alert configuration</legend>
+    <fieldset className="fs-card fs-form-section" disabled={disabled}>
+      <legend className="fs-form-section__head">
+        <span className="fs-form-section__title">Alert configuration</span>
+      </legend>
 
-      {/* score_threshold */}
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="alert-score-threshold">
-          Score threshold
-        </Label>
-        <Input
-          id="alert-score-threshold"
-          type="number"
-          min={0}
-          max={100}
-          step={1}
-          value={value.score_threshold}
-          onChange={handleScoreChange}
-          disabled={disabled}
-          aria-invalid={!!scoreError}
-          aria-describedby={scoreError ? 'alert-score-threshold-error' : undefined}
-          placeholder="0–100"
-        />
-        {scoreError && (
-          <p
-            id="alert-score-threshold-error"
-            role="alert"
-            className="text-xs text-destructive"
-          >
-            {scoreError}
+      <div className="fs-form-section__body">
+        {/* score_threshold */}
+        <div className="fs-field">
+          <Label htmlFor="alert-score-threshold">
+            Score threshold
+          </Label>
+          <Input
+            id="alert-score-threshold"
+            type="number"
+            min={0}
+            max={100}
+            step={1}
+            value={value.score_threshold}
+            onChange={handleScoreChange}
+            disabled={disabled}
+            aria-invalid={!!scoreError}
+            aria-describedby={scoreError ? 'alert-score-threshold-error' : undefined}
+            placeholder="0–100"
+          />
+          {scoreError && (
+            <p id="alert-score-threshold-error" role="alert" className="fs-error">
+              {scoreError}
+            </p>
+          )}
+          <p className="fs-hint">
+            Minimum virality score (0–100) to trigger an alert. Higher = fewer, more viral alerts.
           </p>
-        )}
-        <p className="text-xs text-muted-foreground">
-          Minimum virality score (0–100) to trigger an alert. Higher = fewer, more viral alerts.
-        </p>
-      </div>
+        </div>
 
-      {/* min_channels */}
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="alert-min-channels">
-          Min channels
-        </Label>
-        <Input
-          id="alert-min-channels"
-          type="number"
-          min={1}
-          step={1}
-          value={value.min_channels}
-          onChange={handleMinChannelsChange}
-          disabled={disabled}
-          aria-invalid={!!minChError}
-          aria-describedby={minChError ? 'alert-min-channels-error' : 'alert-min-channels-hint'}
-          placeholder="≥ 1"
-        />
-        {minChError ? (
-          <p
-            id="alert-min-channels-error"
-            role="alert"
-            className="text-xs text-destructive"
-          >
-            {minChError}
-          </p>
-        ) : (
-          <p
-            id="alert-min-channels-hint"
-            className="text-xs text-muted-foreground"
-          >
-            Cross-channel corroboration: how many channels must carry the story.
-            This is a scoring parameter, not the number of channels in this watchlist
-            (one watchlist = one channel).
-          </p>
-        )}
-      </div>
+        {/* min_channels */}
+        <div className="fs-field">
+          <Label htmlFor="alert-min-channels">
+            Min channels
+          </Label>
+          <Input
+            id="alert-min-channels"
+            type="number"
+            min={1}
+            step={1}
+            value={value.min_channels}
+            onChange={handleMinChannelsChange}
+            disabled={disabled}
+            aria-invalid={!!minChError}
+            aria-describedby={minChError ? 'alert-min-channels-error' : 'alert-min-channels-hint'}
+            placeholder="≥ 1"
+          />
+          {minChError ? (
+            <p id="alert-min-channels-error" role="alert" className="fs-error">
+              {minChError}
+            </p>
+          ) : (
+            <p id="alert-min-channels-hint" className="fs-hint">
+              Cross-channel corroboration: how many channels must carry the story.
+              This is a scoring parameter, not the number of channels in this watchlist
+              (one watchlist = one channel).
+            </p>
+          )}
+        </div>
 
-      {/* notification_lang */}
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="alert-notification-lang">
-          Notification language
-        </Label>
-        {/* Native select — accessible, responsive */}
-        <select
-          id="alert-notification-lang"
-          value={value.notification_lang}
-          onChange={handleLangChange}
-          disabled={disabled}
-          aria-invalid={!!langError}
-          aria-describedby={langError ? 'alert-notification-lang-error' : undefined}
-          className="border-input h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:pointer-events-none disabled:opacity-50"
-        >
-          {SUPPORTED_LANGS.map((lang) => (
-            <option key={lang.value} value={lang.value}>
-              {lang.label} ({lang.value})
-            </option>
-          ))}
-        </select>
-        {langError && (
-          <p
-            id="alert-notification-lang-error"
-            role="alert"
-            className="text-xs text-destructive"
+        {/* notification_lang */}
+        <div className="fs-field">
+          <Label htmlFor="alert-notification-lang">
+            Notification language
+          </Label>
+          {/* Native select — accessible, responsive */}
+          <select
+            id="alert-notification-lang"
+            value={value.notification_lang}
+            onChange={handleLangChange}
+            disabled={disabled}
+            aria-invalid={!!langError}
+            aria-describedby={langError ? 'alert-notification-lang-error' : undefined}
+            className="fs-select"
           >
-            {langError}
-          </p>
-        )}
+            {SUPPORTED_LANGS.map((lang) => (
+              <option key={lang.value} value={lang.value}>
+                {lang.label} ({lang.value})
+              </option>
+            ))}
+          </select>
+          {langError && (
+            <p id="alert-notification-lang-error" role="alert" className="fs-error">
+              {langError}
+            </p>
+          )}
+        </div>
       </div>
     </fieldset>
   );

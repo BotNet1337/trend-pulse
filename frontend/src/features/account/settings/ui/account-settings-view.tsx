@@ -39,173 +39,141 @@ export const AccountSettingsView: React.FC = () => {
   }
 
   return (
-    <div
-      data-testid="account-settings-page"
-      className="mx-auto flex w-full max-w-[860px] flex-col gap-8 px-8 py-8"
-    >
-      <header className="flex flex-col gap-2">
-        <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground font-medium">
-          Account
-        </span>
-        <h1 className="m-0 text-2xl font-bold tracking-[-0.01em]">
-          Account settings
-        </h1>
-        <p className="m-0 text-sm text-muted-foreground">
-          Manage your {BRAND_NAME} account.
-        </p>
-      </header>
+    <div data-testid="account-settings-page" className="fs-container">
+      <div className="fs-page-head">
+        <h1 className="fs-page-head__title">Account settings</h1>
+        <p className="fs-page-head__sub">Manage your {BRAND_NAME} account.</p>
+      </div>
 
-      <section className="rounded-2xl border border-border bg-background p-6">
-        <header className="mb-5 flex flex-col gap-1">
-          <h3 className="m-0 text-base font-semibold">Profile</h3>
-        </header>
+      <div className="settings-stack">
+        <section className="fs-card fs-form-section" aria-labelledby="profile-heading">
+          <header className="fs-form-section__head">
+            <h2 id="profile-heading" className="fs-form-section__title">Profile</h2>
+          </header>
 
-        <div className="flex items-center gap-4 border-b border-border pb-5">
-          <span className="inline-flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-400 to-violet-700 text-xl font-bold text-white">
-            {initialsOf(displayName)}
-          </span>
-          <div className="flex flex-1 flex-col gap-0.5">
-            <span className="text-base font-semibold">{displayName}</span>
-            <span className="text-sm text-muted-foreground">{email}</span>
-            <span className="font-mono text-[10px] uppercase tracking-[0.05em] text-muted-foreground">
-              Signed in via {provider}
-            </span>
+          <div className="fs-form-section__body">
+            <div className="profile-row">
+              <span className="profile-row__avatar" aria-hidden="true">
+                {initialsOf(displayName)}
+              </span>
+              <div className="profile-row__main">
+                <span className="profile-row__name">{displayName}</span>
+                <span className="fs-muted" style={{ fontSize: "0.88rem" }}>{email}</span>
+                <span className="profile-row__via">Signed in via {provider}</span>
+              </div>
+            </div>
+
+            <div data-testid="account-settings-email" className="setting-row">
+              <div className="setting-row__main">
+                <span className="fs-label">Email</span>
+                <p className="fs-hint">Used for sign-in and notifications.</p>
+              </div>
+              <span className="setting-row__value" title={email}>{email || "—"}</span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setChangeEmailOpen(true)}
+                data-testid="account-settings-email-change"
+                disabled={!userId}
+              >
+                Change
+              </Button>
+            </div>
+
+            <hr className="fs-divider" style={{ margin: "0.25rem 0" }} />
+
+            <div data-testid="account-settings-password" className="setting-row">
+              <div className="setting-row__main">
+                <span className="fs-label">Password</span>
+                <p className="fs-hint">Change your password to keep your account secure.</p>
+              </div>
+              <span className="setting-row__value" aria-hidden="true">••••••••</span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setChangePasswordOpen(true)}
+                data-testid="account-settings-password-change"
+                disabled={!userId}
+              >
+                Change
+              </Button>
+            </div>
           </div>
-        </div>
+        </section>
 
-        <div
-          data-testid="account-settings-email"
-          className="mt-5 grid grid-cols-1 items-start gap-3 md:grid-cols-[1fr_320px]"
+        {/* Delivery configuration — Telegram + webhook (TASK-017 AC2/AC3/AC4/AC5) */}
+        <section
+          data-testid="delivery-config-section"
+          className="fs-card fs-form-section"
+          aria-labelledby="delivery-heading"
         >
-          <div className="flex flex-col gap-1">
-            <span className="text-sm font-semibold">Email</span>
-            <span className="text-xs text-muted-foreground">
-              Used for sign-in and notifications.
-            </span>
-          </div>
-          <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-            <div className="flex h-10 min-w-0 items-center rounded-md border border-border bg-secondary/40 px-3 text-sm text-foreground">
-              <span className="truncate">{email || "—"}</span>
+          <header className="fs-form-section__head">
+            <h2 id="delivery-heading" className="fs-form-section__title">Notification delivery</h2>
+            <p className="fs-form-section__desc">
+              Configure how {BRAND_NAME} delivers alerts to you.
+            </p>
+          </header>
+
+          {deliveryConfig ? (
+            <DeliveryConfigForm
+              current={deliveryConfig}
+              currentPlan={currentPlan}
+              isSaving={updateDeliveryMutation.isPending}
+              onSave={async (data) => {
+                await updateDeliveryMutation.mutateAsync(data)
+              }}
+            />
+          ) : (
+            <div className="fs-muted" style={{ padding: "1rem 0" }}>Loading delivery settings…</div>
+          )}
+        </section>
+
+        {/* API keys — issue / copy-once / revoke (TASK-065; Trader/Team gate) */}
+        <ApiKeysSection currentPlan={currentPlan} />
+
+        <section
+          data-testid="account-support"
+          className="fs-card fs-form-section"
+          aria-labelledby="support-heading"
+        >
+          <header className="fs-form-section__head" style={{ marginBottom: "0.4rem" }}>
+            <h2 id="support-heading" className="fs-form-section__title">Help &amp; support</h2>
+          </header>
+          <p className="fs-muted" style={{ margin: 0, fontSize: "0.9rem" }}>
+            Need help?{" "}
+            <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>
+          </p>
+        </section>
+
+        <section
+          data-testid="account-danger-zone"
+          className="fs-card fs-form-section danger-zone"
+          aria-labelledby="danger-heading"
+        >
+          <header className="fs-form-section__head">
+            <h2 id="danger-heading" className="fs-form-section__title">Danger zone</h2>
+            <p className="fs-form-section__desc">Permanent actions on your account.</p>
+          </header>
+
+          <div className="setting-row">
+            <div className="setting-row__main">
+              <span className="fs-label">Delete account</span>
+              <p className="fs-hint">Removes your account and all your data. This cannot be undone.</p>
             </div>
             <Button
               type="button"
-              size="sm"
-              variant="outline"
-              className="min-w-20"
-              onClick={() => setChangeEmailOpen(true)}
-              data-testid="account-settings-email-change"
+              variant="destructive"
+              data-testid="account-settings-delete"
+              onClick={() => setDeleteOpen(true)}
               disabled={!userId}
             >
-              Change
+              Delete account
             </Button>
           </div>
-        </div>
-
-        <div
-          data-testid="account-settings-password"
-          className="mt-5 grid grid-cols-1 items-start gap-3 border-t border-border pt-5 md:grid-cols-[1fr_320px]"
-        >
-          <div className="flex flex-col gap-1">
-            <span className="text-sm font-semibold">Password</span>
-            <span className="text-xs text-muted-foreground">
-              Change your password to keep your account secure.
-            </span>
-          </div>
-          <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-            <div className="flex h-10 min-w-0 items-center rounded-md border border-border bg-secondary/40 px-3 text-sm text-foreground">
-              <span aria-hidden="true">••••••••</span>
-            </div>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="min-w-20"
-              onClick={() => setChangePasswordOpen(true)}
-              data-testid="account-settings-password-change"
-              disabled={!userId}
-            >
-              Change
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      {/* Delivery configuration — Telegram + webhook (TASK-017 AC2/AC3/AC4/AC5) */}
-      <section
-        data-testid="delivery-config-section"
-        className="rounded-2xl border border-border bg-background p-6"
-      >
-        <header className="mb-5 flex flex-col gap-1">
-          <h3 className="m-0 text-base font-semibold">Notification delivery</h3>
-          <p className="m-0 text-xs text-muted-foreground">
-            Configure how {BRAND_NAME} delivers alerts to you.
-          </p>
-        </header>
-
-        {deliveryConfig ? (
-          <DeliveryConfigForm
-            current={deliveryConfig}
-            currentPlan={currentPlan}
-            isSaving={updateDeliveryMutation.isPending}
-            onSave={async (data) => {
-              await updateDeliveryMutation.mutateAsync(data)
-            }}
-          />
-        ) : (
-          <div className="py-4 text-sm text-muted-foreground">Loading delivery settings…</div>
-        )}
-      </section>
-
-      {/* API keys — issue / copy-once / revoke (TASK-065; Trader/Team gate) */}
-      <ApiKeysSection currentPlan={currentPlan} />
-
-      <section
-        data-testid="account-support"
-        className="rounded-2xl border border-border bg-background p-6"
-      >
-        <header className="mb-3 flex flex-col gap-1">
-          <h3 className="m-0 text-base font-semibold">Help &amp; support</h3>
-        </header>
-        <p className="m-0 text-sm text-muted-foreground">
-          Need help?{" "}
-          <a
-            href={`mailto:${SUPPORT_EMAIL}`}
-            className="text-foreground underline underline-offset-2 hover:no-underline"
-          >
-            {SUPPORT_EMAIL}
-          </a>
-        </p>
-      </section>
-
-      <section
-        data-testid="account-danger-zone"
-        className="rounded-2xl border border-destructive/30 bg-destructive/[0.02] p-6"
-      >
-        <header className="mb-5 flex flex-col gap-1">
-          <h3 className="m-0 text-base font-semibold">Danger zone</h3>
-          <p className="m-0 text-xs text-muted-foreground">
-            Permanent actions on your account.
-          </p>
-        </header>
-
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex flex-col gap-1">
-            <span className="text-sm font-semibold">Delete account</span>
-            <span className="text-xs text-muted-foreground">
-              Removes your account and all your data. This cannot be undone.
-            </span>
-          </div>
-          <Button
-            type="button"
-            variant="destructive"
-            data-testid="account-settings-delete"
-            onClick={() => setDeleteOpen(true)}
-            disabled={!userId}
-          >
-            Delete account
-          </Button>
-        </div>
-      </section>
+        </section>
+      </div>
 
       <DeleteAccountDialog
         open={deleteOpen}
