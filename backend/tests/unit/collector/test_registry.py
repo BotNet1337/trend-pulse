@@ -1,4 +1,4 @@
-"""AC7 — registry: TELEGRAM registered, TWITTER declared but NOT registered."""
+"""registry: TELEGRAM + TWITTER registered (TASK-031 superseded task-005 AC7)."""
 
 import pytest
 
@@ -12,13 +12,12 @@ def test_telegram_is_registered() -> None:
     assert registry.is_registered(SourceKind.TELEGRAM)
 
 
-def test_twitter_is_declared_but_not_registered() -> None:
-    # Declared in the enum as a future marker...
+def test_twitter_is_registered() -> None:
+    # TASK-031: TWITTER is now a registered source (was a future-marker only under
+    # task-005 AC7). The factory still fails fast without a Bearer token (lazy),
+    # so an unconfigured deploy is a warn-once no-op tick, not a crash.
     assert SourceKind.TWITTER.value == "twitter"
-    # ...but no collector is registered for it (ADR-001 scope guard).
-    assert not registry.is_registered(SourceKind.TWITTER)
-    with pytest.raises(KeyError):
-        registry.get(SourceKind.TWITTER)
+    assert registry.is_registered(SourceKind.TWITTER)
 
 
 def test_build_telegram_collector_fails_fast_without_creds(

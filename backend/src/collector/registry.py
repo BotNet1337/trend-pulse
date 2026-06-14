@@ -1,12 +1,12 @@
 """In-code collector registry: `SourceKind -> SourceCollector` (AC7, ADR-001).
 
 Simple in-code mapping — NO plugin loading / config DSL (ADR-001 scope guard).
-`TELEGRAM` resolves to a `TelegramCollector`; `TWITTER` is declared in the enum as
-a future marker but is deliberately NOT registered (AC7).
+`TELEGRAM` resolves to a `TelegramCollector`; `TWITTER` resolves to a
+`TwitterCollector` (TASK-031) when a Bearer token is configured.
 
-Construction of the Telegram collector is LAZY (built on first `get`) so importing
-the registry never requires telethon or real pool credentials, and so there is no
-import cycle with the telegram subpackage.
+Construction of each collector is LAZY (built on first `get`) so importing the
+registry never requires telethon/httpx or real credentials, and so there is no
+import cycle with the platform subpackages.
 """
 
 from collections.abc import Callable
@@ -58,5 +58,26 @@ def _build_telegram_collector() -> SourceCollector:
     return TelegramCollector(pool, settings=settings, redis=get_redis_client())
 
 
-# TELEGRAM registered (AC7); TWITTER intentionally absent (future marker only).
+def _build_twitter_collector() -> SourceCollector:
+    """Build the production Twitter collector from env settings (lazy, TASK-031)."""
+    from collector.twitter.client import build_twitter_client
+    from collector.twitter.reader import TwitterCollector
+    from config import get_settings
+    from storage.redis_client import get_redis_client
+
+    settings = get_settings()
+    if not settings.twitter_bearer_token:
+        raise PoolConfigError("TWITTER_BEARER_TOKEN is required for the Twitter source")
+    client = build_twitter_client(
+        bearer_token=settings.twitter_bearer_token,
+        base_url=settings.twitter_api_base_url,
+    )
+    # settings + redis enable the read-budget counter + ops self-alert (best-effort).
+    return TwitterCollector(client, settings=settings, redis=get_redis_client())
+
+
+# TELEGRAM + TWITTER registered (ADR-001). TWITTER stays a no-op until a Bearer
+# token is configured: `get(TWITTER)` raises PoolConfigError (caught by the tick as
+# "unconfigured" — warn-once no-op), exactly like an empty Telegram pool.
 register(SourceKind.TELEGRAM, _build_telegram_collector)
+register(SourceKind.TWITTER, _build_twitter_collector)

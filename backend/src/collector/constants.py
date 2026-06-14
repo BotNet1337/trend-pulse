@@ -56,6 +56,34 @@ MAX_MESSAGES_PER_TICK: Final = 500
 # and a later tick retries once the account's cooldown has elapsed.
 FLOOD_WAIT_INLINE_CAP_SECONDS: Final = 60
 
+# --- Twitter/X source (TASK-031, ADR-001) ----------------------------------
+# X API 2026 is PAY-PER-USE ($0.005 per post read, 2M/mo cap) — the legacy fixed
+# Basic/Pro tiers are closed to new signups. read-budget is therefore the central
+# cost constraint (unlike the free Telegram MTProto pool), so the Twitter collector
+# polls RARELY, fetches FEW tweets per tick, and hard-caps monthly reads.
+# Research brief: docs/research/twitter-source-research-brief.md §1.
+
+# Recommended Twitter collect cadence (seconds) — informational anchor for the
+# scheduler (Twitter ticks RARELY, not every 60s like Telegram, to bound read cost).
+TWITTER_COLLECT_INTERVAL_SECONDS: Final = 15 * 60  # 15 minutes
+
+# Hard per-ref cap on tweets read from ONE account per tick. The X timeline
+# endpoint allows up to 100; we keep it small because every tweet read costs money.
+TWITTER_MAX_RESULTS_PER_TICK: Final = 25
+
+# Monthly read budget (number of post reads). When the running month's reads reach
+# this, the collector stops reading and alerts ops ONCE — a spend backstop so a
+# misconfiguration can't run up the pay-per-use bill. Well under the 2M API cap.
+MAX_TWITTER_READS_PER_MONTH: Final = 100_000
+
+# Max 429 rate-limit wait the reader sleeps INLINE before skipping the ref
+# (seconds). Above this the ref is skipped this tick (retried next tick), mirroring
+# the Telegram FLOOD_WAIT inline cap — a long reset must not park the collect tick.
+TWITTER_RATE_LIMIT_INLINE_CAP_SECONDS: Final = 60
+
+# Redis key prefix for the monthly read-budget counter: twitter:reads:{YYYY-MM}.
+TWITTER_READS_COUNTER_PREFIX: Final = "twitter:reads"
+
 # --- collect-tick (beat ingest task) — import-cycle-free contract constants. ---
 # Celery task name for the collect tick. Lives here (not in collector.tasks,
 # which imports celery_app) so `scheduler` can reference it without a circular

@@ -37,6 +37,20 @@ tags: [epic-d, backend, collector, source-abstraction, twitter-loop]
 >    TWITTER + twitter-refs в watchlist ингест идёт тем же тиком.
 > 6. **Лимиты планов:** оставляем **суммарный** `Resource.CHANNELS` (осознанно, минимальный путь) —
 >    зафиксировать в ADR-001 §schema.
+> **PR-A (collector core) РЕАЛИЗОВАН 2026-06-14** — ветка `task/031a-twitter-collector-core`:
+> config (`twitter_bearer_token` + base_url) + collector/constants (кадэнс 15м,
+> `MAX_TWITTER_READS_PER_MONTH`, max_results, 429-cap, counter-prefix) + `.env.example`
+> (`TWITTER_BEARER_TOKEN`); `collector/twitter/{__init__,client,mapper,dedup,reader}.py`
+> (validate_ref, read, 429-backoff + month read-budget Redis-счётчик + once/мес ops-алерт);
+> registry `register(TWITTER)`; errors (`TwitterAPIError`/`TwitterRateLimitError`/
+> `TwitterReadBudgetExceededError`). Тесты: `test_twitter_collector.py` 39 шт, покрытие модулей
+> 89%, `make test` 867 passed, ci-fast зелёный. Adversarial review: 2 HIGH (любая non-429 ошибка
+> рвала тик → теперь все ошибки → per-ref SourceUnavailableError; `response.json()` malformed →
+> TwitterAPIError) + 3 MEDIUM (алерт бюджета per-month; INCRBY+EXPIRE атомарно pipeline;
+> normalize_handle strip path/query) — ИСПРАВЛЕНЫ. Пререквизит storage SourceKind.TWITTER + per-source
+> handle-валидация watchlist — СЛЕДУЮЩИМ под-PR (PR-B), нужны для packs/watchlist (TASK-089).
+> Storage `source_kind` = `native_enum=False` VARCHAR без CHECK (migration 0001) → миграция НЕ нужна.
+>
 > 7. **Pack/docs/graph вынесены в отдельные задачи:** C5→[TASK-089](./task-089-twitter-seed-pack.md),
 >    C6→[TASK-090](./task-090-twitter-data-instructions.md), C7→[TASK-091](./task-091-twitter-virality-graph.md)
 >    (post-MVP). live-валидация аккаунтов требует реального ключа → owner-gated.
