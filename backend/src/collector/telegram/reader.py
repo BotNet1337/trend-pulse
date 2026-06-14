@@ -24,6 +24,7 @@ from collector.constants import (
 )
 from collector.errors import AllAccountsFloodWaitError, SourceUnavailableError
 from collector.telegram.account_pool import AccountPool
+from collector.telegram.auth_errors import is_permanent_auth_error
 from collector.telegram.client import TelegramClientProtocol
 from collector.telegram.dedup import normalize_handle, unique_refs
 from collector.telegram.mapper import map_entity
@@ -123,6 +124,26 @@ class TelegramCollector:
                 extra={"exc_type": type(exc).__name__},
             )
 
+    def _quarantine_dead_account(self, exc: BaseException) -> None:
+        """Evict the current account on a PERMANENT auth failure and alert ops ONCE.
+
+        A permanent auth error (AuthKeyDuplicated/AuthKeyError/UserDeactivated/
+        SessionRevoked) means the session string is dead forever — retrying re-reads
+        the same dead session every tick (the prod alert-spam root cause, TASK-087).
+        We quarantine the account so the pool never hands it out again (the durable,
+        Redis-independent dedup) and send EXACTLY ONE ops alert keyed per account
+        (`auth_dead:{n}`) so the owner re-mints that session. The fingerprint `n` is
+        the account's pool index — NEVER a session string/secret.
+        """
+        fingerprint = self._pool.quarantine_current()
+        self._emit_health_best_effort(
+            notify_reason=f"auth_dead:{fingerprint}",
+            notify_text=(
+                f"TG pool: сессия #{fingerprint} мертва ({type(exc).__name__}) — "
+                "аккаунт выселен из пула, перевыпусти сессию."
+            ),
+        )
+
     async def aclose(self) -> None:
         """Disconnect all pool clients — call on worker shutdown so MTProto
         connections aren't leaked across the worker's lifetime."""
@@ -193,7 +214,15 @@ class TelegramCollector:
                 async for post in self._read_one(ref, since):
                     yield post
                 return
-            # Non-flood error on entity resolve (auth/ban/network) — notify ops.
+            # PERMANENT auth failure (dead session) — quarantine the account so the
+            # pool never re-reads it, alert ops ONCE, then skip the ref (TASK-087).
+            if is_permanent_auth_error(exc):
+                self._quarantine_dead_account(exc)
+                raise SourceUnavailableError(
+                    f"telegram account quarantined (permanent auth error) reading {ref.handle}"
+                ) from exc
+            # Non-flood TRANSIENT error on entity resolve (network/private) — notify
+            # ops (throttled), keep the account (it may recover next tick).
             self._emit_health_best_effort(
                 notify_reason="auth_error",
                 notify_text=(f"TG pool: account error on entity resolve ({type(exc).__name__})"),
@@ -241,6 +270,13 @@ class TelegramCollector:
                 async for post in self._read_one(ref, since):
                     yield post
                 return
+            # A permanent auth error can also surface mid-iteration — quarantine
+            # the dead account here too (TASK-087), alert once, then skip the ref.
+            if is_permanent_auth_error(exc):
+                self._quarantine_dead_account(exc)
+                raise SourceUnavailableError(
+                    f"telegram account quarantined (permanent auth error) reading {ref.handle}"
+                ) from exc
             raise SourceUnavailableError(f"failed reading telegram ref {ref.handle}") from exc
 
     async def _acquire_ready_client(self) -> TelegramClientProtocol:
