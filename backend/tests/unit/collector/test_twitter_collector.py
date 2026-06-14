@@ -658,6 +658,24 @@ async def test_long_429_pauses_all_reads() -> None:
 
 
 @pytest.mark.asyncio
+async def test_first_read_floors_window_to_one_interval() -> None:
+    from collector.constants import TWITTER_MIN_READ_INTERVAL_SECONDS
+
+    # No stamp + a tiny caller `since` (~60s tick marker) must NOT shrink the window:
+    # the read floors to one interval back so infrequent accounts still yield tweets.
+    client = FakeTwitterClient(tweets=[_tweet("7")])
+    redis = _FakeRedis()
+    now = datetime(2026, 6, 14, 18, 0, 0, tzinfo=UTC)
+    collector = TwitterCollector(client, redis=redis, now=lambda: now)
+
+    narrow = now - timedelta(seconds=60)  # the shared tick's ~60s marker
+    _ = [p async for p in collector.read([_REF], since=narrow)]
+    assert client.last_start_time is not None
+    # Window floored to ~one interval back, not the 60s caller marker.
+    assert client.last_start_time <= now - timedelta(seconds=TWITTER_MIN_READ_INTERVAL_SECONDS - 1)
+
+
+@pytest.mark.asyncio
 async def test_account_skipped_within_min_interval_and_userid_cached() -> None:
     from collector.constants import TWITTER_MIN_READ_INTERVAL_SECONDS
 
