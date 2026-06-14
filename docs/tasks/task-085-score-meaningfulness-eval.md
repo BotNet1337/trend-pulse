@@ -1,10 +1,10 @@
 ---
 id: TASK-085
 title: Доказать, что viral_score ОСМЫСЛЕН (а не просто ненулевой) — eval-harness + числа
-status: review         # planned → in-progress → review → done
+status: done           # planned → in-progress → review → done
 owner: backend
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-14
 baseline_commit: "3b1a94c"
 branch: "task/085-score-meaningfulness-eval"
 tags: [eval, scorer, signal-quality, discrimination, auc, threshold, T14]
@@ -129,5 +129,5 @@ clamp `Δhours`/масштаб velocity) + накопление настоящи
 - [x] do (TDD)
 - [x] verify (G2) — make test + ci-fast
 - [x] review
-- [ ] ship (PR, NO merge)
+- [x] ship — PR #128 https://github.com/BotNet1337/trend-pulse/pull/128 (MERGED)
 - current_step: ship

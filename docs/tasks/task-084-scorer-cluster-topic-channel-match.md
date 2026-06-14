@@ -1,10 +1,10 @@
 ---
 id: TASK-084
 title: Scorer cluster→topic matching по channel-overlap, а не по равенству topic-строк
-status: review         # planned → in-progress → review → done
+status: done           # planned → in-progress → review → done
 owner: backend
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-14
 baseline_commit: "56f0213"
 branch: "task/084-scorer-cluster-topic-channel-match"
 tags: [scorer, topic-match, channel-overlap, prod-bug, scores-zero]

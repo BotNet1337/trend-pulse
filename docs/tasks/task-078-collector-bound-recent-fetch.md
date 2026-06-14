@@ -1,10 +1,10 @@
 ---
 id: TASK-078
 title: Telegram-коллектор читает только свежее окно (`since`), а не всю историю канала — фикс full-history backfill
-status: review         # planned → in-progress → review → done
+status: done           # planned → in-progress → review → done
 owner: backend
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-14
 baseline_commit: "6cb80b3"
 branch: "task/078-collector-bound-recent-fetch"
 deps: [TASK-005, TASK-076]
@@ -106,7 +106,7 @@ lock: ""
 - [x] 4 verify (G2 — tests + ci-fast)
 - [ ] 5 review (auto, adversarial)
 - [ ] 5.5 security (skip — нет auth/input/secrets/SQL; транспорт TG)
-- [x] 6 ship (PR open — orchestrator validates+merges)
+- [x] 6 ship — PR #121 https://github.com/BotNet1337/trend-pulse/pull/121 (MERGED)
 - [ ] 7 learnings (auto)
 debug_runs: []
 

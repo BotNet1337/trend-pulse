@@ -1,10 +1,10 @@
 ---
 id: TASK-082
 title: Persist per-post embeddings — пайплайн пишет в posts.embedding уже вычисленный вектор
-status: review         # planned → in-progress → review → done
+status: done           # planned → in-progress → review → done
 owner: backend
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-14
 baseline_commit: "e82d1fd"
 branch: "task/082-persist-post-embeddings"
 tags: [pipeline, embedding, pgvector, clustering, backtest, vector-ml, compliance]
@@ -134,6 +134,6 @@ embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM), nul
 - [x] RED: оба unit-теста падают (нет `post_embeddings`; `Post.embedding is None`).
 - [x] GREEN: поле + персист; 30 связанных тестов + полный `make ci-fast` зелёные.
 - [x] Doc + index.
-- [ ] PR (no merge, no deploy).
+- [x] PR #125 https://github.com/BotNet1337/trend-pulse/pull/125 (MERGED).
 </content>
 </invoke>

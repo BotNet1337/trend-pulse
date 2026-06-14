@@ -1,10 +1,10 @@
 ---
 id: TASK-076
 title: Redis OOM guard — explicit maxmemory (noeviction) + capped raw-post buffer
-status: review         # planned → in-progress → review → done
+status: done           # planned → in-progress → review → done
 owner: backend
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-14
 baseline_commit: "3c900b1"
 branch: "task/076-redis-oom-guard"
 tags: [redis, oom, compose, collector, buffer, broker, reliability]

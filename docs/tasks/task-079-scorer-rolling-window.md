@@ -1,10 +1,10 @@
 ---
 id: TASK-079
 title: Scorer velocity/engagement по СКОЛЬЗЯЩЕМУ окну, а не за всю жизнь кластера
-status: review         # planned → in-progress → review → done
+status: done           # planned → in-progress → review → done
 owner: backend
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-14
 baseline_commit: "85618ed"
 branch: "task/079-scorer-rolling-window"
 tags: [scorer, velocity, engagement, config, rolling-window]
