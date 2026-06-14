@@ -38,14 +38,14 @@ function formatDate(iso: string): string {
 }
 
 const TrendingItemRow: React.FC<{ item: TrendingItem; rank: number }> = ({ item, rank }) => (
-  <li className="flex items-start gap-3 p-3 rounded-lg border border-border bg-card">
-    <span className="text-muted-foreground text-sm font-mono w-5 shrink-0">{rank}.</span>
-    <div className="flex-1 min-w-0">
-      <p className="font-semibold text-sm truncate">{item.topic}</p>
-      <p className="text-xs text-muted-foreground mt-0.5">
+  <li className="fs-list__row ob-trend-row">
+    <span className="ob-rank" aria-hidden="true">{rank}.</span>
+    <div className="fs-list__main" style={{ flex: 1 }}>
+      <span className="fs-list__title fs-truncate" title={item.topic}>{item.topic}</span>
+      <span className="fs-list__sub">
         Virality: {formatScore(item.viral_score)} &middot;{' '}
         {formatDate(item.first_seen as unknown as string)}
-      </p>
+      </span>
     </div>
   </li>
 );
@@ -58,15 +58,15 @@ export const TrendingList: React.FC<TrendingListProps> = ({
 }) => {
   if (isLoading) {
     return (
-      <div aria-busy="true" aria-label="Loading trends" className="py-6 flex justify-center">
-        <span className="text-sm text-muted-foreground">Loading…</span>
+      <div aria-busy="true" aria-label="Loading trends" className="fs-center" style={{ padding: '1.5rem 0' }}>
+        <span className="fs-muted">Loading…</span>
       </div>
     );
   }
 
   if (isError) {
     return (
-      <p role="alert" className="text-sm text-destructive py-4">
+      <p role="alert" className="fs-error" style={{ padding: '1rem 0' }}>
         Failed to load trends. Please refresh the page.
       </p>
     );
@@ -74,13 +74,10 @@ export const TrendingList: React.FC<TrendingListProps> = ({
 
   if (warmingUp) {
     return (
-      <div
-        className="py-6 flex flex-col items-center gap-2 text-center"
-        aria-label="Collecting data"
-      >
-        <span className="text-2xl">📡</span>
-        <p className="text-sm font-medium">Collecting signals…</p>
-        <p className="text-xs text-muted-foreground">
+      <div className="fs-card fs-card--pad-sm fs-center" aria-label="Collecting data">
+        <span style={{ fontSize: '1.5rem' }}>📡</span>
+        <p className="fs-mt-1" style={{ fontWeight: 500, marginBottom: '0.25rem' }}>Collecting signals…</p>
+        <p className="fs-hint">
           The showcase has just started. Data will appear within a few minutes.
         </p>
       </div>
@@ -89,17 +86,21 @@ export const TrendingList: React.FC<TrendingListProps> = ({
 
   if (items.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground py-4">
-        No activity detected for this pack in the last 24 hours.
-      </p>
+      <div className="fs-card fs-card--pad-sm">
+        <p className="fs-muted fs-mt-0" style={{ margin: 0 }}>
+          No activity detected for this pack in the last 24 hours.
+        </p>
+      </div>
     );
   }
 
   return (
-    <ul className="flex flex-col gap-2" aria-label="Viral topics over the last 24 hours">
-      {items.map((item, idx) => (
-        <TrendingItemRow key={`${item.topic}-${idx}`} item={item} rank={idx + 1} />
-      ))}
-    </ul>
+    <div className="fs-card fs-card--pad-sm">
+      <ul className="fs-list fs-list--flush" aria-label="Viral topics over the last 24 hours">
+        {items.map((item, idx) => (
+          <TrendingItemRow key={`${item.topic}-${idx}`} item={item} rank={idx + 1} />
+        ))}
+      </ul>
+    </div>
   );
 };

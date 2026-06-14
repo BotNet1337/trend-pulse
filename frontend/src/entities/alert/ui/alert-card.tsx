@@ -28,11 +28,9 @@ function formatFirstSeen(iso: string): string {
 }
 
 const STATUS_STYLES: Record<string, string> = {
-  delivered:
-    'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
-  failed: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
-  pending:
-    'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+  delivered: 'fs-badge--success',
+  failed: 'fs-badge--danger',
+  pending: 'fs-badge--warning',
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -44,25 +42,23 @@ const STATUS_LABELS: Record<string, string> = {
 export const AlertCard: React.FC<AlertCardProps> = ({ alert, onClick }) => {
   const { id, score, topic, first_seen, channels_count, delivery_status } = alert;
 
-  const statusStyle =
-    STATUS_STYLES[delivery_status] ??
-    'bg-muted text-muted-foreground';
+  const statusStyle = STATUS_STYLES[delivery_status] ?? 'fs-badge--neutral';
   const statusLabel =
     STATUS_LABELS[delivery_status] ?? delivery_status;
 
   return (
     <article
-      className="border border-border rounded-lg p-4 flex flex-col gap-3 bg-card text-card-foreground cursor-pointer hover:bg-accent/5 transition-colors"
+      className="fs-card fs-card--interactive alert-card"
       aria-label={`Alert: ${topic} — score ${Math.round(score)}`}
       onClick={() => onClick?.(id)}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
       onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') onClick(id); } : undefined}
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="fs-card__head">
         {/* Score badge */}
         <span
-          className="inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold px-2.5 py-1 min-w-[2.5rem]"
+          className="fs-score"
           aria-label={`Score: ${Math.round(score)}`}
           title={`Score: ${score.toFixed(1)}`}
         >
@@ -71,7 +67,7 @@ export const AlertCard: React.FC<AlertCardProps> = ({ alert, onClick }) => {
 
         {/* Delivery status badge — accessible via aria-label */}
         <span
-          className={`inline-flex items-center rounded-full text-xs font-medium px-2 py-0.5 ${statusStyle}`}
+          className={`fs-badge ${statusStyle}`}
           aria-label={`Delivery status: ${statusLabel}`}
         >
           {/* Text rendered as-is — JSX auto-escapes, XSS safe */}
@@ -80,11 +76,11 @@ export const AlertCard: React.FC<AlertCardProps> = ({ alert, onClick }) => {
       </div>
 
       {/* Topic — text node, JSX auto-escapes */}
-      <p className="text-sm font-semibold text-foreground line-clamp-2" title={topic}>
+      <p className="alert-card__headline fs-truncate" title={topic}>
         {topic}
       </p>
 
-      <div className="flex items-center justify-between text-xs text-muted-foreground gap-2">
+      <div className="alert-card__meta">
         {/* first_seen: UTC → locale string */}
         <time dateTime={first_seen} title={first_seen}>
           {formatFirstSeen(first_seen)}

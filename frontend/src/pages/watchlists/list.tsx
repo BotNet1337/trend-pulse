@@ -39,28 +39,30 @@ export const WatchlistsListPage: React.FC = () => {
 
   return (
     <main className="fs-main">
-      <div className="mx-auto max-w-3xl px-4">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold">Watchlists</h1>
-          <Button type="button" onClick={handleCreate}>
-            Add watchlist
-          </Button>
+      <div className="fs-container">
+        <div className="fs-page-head">
+          <h1 className="fs-page-head__title">Watchlists</h1>
+          <div className="fs-page-head__actions">
+            <Button type="button" onClick={handleCreate}>
+              Add watchlist
+            </Button>
+          </div>
         </div>
 
         {deleteError && (
-          <p role="alert" className="mb-4 text-sm text-destructive">
+          <p role="alert" className="fs-error fs-mt-0" style={{ marginBottom: '1rem' }}>
             {deleteError}
           </p>
         )}
 
         {isLoading && (
-          <div aria-busy="true" aria-label="Loading watchlists" className="flex justify-center py-16">
-            <span className="text-muted-foreground text-sm">Loading…</span>
+          <div aria-busy="true" aria-label="Loading watchlists" className="fs-center" style={{ padding: '4rem 0' }}>
+            <span className="fs-muted">Loading…</span>
           </div>
         )}
 
         {!isLoading && error && (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="fs-error">
             Failed to load watchlists. Please refresh.
           </p>
         )}
@@ -75,7 +77,7 @@ export const WatchlistsListPage: React.FC = () => {
         )}
 
         {!isLoading && !error && watchlists && watchlists.length > 0 && (
-          <ul className="flex flex-col gap-4" aria-label="Your watchlists">
+          <ul className="fs-list" aria-label="Your watchlists">
             {watchlists.map((wl) => (
               <li key={wl.id}>
                 <WatchlistCard

@@ -81,17 +81,18 @@ export const ApiKeysSection: React.FC<ApiKeysSectionProps> = ({ currentPlan }) =
   return (
     <section
       data-testid="api-keys-section"
-      className="rounded-2xl border border-border bg-background p-6"
+      className="fs-card fs-form-section"
+      aria-labelledby="api-keys-heading"
     >
-      <header className="mb-5 flex flex-col gap-1">
-        <h3 className="m-0 text-base font-semibold">API keys</h3>
-        <p className="m-0 text-xs text-muted-foreground">
+      <header className="fs-form-section__head">
+        <h2 id="api-keys-heading" className="fs-form-section__title">API keys</h2>
+        <p className="fs-form-section__desc">
           Programmatic access to the {BRAND_NAME} API.
         </p>
       </header>
 
       {hasApiAccess ? (
-        <div className="flex flex-col gap-5">
+        <div className="fs-form-section__body">
           <KeysList
             query={keysQuery}
             onRevoke={(key) => {
@@ -102,10 +103,10 @@ export const ApiKeysSection: React.FC<ApiKeysSectionProps> = ({ currentPlan }) =
 
           <form
             onSubmit={(event) => void handleCreate(event)}
-            className="flex flex-col gap-2 border-t border-border pt-5"
+            className="fs-key-create"
           >
-            <Label htmlFor="api-key-name">Create a new key</Label>
-            <div className="grid grid-cols-[1fr_auto] items-center gap-2">
+            <div className="fs-key-create__row">
+              <Label htmlFor="api-key-name">Create a new key</Label>
               <Input
                 id="api-key-name"
                 value={name}
@@ -120,7 +121,7 @@ export const ApiKeysSection: React.FC<ApiKeysSectionProps> = ({ currentPlan }) =
               />
               <Button
                 type="submit"
-                className="min-w-28"
+                size="sm"
                 disabled={createMutation.isPending}
                 data-testid="api-key-create"
               >
@@ -135,18 +136,18 @@ export const ApiKeysSection: React.FC<ApiKeysSectionProps> = ({ currentPlan }) =
               </Button>
             </div>
             {nameError && (
-              <span role="alert" className="text-xs text-destructive">
+              <p role="alert" className="fs-error fs-mt-1">
                 {nameError}
-              </span>
+              </p>
             )}
             {createError && (
-              <span
+              <p
                 role="alert"
-                className="text-xs text-destructive"
+                className="fs-error fs-mt-1"
                 data-testid="api-key-create-error"
               >
                 {createError}
-              </span>
+              </p>
             )}
           </form>
         </div>
@@ -175,26 +176,26 @@ export const ApiKeysSection: React.FC<ApiKeysSectionProps> = ({ currentPlan }) =
 const UpgradeCta: React.FC = () => (
   <div
     data-testid="api-keys-upgrade-cta"
-    className="flex flex-col items-start gap-3 rounded-md border border-border bg-secondary/40 p-4 md:flex-row md:items-center md:justify-between"
+    className="fs-card fs-upsell"
   >
-    <div className="flex items-center gap-3">
-      <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-secondary text-muted-foreground">
+    <div className="fs-row" style={{ gap: "0.85rem" }}>
+      <span className="profile-row__avatar" style={{ width: "40px", height: "40px", fontSize: "1rem" }}>
         <KeyRound className="h-5 w-5" />
       </span>
-      <div className="flex flex-col gap-0.5">
-        <span className="text-sm font-semibold">
-          API access is part of {TRADER_NAME}
-        </span>
-        <span className="text-xs text-muted-foreground">
+      <div>
+        <p className="fs-upsell__title">API access is part of {TRADER_NAME}</p>
+        <p className="fs-upsell__text">
           Issue API keys and integrate {BRAND_NAME} signals into your own tools.
-        </span>
+        </p>
       </div>
     </div>
-    <Button asChild size="sm" className="shrink-0">
-      <Link to={paths.billing} data-testid="api-keys-upgrade-link">
-        Upgrade to {TRADER_NAME}
-      </Link>
-    </Button>
+    <div className="fs-upsell__actions">
+      <Button asChild size="sm">
+        <Link to={paths.billing} data-testid="api-keys-upgrade-link">
+          Upgrade to {TRADER_NAME}
+        </Link>
+      </Button>
+    </div>
   </div>
 )
 
@@ -205,7 +206,7 @@ interface KeysListProps {
 
 const KeysList: React.FC<KeysListProps> = ({ query, onRevoke }) => {
   if (query.isPending) {
-    return <div className="py-2 text-sm text-muted-foreground">Loading API keys…</div>
+    return <div className="fs-muted" style={{ padding: "0.5rem 0" }}>Loading API keys…</div>
   }
 
   if (query.isError) {
@@ -213,7 +214,8 @@ const KeysList: React.FC<KeysListProps> = ({ query, onRevoke }) => {
       <div
         role="alert"
         data-testid="api-keys-error"
-        className="py-2 text-sm text-destructive"
+        className="fs-error"
+        style={{ padding: "0.5rem 0" }}
       >
         {extractApiKeysErrorMessage(query.error)}
       </div>
@@ -223,18 +225,27 @@ const KeysList: React.FC<KeysListProps> = ({ query, onRevoke }) => {
   const keys = query.data ?? []
   if (keys.length === 0) {
     return (
-      <div data-testid="api-keys-empty" className="py-2 text-sm text-muted-foreground">
+      <div data-testid="api-keys-empty" className="fs-muted" style={{ padding: "0.5rem 0" }}>
         No API keys yet. Create one to call the API.
       </div>
     )
   }
 
   return (
-    <ul data-testid="api-keys-list" className="m-0 flex list-none flex-col gap-3 p-0">
-      {keys.map((key) => (
-        <ApiKeyRow key={key.id} apiKey={key} onRevoke={onRevoke} />
-      ))}
-    </ul>
+    <div className="fs-keys">
+      {/* Column headers (decorative; rows carry their own labels) */}
+      <div className="fs-key-row fs-key-row--head" aria-hidden="true">
+        <span>Name</span>
+        <span>Key</span>
+        <span>Created · Last used</span>
+        <span></span>
+      </div>
+      <ul data-testid="api-keys-list" className="fs-keys__list" aria-label="API keys">
+        {keys.map((key) => (
+          <ApiKeyRow key={key.id} apiKey={key} onRevoke={onRevoke} />
+        ))}
+      </ul>
+    </div>
   )
 }
 
@@ -249,42 +260,41 @@ const ApiKeyRow: React.FC<ApiKeyRowProps> = ({ apiKey, onRevoke }) => {
   return (
     <li
       data-testid="api-key-row"
-      className={`flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md border border-border px-4 py-3 ${
-        revoked ? "opacity-60" : ""
-      }`}
+      className={`fs-key-row ${revoked ? "fs-key-row--revoked" : ""}`}
     >
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="flex flex-wrap items-center gap-2">
-          <span className="truncate text-sm font-semibold">{apiKey.name}</span>
-          {revoked && (
-            <span
-              data-testid="api-key-revoked-badge"
-              className="rounded-full bg-secondary px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.05em] text-muted-foreground"
-            >
-              Revoked
-            </span>
-          )}
-        </span>
-        <span className="font-mono text-xs text-muted-foreground">
-          {apiKey.prefix}…
-        </span>
-        <span className="text-xs text-muted-foreground">
-          Created {formatApiKeyDate(apiKey.created_at)} · Last used{" "}
-          {formatApiKeyDate(apiKey.last_used_at)}
+      <div className="fs-key-row__name">
+        <span className="fs-truncate">{apiKey.name}</span>
+        {revoked ? (
+          <span data-testid="api-key-revoked-badge" className="fs-badge fs-badge--neutral">
+            Revoked
+          </span>
+        ) : (
+          <span className="fs-key-status">Active</span>
+        )}
+      </div>
+      <div className="fs-key-row__key">
+        <span className="fs-key-chip">
+          <code>{apiKey.prefix}…</code>
         </span>
       </div>
-      {!revoked && (
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="min-h-11 shrink-0 text-destructive hover:text-destructive"
-          onClick={() => onRevoke(apiKey)}
-          data-testid="api-key-revoke"
-        >
-          Revoke
-        </Button>
-      )}
+      <div className="fs-key-row__meta">
+        Created {formatApiKeyDate(apiKey.created_at)} · Last used{" "}
+        {formatApiKeyDate(apiKey.last_used_at)}
+      </div>
+      <div className="fs-key-row__action">
+        {!revoked && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="fs-btn--ghost-danger"
+            onClick={() => onRevoke(apiKey)}
+            data-testid="api-key-revoke"
+          >
+            Revoke
+          </Button>
+        )}
+      </div>
     </li>
   )
 }

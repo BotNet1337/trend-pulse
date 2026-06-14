@@ -25,21 +25,21 @@ function statusLabel(status: string): string {
 
 /** Single reward row in the table. */
 const RewardRow: React.FC<{ reward: ReferralRewardItem }> = ({ reward }) => (
-  <tr className="border-b border-border last:border-0">
-    <td className="py-2 pr-4 text-sm text-muted-foreground">#{reward.id}</td>
-    <td className="py-2 pr-4 text-sm font-mono">${reward.amount_usdt.toFixed(2)}</td>
-    <td className="py-2 pr-4 text-sm">
+  <tr>
+    <td>#{reward.id}</td>
+    <td className="fs-mono">${reward.amount_usdt.toFixed(2)}</td>
+    <td>
       <span
         className={
           reward.status === 'paid'
-            ? 'text-green-600 dark:text-green-400 font-medium'
-            : 'text-amber-600 dark:text-amber-400 font-medium'
+            ? 'fs-badge fs-badge--success'
+            : 'fs-badge fs-badge--warning'
         }
       >
         {statusLabel(reward.status)}
       </span>
     </td>
-    <td className="py-2 text-sm text-muted-foreground">
+    <td>
       {reward.paid_at ? new Date(reward.paid_at).toLocaleDateString() : '—'}
     </td>
   </tr>
@@ -59,29 +59,26 @@ export const InvitePage: React.FC = () => {
 
   return (
     <main className="fs-main">
-      <div className="mx-auto flex w-full max-w-[640px] flex-col gap-8 px-8 py-8">
-          <header className="flex flex-col gap-2">
-            <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground font-medium">
-              Referrals
-            </span>
-            <h1 className="m-0 text-2xl font-bold tracking-[-0.01em]">Invite a friend</h1>
-            <p className="m-0 text-sm text-muted-foreground">
-              Share your invite link. When a friend makes their first payment, you earn{' '}
-              <span className="font-semibold text-foreground">$10 USDT</span>.
-            </p>
-          </header>
+      <div className="fs-container invite-wrap">
+          <div className="fs-page-head">
+            <div>
+              <span className="invite-eyebrow">Referrals</span>
+              <h1 className="fs-page-head__title">Invite a friend</h1>
+              <p className="invite-intro">
+                Share your invite link. When a friend makes their first payment, you earn{' '}
+                <strong>$10 USDT</strong>.
+              </p>
+            </div>
+          </div>
 
           {isLoading && (
-            <div className="flex items-center justify-center py-16 text-muted-foreground text-sm">
+            <div className="fs-center fs-muted" style={{ padding: '4rem 0' }}>
               Loading referral data…
             </div>
           )}
 
           {isError && (
-            <div
-              role="alert"
-              className="rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive"
-            >
+            <div role="alert" className="fs-banner fs-banner--danger">
               Failed to load referral data. Please try again.
             </div>
           )}
@@ -89,49 +86,40 @@ export const InvitePage: React.FC = () => {
           {data && (
             <>
               {/* Referral link section */}
-              <section className="flex flex-col gap-3 rounded-xl border border-border p-5">
-                <h2 className="text-sm font-semibold">Your invite link</h2>
-                <div className="flex items-center gap-2">
+              <section className="fs-card link-card" aria-label="Your invite link">
+                <h2>Your invite link</h2>
+                <div className="link-row">
                   <input
                     readOnly
                     value={data.referral_link}
-                    className="flex-1 rounded-lg border border-border bg-muted px-3 py-2 text-sm font-mono text-foreground"
+                    className="fs-input"
                     aria-label="Referral link"
                   />
-                  <Button type="button" size="sm" onClick={handleCopy}>
+                  <Button type="button" variant="outline" size="sm" onClick={handleCopy}>
                     {copied ? 'Copied!' : 'Copy'}
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Your code:{' '}
-                  <span className="font-mono font-medium text-foreground">{data.ref_code}</span>
+                <p className="link-code">
+                  Your code: <code>{data.ref_code}</code>
                 </p>
               </section>
 
               {/* Rewards section */}
-              <section className="flex flex-col gap-3">
-                <h2 className="text-sm font-semibold">Earned rewards</h2>
+              <section className="rewards-section" aria-labelledby="rewards-heading">
+                <h2 id="rewards-heading">Earned rewards</h2>
                 {data.rewards.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
+                  <p className="fs-muted">
                     No rewards yet. Share your link to start earning!
                   </p>
                 ) : (
-                  <div className="rounded-xl border border-border overflow-hidden">
-                    <table className="w-full">
+                  <div className="fs-table-wrap">
+                    <table className="fs-table fs-table--hover">
                       <thead>
-                        <tr className="border-b border-border bg-muted/50">
-                          <th className="py-2 pr-4 text-left text-xs font-medium text-muted-foreground uppercase tracking-[0.05em]">
-                            #
-                          </th>
-                          <th className="py-2 pr-4 text-left text-xs font-medium text-muted-foreground uppercase tracking-[0.05em]">
-                            Amount
-                          </th>
-                          <th className="py-2 pr-4 text-left text-xs font-medium text-muted-foreground uppercase tracking-[0.05em]">
-                            Status
-                          </th>
-                          <th className="py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-[0.05em]">
-                            Paid at
-                          </th>
+                        <tr>
+                          <th scope="col">#</th>
+                          <th scope="col">Amount</th>
+                          <th scope="col">Status</th>
+                          <th scope="col">Paid at</th>
                         </tr>
                       </thead>
                       <tbody>

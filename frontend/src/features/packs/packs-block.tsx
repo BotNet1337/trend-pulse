@@ -58,47 +58,49 @@ const PackRow: React.FC<PackRowProps> = ({ pack }) => {
   const isPending = subscribeMutation.isPending || unsubscribeMutation.isPending;
 
   return (
-    <li className="flex flex-col gap-1 rounded-lg border border-border p-4">
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex flex-col gap-0.5">
-          <span className="font-semibold text-sm">{pack.title}</span>
-          <span className="text-xs text-muted-foreground">
-            {pack.topic} &middot; {pack.channels_count} {channelsWord(pack.channels_count)}
-          </span>
+    <li>
+      <article className="fs-card fs-card--pad-sm">
+        <div className="fs-list__row">
+          <div className="fs-list__main">
+            <span className="fs-list__title">{pack.title}</span>
+            <span className="fs-list__sub">
+              {pack.topic} &middot; {pack.channels_count} {channelsWord(pack.channels_count)}
+            </span>
+          </div>
+          <div className="fs-list__actions">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={isPending}
+              onClick={() => void handleSubscribe()}
+              aria-label={`Connect pack ${pack.title}`}
+            >
+              {subscribeMutation.isPending ? 'Connecting…' : 'Connect'}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={isPending}
+              onClick={() => void handleUnsubscribe()}
+              aria-label={`Disconnect pack ${pack.title}`}
+            >
+              {unsubscribeMutation.isPending ? 'Disconnecting…' : 'Disconnect'}
+            </Button>
+          </div>
         </div>
-        <div className="flex gap-2 shrink-0">
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={isPending}
-            onClick={() => void handleSubscribe()}
-            aria-label={`Connect pack ${pack.title}`}
-          >
-            {subscribeMutation.isPending ? 'Connecting…' : 'Connect'}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            disabled={isPending}
-            onClick={() => void handleUnsubscribe()}
-            aria-label={`Disconnect pack ${pack.title}`}
-          >
-            {unsubscribeMutation.isPending ? 'Disconnecting…' : 'Disconnect'}
-          </Button>
-        </div>
-      </div>
-      {feedback && (
-        <p className="text-xs text-muted-foreground mt-1" aria-live="polite">
-          {feedback}
-        </p>
-      )}
-      {error && (
-        <p role="alert" className="text-xs text-destructive mt-1">
-          {error}
-        </p>
-      )}
+        {feedback && (
+          <p className="fs-list__sub fs-mt-1" aria-live="polite" style={{ marginBottom: 0 }}>
+            {feedback}
+          </p>
+        )}
+        {error && (
+          <p role="alert" className="fs-error fs-mt-1">
+            {error}
+          </p>
+        )}
+      </article>
     </li>
   );
 };
@@ -108,32 +110,32 @@ export const PacksBlock: React.FC = () => {
   const { data: packs, isLoading, error } = usePacks();
 
   return (
-    <section aria-labelledby="packs-heading" className="mt-10">
-      <h2 id="packs-heading" className="text-xl font-bold mb-4">
+    <section aria-labelledby="packs-heading" className="fs-section">
+      <h2 id="packs-heading" style={{ fontSize: '1.2rem' }}>
         Channel packs
       </h2>
-      <p className="text-sm text-muted-foreground mb-4">
+      <p className="packs-intro">
         Curated channel collections — connect in one click. They do not count toward your channel limit.
       </p>
 
       {isLoading && (
-        <div aria-busy="true" aria-label="Loading packs" className="py-8 flex justify-center">
-          <span className="text-sm text-muted-foreground">Loading…</span>
+        <div aria-busy="true" aria-label="Loading packs" className="fs-center" style={{ padding: '2rem 0' }}>
+          <span className="fs-muted">Loading…</span>
         </div>
       )}
 
       {!isLoading && error && (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="fs-error">
           Failed to load packs. Please refresh the page.
         </p>
       )}
 
       {!isLoading && !error && packs && packs.length === 0 && (
-        <p className="text-sm text-muted-foreground">The pack catalog is empty.</p>
+        <p className="fs-muted">The pack catalog is empty.</p>
       )}
 
       {!isLoading && !error && packs && packs.length > 0 && (
-        <ul className="flex flex-col gap-3" aria-label="Pack catalog">
+        <ul className="fs-list" aria-label="Pack catalog">
           {packs.map((pack) => (
             <PackRow key={pack.slug} pack={pack} />
           ))}

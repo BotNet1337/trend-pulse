@@ -111,12 +111,14 @@ export const WatchlistCreatePage: React.FC = () => {
 
   return (
     <main className="fs-main">
-      <div className="mx-auto max-w-xl px-4">
-        <h1 className="text-2xl font-bold mb-6">New watchlist</h1>
+      <div className="fs-container" style={{ maxWidth: '640px' }}>
+        <div className="fs-page-head">
+          <h1 className="fs-page-head__title">New watchlist</h1>
+        </div>
 
         {/* 402 upsell banner */}
         {backendState?.kind === 'quota' && (
-          <div className="mb-6">
+          <div style={{ marginBottom: '1.5rem' }}>
             <UpsellBanner
               message={backendState.message}
               currentPlan={currentUser?.plan}
@@ -126,13 +128,10 @@ export const WatchlistCreatePage: React.FC = () => {
 
         {/* 403 feature gate */}
         {backendState?.kind === 'feature-gate' && (
-          <div
-            role="alert"
-            className="mb-6 rounded-lg border border-border bg-muted px-4 py-3 text-sm"
-          >
-            <p className="font-medium">Feature not available</p>
-            <p className="text-muted-foreground mt-1">{backendState.message}</p>
-            <Link to={paths.account.settings} className="underline mt-2 inline-block">
+          <div role="alert" className="fs-banner" style={{ marginBottom: '1.5rem', flexDirection: 'column' }}>
+            <p className="fs-label">Feature not available</p>
+            <p className="fs-muted fs-mt-0" style={{ marginTop: '0.25rem' }}>{backendState.message}</p>
+            <Link to={paths.account.settings} className="fs-mt-1" style={{ display: 'inline-block' }}>
               View account settings
             </Link>
           </div>
@@ -140,72 +139,70 @@ export const WatchlistCreatePage: React.FC = () => {
 
         {/* 409 duplicate / generic error */}
         {generalError && (
-          <p role="alert" className="mb-4 text-sm text-destructive">
+          <p role="alert" className="fs-error" style={{ marginBottom: '1rem' }}>
             {generalError}
           </p>
         )}
 
-        <form onSubmit={(e) => void onSubmit(e)} className="flex flex-col gap-6" noValidate>
-          {/* Channel handle */}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="channel-handle">Channel handle</Label>
-            <Input
-              id="channel-handle"
-              type="text"
-              value={handle}
-              onChange={(e) => setHandle(e.target.value)}
-              placeholder="@channelname"
-              autoComplete="off"
-              disabled={pending}
-              aria-invalid={!!(handleError ?? handleFieldErrors)}
-              aria-describedby={
-                (handleError ?? handleFieldErrors)
-                  ? 'channel-handle-error'
-                  : 'channel-handle-hint'
-              }
-              required
-            />
-            {(handleError ?? handleFieldErrors) ? (
-              <p
-                id="channel-handle-error"
-                role="alert"
-                className="text-xs text-destructive"
-              >
-                {handleError ?? handleFieldErrors}
-              </p>
-            ) : (
-              <p id="channel-handle-hint" className="text-xs text-muted-foreground">
-                Public Telegram channel handle starting with @ (e.g. @mychannel)
-              </p>
-            )}
-          </div>
+        <form onSubmit={(e) => void onSubmit(e)} className="wl-form" noValidate>
+          {/* Watchlist basics */}
+          <section className="fs-card fs-form-section" aria-label="Watchlist">
+            <div className="fs-form-section__body">
+              {/* Channel handle */}
+              <div className="fs-field">
+                <Label htmlFor="channel-handle">Channel handle</Label>
+                <Input
+                  id="channel-handle"
+                  type="text"
+                  value={handle}
+                  onChange={(e) => setHandle(e.target.value)}
+                  placeholder="@channelname"
+                  autoComplete="off"
+                  disabled={pending}
+                  className="fs-input--mono"
+                  aria-invalid={!!(handleError ?? handleFieldErrors)}
+                  aria-describedby={
+                    (handleError ?? handleFieldErrors)
+                      ? 'channel-handle-error'
+                      : 'channel-handle-hint'
+                  }
+                  required
+                />
+                {(handleError ?? handleFieldErrors) ? (
+                  <p id="channel-handle-error" role="alert" className="fs-error">
+                    {handleError ?? handleFieldErrors}
+                  </p>
+                ) : (
+                  <p id="channel-handle-hint" className="fs-hint">
+                    Public Telegram channel handle starting with @ (e.g. @mychannel)
+                  </p>
+                )}
+              </div>
 
-          {/* Topic */}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="watchlist-topic">Topic</Label>
-            <Input
-              id="watchlist-topic"
-              type="text"
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              placeholder="e.g. bitcoin, ukraine war"
-              disabled={pending}
-              aria-invalid={!!(topicError ?? topicFieldError)}
-              aria-describedby={
-                (topicError ?? topicFieldError) ? 'watchlist-topic-error' : undefined
-              }
-              required
-            />
-            {(topicError ?? topicFieldError) && (
-              <p
-                id="watchlist-topic-error"
-                role="alert"
-                className="text-xs text-destructive"
-              >
-                {topicError ?? topicFieldError}
-              </p>
-            )}
-          </div>
+              {/* Topic */}
+              <div className="fs-field">
+                <Label htmlFor="watchlist-topic">Topic</Label>
+                <Input
+                  id="watchlist-topic"
+                  type="text"
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value)}
+                  placeholder="e.g. bitcoin, ukraine war"
+                  disabled={pending}
+                  aria-invalid={!!(topicError ?? topicFieldError)}
+                  aria-describedby={
+                    (topicError ?? topicFieldError) ? 'watchlist-topic-error' : undefined
+                  }
+                  required
+                />
+                {(topicError ?? topicFieldError) && (
+                  <p id="watchlist-topic-error" role="alert" className="fs-error">
+                    {topicError ?? topicFieldError}
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
 
           {/* Alert config */}
           <AlertConfigForm
@@ -215,8 +212,8 @@ export const WatchlistCreatePage: React.FC = () => {
             disabled={pending}
           />
 
-          <div className="flex gap-3">
-            <Button type="submit" disabled={pending} className="flex-1">
+          <div className="wl-form-actions">
+            <Button type="submit" disabled={pending}>
               {pending ? 'Creating…' : 'Create watchlist'}
             </Button>
             <Button
