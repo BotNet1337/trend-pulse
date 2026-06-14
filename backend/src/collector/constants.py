@@ -107,6 +107,29 @@ TWITTER_USERID_TTL_SECONDS: Final = 7 * 24 * 60 * 60  # 7 days
 # tick just spams logs and fires rejected calls. Cleared automatically after cooldown.
 TWITTER_CREDITS_COOLDOWN_SECONDS: Final = 60 * 60  # 1 hour
 
+# --- Reddit source (TASK-092, ADR-001) -------------------------------------
+# Reddit OAuth2 application-only is FREE for read-only public data (no per-read
+# price, unlike X pay-per-use) — so there is NO monthly read budget here, only
+# rate-limit-aware backoff. Free OAuth allows ~100 QPM; we poll at a calm cadence
+# and respect 429 / `x-ratelimit-*`. Reddit REQUIRES a unique `User-Agent`.
+
+# Recommended Reddit collect cadence (seconds) — informational anchor for the
+# scheduler (Reddit is cheaper than X but we still don't spam: every 5 minutes).
+REDDIT_COLLECT_INTERVAL_SECONDS: Final = 5 * 60  # 300
+
+# Hard per-ref cap on submissions read from ONE subreddit per tick (the
+# `/r/{sub}/new` listing supports up to 100; 50 is plenty for a recent window).
+REDDIT_MAX_RESULTS_PER_TICK: Final = 50
+
+# Max 429 wait the reader sleeps INLINE before skipping the ref (seconds). Above
+# this the ref is skipped this tick (retried next), mirroring the Twitter 429 cap.
+REDDIT_RATE_LIMIT_INLINE_CAP_SECONDS: Final = 60
+
+# OAuth2 token endpoint path (on the auth host, e.g. https://www.reddit.com), and
+# how early (seconds) we refresh the access token before its `expires_in` elapses.
+REDDIT_OAUTH_TOKEN_PATH: Final = "/api/v1/access_token"
+REDDIT_TOKEN_EXPIRY_LEEWAY_SECONDS: Final = 60
+
 # --- collect-tick (beat ingest task) — import-cycle-free contract constants. ---
 # Celery task name for the collect tick. Lives here (not in collector.tasks,
 # which imports celery_app) so `scheduler` can reference it without a circular

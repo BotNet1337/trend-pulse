@@ -17,10 +17,16 @@ from typing import Protocol, runtime_checkable
 
 
 class SourceKind(StrEnum):
-    """Platform a reference belongs to. Telegram now; Twitter/X later (ADR-001)."""
+    """Platform a reference belongs to. Telegram + Twitter/X + Reddit (ADR-001).
+
+    Adding a member is the ONLY change a new source makes to this SDK-free core:
+    `SourceCollector`/`RawPost`/`PostMetrics` are unchanged — a new source = a new
+    `SourceCollector` implementation + registration (ADR-001 scope guard).
+    """
 
     TELEGRAM = "telegram"
-    TWITTER = "twitter"  # future marker — declared, not implemented (ADR-001 scope guard)
+    TWITTER = "twitter"
+    REDDIT = "reddit"  # TASK-092: third source (collector/reddit)
 
 
 @dataclass(frozen=True)

@@ -24,6 +24,7 @@ class SourceKind(enum.StrEnum):
 
     TELEGRAM = "telegram"
     TWITTER = "twitter"  # TASK-031: second source (collector/twitter)
+    REDDIT = "reddit"  # TASK-092: third source (collector/reddit)
 
 
 class Channel(Base):

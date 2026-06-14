@@ -76,8 +76,36 @@ def _build_twitter_collector() -> SourceCollector:
     return TwitterCollector(client, settings=settings, redis=get_redis_client())
 
 
-# TELEGRAM + TWITTER registered (ADR-001). TWITTER stays a no-op until a Bearer
-# token is configured: `get(TWITTER)` raises PoolConfigError (caught by the tick as
-# "unconfigured" — warn-once no-op), exactly like an empty Telegram pool.
+def _build_reddit_collector() -> SourceCollector:
+    """Build the production Reddit collector from env settings (lazy, TASK-092)."""
+    from collector.constants import REDDIT_OAUTH_TOKEN_PATH
+    from collector.reddit.client import build_reddit_client
+    from collector.reddit.reader import RedditCollector
+    from config import get_settings
+
+    settings = get_settings()
+    if not (
+        settings.reddit_client_id and settings.reddit_client_secret and settings.reddit_user_agent
+    ):
+        raise PoolConfigError(
+            "REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET and REDDIT_USER_AGENT "
+            "are required for the Reddit source"
+        )
+    token_url = f"{settings.reddit_oauth_base_url.rstrip('/')}{REDDIT_OAUTH_TOKEN_PATH}"
+    client = build_reddit_client(
+        client_id=settings.reddit_client_id,
+        client_secret=settings.reddit_client_secret,
+        user_agent=settings.reddit_user_agent,
+        api_base_url=settings.reddit_api_base_url,
+        token_url=token_url,
+    )
+    # Reddit is FREE (no read budget) — no redis/settings needed by the collector.
+    return RedditCollector(client)
+
+
+# TELEGRAM + TWITTER + REDDIT registered (ADR-001). TWITTER/REDDIT stay no-ops until
+# their credentials are configured: `get(kind)` raises PoolConfigError (caught by the
+# tick as "unconfigured" — warn-once no-op), exactly like an empty Telegram pool.
 register(SourceKind.TELEGRAM, _build_telegram_collector)
 register(SourceKind.TWITTER, _build_twitter_collector)
+register(SourceKind.REDDIT, _build_reddit_collector)

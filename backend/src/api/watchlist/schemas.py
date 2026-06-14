@@ -30,10 +30,27 @@ TELEGRAM_HANDLE_PATTERN = re.compile(r"^@[A-Za-z0-9_]{4,32}$")
 # collector's validate_ref job — this is just the boundary format gate.
 TWITTER_HANDLE_PATTERN = re.compile(r"^@?[A-Za-z0-9_]{1,15}$")
 
+# Reddit handle: a subreddit name of 3..21 of [A-Za-z0-9_], optional leading 'r/'
+# (TASK-092). The collector normalizes the 'r/' away; real existence is the
+# collector's validate_ref job — this is just the boundary format gate.
+REDDIT_HANDLE_PATTERN = re.compile(r"^(?:r/)?[A-Za-z0-9_]{3,21}$")
+
 # Per-source handle format gate (selected by `ChannelRef.kind`).
 _HANDLE_PATTERN_BY_KIND = {
     SourceKind.TELEGRAM: TELEGRAM_HANDLE_PATTERN,
     SourceKind.TWITTER: TWITTER_HANDLE_PATTERN,
+    SourceKind.REDDIT: REDDIT_HANDLE_PATTERN,
+}
+
+# Per-source human-readable error for an ill-formatted handle.
+_HANDLE_ERROR_BY_KIND = {
+    SourceKind.TELEGRAM: "handle must match a Telegram username: '@' + 4-32 of [A-Za-z0-9_]",
+    SourceKind.TWITTER: (
+        "handle must match a Twitter username: 1-15 of [A-Za-z0-9_] (optional leading '@')"
+    ),
+    SourceKind.REDDIT: (
+        "handle must match a subreddit name: 3-21 of [A-Za-z0-9_] (optional leading 'r/')"
+    ),
 }
 
 # Alert-config ranges (scoring contract; full scorer is task-006/008).
@@ -65,13 +82,7 @@ class ChannelRef(BaseModel):
         if pattern is None:
             raise ValueError(f"unsupported source kind: {self.kind!r}")
         if not pattern.match(self.handle):
-            if self.kind is SourceKind.TELEGRAM:
-                raise ValueError(
-                    "handle must match a Telegram username: '@' + 4-32 of [A-Za-z0-9_]"
-                )
-            raise ValueError(
-                "handle must match a Twitter username: 1-15 of [A-Za-z0-9_] (optional leading '@')"
-            )
+            raise ValueError(_HANDLE_ERROR_BY_KIND[self.kind])
         return self
 
 

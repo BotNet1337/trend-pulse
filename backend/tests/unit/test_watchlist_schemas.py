@@ -59,6 +59,32 @@ def test_telegram_handle_rejected_as_twitter_when_too_long() -> None:
         ChannelRef(handle="a" * 20, kind=SourceKind.TWITTER)
 
 
+# --- Reddit source handle validation (TASK-092, per-source) ------------------
+
+
+@pytest.mark.parametrize("handle", ["CryptoCurrency", "r/Bitcoin", "ethtrader", "abc", "x" * 21])
+def test_channel_ref_accepts_valid_reddit_handle(handle: str) -> None:
+    ref = ChannelRef(handle=handle, kind=SourceKind.REDDIT)
+    assert ref.kind is SourceKind.REDDIT
+    assert ref.handle == handle
+
+
+@pytest.mark.parametrize(
+    "handle",
+    ["bad sub!", "ab", "x" * 22, "with.dot", "@cobie", "r/ab", ""],
+)
+def test_channel_ref_rejects_bad_reddit_handle(handle: str) -> None:
+    with pytest.raises(ValidationError):
+        ChannelRef(handle=handle, kind=SourceKind.REDDIT)
+
+
+def test_twitter_handle_rejected_as_reddit_when_too_short() -> None:
+    # A 1-char handle is fine for Twitter but too short for a subreddit (≥3).
+    ChannelRef(handle="a", kind=SourceKind.TWITTER)  # ok for twitter
+    with pytest.raises(ValidationError):
+        ChannelRef(handle="a", kind=SourceKind.REDDIT)
+
+
 @pytest.mark.parametrize("threshold", [-1, 101, 1000])
 def test_alert_config_rejects_out_of_range_threshold(threshold: int) -> None:
     with pytest.raises(ValidationError):
