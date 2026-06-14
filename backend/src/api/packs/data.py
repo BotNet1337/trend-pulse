@@ -28,11 +28,11 @@ from storage.models.channels import SourceKind
 # These are the defaults applied to EVERY watchlist row created by a pack
 # subscribe. Users may update individual rows afterwards via PATCH /watchlists.
 # Calibrated on the real-data eval (eval_offline/calibrate_threshold.py) for the v2
-# 0-100 viral score: 50 is the best-F1 operating point (precision 0.72 / recall 0.66
-# separating real ≥3-channel stories from single-channel noise). The old 70 was tuned
-# for the pre-v2 unbounded score and on the v2 scale fires for almost nothing (recall
-# ≈ 0.15). Users can raise it for higher-precision (fewer) alerts.
-_DEFAULT_SCORE_THRESHOLD = 50
+# 0-100 viral score. LIVE-recalibrated to 32: offline best-F1 was 50, but the live
+# scorer scores FRESH clusters before views/engagement mature, so live viral_score
+# tops out ~44 — at 50 almost nothing fires. 32 sits just below the v2 multi-channel
+# band so genuine cross-channel stories alert; users can raise it for fewer alerts.
+_DEFAULT_SCORE_THRESHOLD = 32
 _DEFAULT_MIN_CHANNELS = 1
 _DEFAULT_NOTIFICATION_LANG = "en"
 
