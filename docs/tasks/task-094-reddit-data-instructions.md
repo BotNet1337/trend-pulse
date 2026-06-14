@@ -1,7 +1,7 @@
 ---
 id: TASK-094
 title: Инструкция по данным Reddit (docs, рус) — доступ, OAuth2-ключ, env, эндпоинты, лимиты, добавление сабреддитов
-status: planned        # docs guide
+status: done           # docs guide написан (docs/reddit-data-guide.md)
 owner: backend
 created: 2026-06-14
 updated: 2026-06-14
@@ -65,21 +65,37 @@ deps: [092]
 
 ## Checkpoints
 <!-- trendpulse-executor reads current_step and ticks these; enables resume -->
-current_step: 3
+current_step: done
 baseline_commit: "8debda0b863501cdf92fea2d1105264f73ca98bb"
 branch: "gsd/phase-094-reddit-data-instructions"
 lock: ""
 - [x] 1 locate (scope + patterns)
 - [x] 2 plan (this doc, зеркало TASK-090)
-- [ ] 3 do (написать docs)
-- [ ] 4 verify (ссылки/согласованность)
-- [ ] 5 review (auto)
-- [ ] 5.5 security (n/a — docs)
-- [ ] 6 ship (PR, squash-merged)
-- [ ] 7 learnings (auto)
+- [x] 3 do (написать docs/reddit-data-guide.md, 6 секций + чек-лист владельца)
+- [x] 4 verify (ссылки/согласованность с кодом — config-имена/эндпоинты/маппинг/кадэнс из TASK-092/093)
+- [x] 5 review (docs — самосогласованность с реальным кодом проверена)
+- [x] 5.5 security (n/a — docs; чек-лист подчёркивает «не коммить ключ/маскировать»)
+- [x] 6 ship (PR, squash-merged)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details
 (initial — калька [TASK-090](./task-090-twitter-data-instructions.md): owner-гайд по данным. Зависит от
 TASK-092 (config-имена/эндпоинты/маппинг — источник истины). Reddit OAuth2 application-only, бесплатно,
 нет read-budget. Run в worktree `apps/trendPulse-reddit`.)
+
+### Реализация 2026-06-14 (do→verify→ship)
+Создан `docs/reddit-data-guide.md` (рус, 6 секций + чек-лист владельца), зеркало twitter-data-guide:
+§1 доступ/тариф (OAuth2 app-only, бесплатно, ~100 QPM, нужен User-Agent, НЕТ read-budget),
+§2 выпуск ключа (reddit.com/prefs/apps → «script» → client_id/secret/User-Agent),
+§3 env (`REDDIT_CLIENT_ID`/`SECRET`/`USER_AGENT` + vault `vault_reddit_*`),
+§4 OAuth2-flow + эндпоинты (`/r/{sub}/about`, `/r/{sub}/new`) + маппинг (score→reactions/num_crossposts→
+forwards/views=0/extra) + лимиты (300s/50/тик/429-cap, нет budget),
+§5 добавление сабреддитов (pack `crypto-reddit`, bare+lowercase без `r/`, 3-21),
+§6 что после установки ключа (registry.get(REDDIT)→collect_tick→pipeline→viral_score; ФАЗА 2 live-verify).
+Все имена/эндпоинты/маппинг/кадэнс сверены с реальным кодом TASK-092/093 (AC2).
+
+**AC3 (MANUAL-TODO §Reddit):** центрального файла `MANUAL-TODO.md` в репо НЕТ — это условные §-ссылки
+по докам; Twitter-гайд (TASK-090) тоже его не создавал (сам гайд = owner-инструкция). AC3 удовлетворён
+секцией «Чек-лист владельца» в самом гайде + OWNER-GATE-сводкой в конце ФАЗЫ 1 (что владельцу сделать для
+ФАЗЫ 2). Docs-only PR; ядро/код не тронуты.)
