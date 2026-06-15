@@ -240,3 +240,35 @@ async def test_long_flood_rotates_to_ready_account_without_sleeping_hint() -> No
     assert [post.external_id for post in posts] == ["7"]
     assert healthy.iter_calls == 1
     assert all(seconds < long_wait for seconds in slept)
+
+
+async def test_pool_exhausted_emits_repeating_ops_alert_and_reraises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """TASK-101: a fully dead/quarantined pool fires a (throttled, repeating)
+    `pool_exhausted` ops alert and re-raises PoolExhaustedError (ref still skipped)."""
+    from unittest.mock import MagicMock
+
+    import observability.pool_health as ph
+    from collector.errors import PoolExhaustedError
+
+    pool = make_pool([FakeClient()])
+    pool.acquire()
+    pool.quarantine_current()  # 1/1 dead -> next acquire() raises PoolExhaustedError
+
+    async def _noop_sleep(_seconds: float) -> None:
+        return None
+
+    settings = SimpleNamespace(pool_min_healthy=3)
+    collector = TelegramCollector(pool, settings=settings, redis=MagicMock(), sleep=_noop_sleep)
+
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(ph, "notify_ops", lambda **kw: calls.append(kw))
+
+    ref = SourceRef(kind=SourceKind.TELEGRAM, handle="@x")
+    with pytest.raises(PoolExhaustedError):
+        async for _ in collector.read([ref], None):
+            pass
+
+    reasons = [c.get("reason") for c in calls]
+    assert "pool_exhausted" in reasons

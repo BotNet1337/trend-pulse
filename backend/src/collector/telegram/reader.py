@@ -22,7 +22,11 @@ from collector.constants import (
     INTER_REQUEST_SLEEP_SECONDS,
     MAX_MESSAGES_PER_TICK,
 )
-from collector.errors import AllAccountsFloodWaitError, SourceUnavailableError
+from collector.errors import (
+    AllAccountsFloodWaitError,
+    PoolExhaustedError,
+    SourceUnavailableError,
+)
 from collector.telegram.account_pool import AccountPool
 from collector.telegram.auth_errors import is_permanent_auth_error
 from collector.telegram.client import TelegramClientProtocol
@@ -291,6 +295,20 @@ class TelegramCollector:
         while True:
             try:
                 client = self._pool.acquire()
+            except PoolExhaustedError:
+                # Every session is dead/quarantined → ingest is fully stopped. The
+                # per-account `auth_dead:{n}` alert fired ONCE at quarantine time; this
+                # REPEATING (throttled, ~hourly) alert re-nudges the owner to re-mint
+                # sessions so a missed one-shot doesn't mean weeks of silent downtime.
+                # Re-raise so the caller skips the ref (unchanged behavior).
+                self._emit_health_best_effort(
+                    notify_reason="pool_exhausted",
+                    notify_text=(
+                        "TG pool fully exhausted - all sessions dead/quarantined; "
+                        "ingest is stopped. Re-mint Telegram sessions."
+                    ),
+                )
+                raise
             except AllAccountsFloodWaitError:
                 wait = self._pool.cooldown_remaining()
                 # Best-effort health metric + ops self-alert (TASK-035, Invariant).

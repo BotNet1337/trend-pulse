@@ -227,6 +227,8 @@ def test_collect_writes_posts_to_by_source_buffer_and_sets_marker() -> None:
     assert redis.llen(buffer_key(SourceKind.TELEGRAM, "@beta")) == 1
     # Last-tick marker = the tick's start time, so the next tick reads from here.
     assert redis.get(COLLECT_LAST_TICK_KEY) == _NOW.isoformat().encode()
+    # TASK-101: the marker carries a TTL (no longer the one never-expiring ingest key).
+    assert 0 < redis.ttl(COLLECT_LAST_TICK_KEY) <= RAW_POST_TTL_SECONDS
 
 
 def test_first_tick_uses_lookback_window_not_full_history() -> None:

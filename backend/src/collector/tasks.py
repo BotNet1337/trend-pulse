@@ -232,7 +232,11 @@ def collect_watched_sources(redis: "Redis", *, now: datetime | None = None) -> i
         written += loop.run_until_complete(_collect_refs(collector, kind_refs, since, redis))
 
     if attempted_any:
-        redis.set(COLLECT_LAST_TICK_KEY, now.isoformat())
+        # TTL (TASK-101): the one ingest key that previously never expired. Set it to
+        # the retention window — `_resolve_since` already falls back to the recent
+        # window if the marker is absent, so an expired marker after a long outage is
+        # safe (and the value is re-stamped every tick during normal operation).
+        redis.set(COLLECT_LAST_TICK_KEY, now.isoformat(), ex=RAW_POST_TTL_SECONDS)
     logger.info(
         "collect_tick collected posts=%d refs=%d since=%s",
         written,
