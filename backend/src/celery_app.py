@@ -48,6 +48,20 @@ celery_app.conf.result_serializer = "json"
 # Ack after the task returns so a worker crash mid-batch redelivers the message
 # (the per-user lock + idempotent drain keep redelivery safe — ADR-002).
 celery_app.conf.task_acks_late = True
+# Runtime memory/hang guards (TASK-099, from the 2026-06-15 memory audit). All sourced
+# from settings (no magic literals — CONVENTIONS):
+# - recycle the worker child every N tasks to bound torch/native memory creep over a
+#   weeks-long run (the child is otherwise never recycled → unbounded RSS → OOM);
+# - PIN concurrency (Celery defaults to host os.cpu_count(), ignoring the cgroup cpu
+#   limit, so a many-core host would fork many model-loading children → OOM);
+# - soft/hard task time limits so a stuck embed / pgvector NN query can't pin a worker
+#   slot forever (collect_tick keeps its own per-task limits, which override these);
+# - bound result-meta keys on the shared 224mb noeviction Redis with a short TTL.
+celery_app.conf.worker_concurrency = _settings.celery_worker_concurrency
+celery_app.conf.worker_max_tasks_per_child = _settings.celery_worker_max_tasks_per_child
+celery_app.conf.task_soft_time_limit = _settings.celery_task_soft_time_limit_seconds
+celery_app.conf.task_time_limit = _settings.celery_task_time_limit_seconds
+celery_app.conf.result_expires = _settings.celery_result_expires_seconds
 celery_app.conf.beat_schedule = beat_schedule
 # Static routes: batches → shared `batch` queue, scorer tick → `score:global`.
 celery_app.conf.task_routes = {

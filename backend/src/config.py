@@ -29,9 +29,13 @@ _DEFAULT_JWT_LIFETIME_SECONDS = 3600
 # enqueues active-user batches once a minute and the scorer tick every 5 minutes;
 # the batch lock TTL bounds a crashed worker's lock so it cannot deadlock forever
 # (must exceed a typical batch but stay finite). Time is in SECONDS (CONVENTIONS).
+# TASK-099: the lock TTL MUST exceed the Celery hard task time limit (1200s) so the
+# per-user lock outlives a hard-killed (SIGKILL, no `finally`) run_user_batch — else
+# the lock would expire mid-task and a redelivered/next-tick batch could run that user
+# concurrently. 1260 = task_time_limit (1200) + 60s grace. Enforced by a validator below.
 _DEFAULT_BATCH_INTERVAL_SECONDS = 60
 _DEFAULT_SCORER_INTERVAL_SECONDS = 300
-_DEFAULT_BATCH_LOCK_TTL_SECONDS = 600
+_DEFAULT_BATCH_LOCK_TTL_SECONDS = 1260
 
 # Collector ingest tick (collect-tick). Named, non-secret defaults; time in
 # SECONDS (CONVENTIONS). INVARIANT: the collect tick MUST run at least as often
@@ -172,6 +176,19 @@ _DEFAULT_BEAT_HEARTBEAT_TTL_SECONDS = 600
 # Celery beat's default `max_interval` (seconds) — beat wakes (and ticks) at least
 # this often even with no due task. The heartbeat TTL MUST exceed it (validator below).
 _BEAT_MAX_INTERVAL_SECONDS = 300
+# TASK-099 Celery runtime memory/hang guards (memory audit, 2026-06-15):
+# - max_tasks_per_child recycles the worker child to bound torch/native memory creep
+#   over a weeks-long run (250 ≈ recycle every ~15-20 min; reloads the ~90MB model, so
+#   not lower). - worker_concurrency PINNED (Celery defaults to host os.cpu_count(),
+#   ignoring the cgroup cpu limit → a many-core host would fork many model-loading
+#   children → OOM). - task soft/hard time limits stop a stuck embed/pgvector task from
+#   pinning a slot forever (generous: real batches are sub-minute). - result_expires
+#   bounds result-meta keys on the shared 224mb noeviction Redis.
+_DEFAULT_CELERY_WORKER_CONCURRENCY = 2
+_DEFAULT_CELERY_WORKER_MAX_TASKS_PER_CHILD = 250
+_DEFAULT_CELERY_TASK_SOFT_TIME_LIMIT_SECONDS = 900
+_DEFAULT_CELERY_TASK_TIME_LIMIT_SECONDS = 1200
+_DEFAULT_CELERY_RESULT_EXPIRES_SECONDS = 3600
 
 # Auth deeplink base URL (TASK-026). Named, non-secret default — never a magic
 # literal at the call site (CONVENTIONS). Dev default → nginx on :80 (same-host
@@ -446,6 +463,12 @@ class Settings(BaseSettings):
     celery_ping_timeout_seconds: int = _DEFAULT_CELERY_PING_TIMEOUT_SECONDS
     # TTL (seconds) of the beat heartbeat key (TASK-098). > beat max_interval (300s).
     beat_heartbeat_ttl_seconds: int = _DEFAULT_BEAT_HEARTBEAT_TTL_SECONDS
+    # Celery runtime memory/hang guards (TASK-099). Non-secret, settable; defaults above.
+    celery_worker_concurrency: int = _DEFAULT_CELERY_WORKER_CONCURRENCY
+    celery_worker_max_tasks_per_child: int = _DEFAULT_CELERY_WORKER_MAX_TASKS_PER_CHILD
+    celery_task_soft_time_limit_seconds: int = _DEFAULT_CELERY_TASK_SOFT_TIME_LIMIT_SECONDS
+    celery_task_time_limit_seconds: int = _DEFAULT_CELERY_TASK_TIME_LIMIT_SECONDS
+    celery_result_expires_seconds: int = _DEFAULT_CELERY_RESULT_EXPIRES_SECONDS
 
     # --- Billing — NOWPayments (task-010, ADR-004). Secrets from sensitive.env;
     # empty defaults so the app boots without billing configured (endpoints 503). ---
@@ -761,6 +784,31 @@ class Settings(BaseSettings):
                 f"beat_heartbeat_ttl_seconds ({v}s) must exceed Celery beat's "
                 f"max_interval ({_BEAT_MAX_INTERVAL_SECONDS}s) — a healthy beat must "
                 "always refresh the heartbeat key before it expires."
+            )
+        return v
+
+    @field_validator("celery_task_time_limit_seconds")
+    @classmethod
+    def validate_task_time_limits_ordered(cls, v: int, info: ValidationInfo) -> int:
+        """Fail fast on misconfig (TASK-099): the hard time limit must be strictly
+        greater than the soft limit, else SoftTimeLimitExceeded (catchable) never fires
+        before the hard SIGKILL."""
+        soft = info.data.get("celery_task_soft_time_limit_seconds")
+        if isinstance(soft, int) and v <= soft:
+            raise ValueError(
+                f"celery_task_time_limit_seconds ({v}s) must exceed "
+                f"celery_task_soft_time_limit_seconds ({soft}s)."
+            )
+        # The per-user batch lock must outlive a hard-killed task (no `finally` runs on
+        # SIGKILL) so the lock can't expire mid-task and let a redelivery / next tick run
+        # the same user concurrently (TASK-099 review HIGH). batch_lock_ttl is declared
+        # before this field, so it is present in info.data.
+        lock_ttl = info.data.get("batch_lock_ttl_seconds")
+        if isinstance(lock_ttl, int) and lock_ttl < v:
+            raise ValueError(
+                f"batch_lock_ttl_seconds ({lock_ttl}s) must be >= "
+                f"celery_task_time_limit_seconds ({v}s) so the per-user lock outlives a "
+                "hard-killed run_user_batch (no concurrent same-user batch on redelivery)."
             )
         return v
 
