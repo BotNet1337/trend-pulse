@@ -1,7 +1,7 @@
 ---
 id: EPIC-TG-QR-POOL
 title: TG session pool — QR-login onboarding + connection-status UI
-status: in-progress
+status: review
 owner: backend+frontend
 created: 2026-06-16
 updated: 2026-06-16

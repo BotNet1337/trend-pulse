@@ -488,3 +488,31 @@ Block format:
 - **Lesson (early-window features must be bounded `[birth, now]`, not just `>= birth`):** `posted_at` is source-supplied (Telegram message time); a future-dated post (clock skew) with only a `>= first_seen` filter leaks post-T_obs data into an early-window snapshot, breaking the leak-free guarantee the whole forward-split depends on. Add the `<= now` upper bound. **How to apply:** any "what had accrued by T_obs" feature needs BOTH bounds; the age denominator (`now - first_seen`) and the post filter must use the same upper instant.
 - **Gotcha (offline integration tests need a disposable pgvector — `make`/CI infra not always up):** the worktree had no project Postgres. Spun a throwaway `docker run --rm pgvector/pgvector:pg16` on a non-standard port and pointed the suite at it via `POSTGRES_HOST/PORT/USER/PASSWORD/DB` env (the `database_url` property assembles from those). The session-scoped `db_engine` fixture does `create_all`/`drop_all` (no alembic), and `db_session` truncates in reverse-FK order — both handle a new CASCADE table automatically. **How to apply:** for real-behavior G2 on DB code offline, a disposable pgvector container + the POSTGRES_* env override is the fastest path; the migration round-trip test (`command.upgrade/downgrade`) is the one that actually exercises the new Alembic revision (the `create_all` fixture does NOT run migrations).
 - **Gotcha (model field names — verify before seeding):** `Watchlist` is one-row-per-channel with `channel_id` (singular), not `channel_ids`. Seed helpers copied from a sibling test still need their kwargs checked against the actual model. **How to apply:** grep the model's `mapped_column` names before writing ORM constructor calls in tests; a wrong kwarg fails late (at construction), not at import.
+
+## 2026-06-16 — EPIC-TG-QR-POOL: TG pool QR-login onboarding + connection-status UI
+
+**Lesson:** When the API and the worker are SEPARATE processes, a feature that spans
+both must split its state by serializability. Pool-health (plain data) bridges fine
+through Redis (`pool:health:latest`, TTL 300s), but a live Telethon `QRLogin` handshake
+CANNOT be serialized — it must live in-process. We put the QR registry in the API
+process, which is safe ONLY because the API runs a single uvicorn worker (no `--workers`).
+**How to apply:** Before choosing Redis vs in-process for cross-process state, ask "is this
+object serializable and reconstructable?" If not, pin it to one process and assert the
+single-worker invariant in the epic doc.
+
+**Gotcha (secret redaction):** A class-name-only error-redaction policy is silently
+bypassed by asyncio's "Task exception was never retrieved" GC log, which prints the FULL
+exception (secret-bearing message included). Any background task holding a secret-derived
+exception must have its exception DRAINED (`task.exception()`) on every eviction path, not
+just the polled path. Proven with a negative-control test.
+
+**Decision/Rationale:** QR-minted sessions are RETURNED to the admin to paste into
+`TELEGRAM_POOL_SESSIONS` + redeploy; the running pool is never hot-mutated. Hot-swap would
+reconnect sessions cross-process = the AuthKeyDuplicated incident class. ADR:
+`docs/architecture/adr-tg-qr-session-persistence.md`.
+
+**Process note:** Built as an epic (TASK-114..117) with one executor subagent per story
+(own context), review∥security per story, then a cross-story gap-check agent that caught
+the highest-value risk class (collector→Redis→API freshness + FE↔BE field parity) that
+per-story reviews structurally cannot see. Worktree `apps/trendPulse-tgqr` off origin/main;
+NEVER deployed (sibling worktree had an uncommitted vault → TASK-107 vault-guard hazard).
