@@ -75,3 +75,27 @@ class TestPublicBaseUrlValidator:
         """Non-http/https scheme is rejected."""
         with pytest.raises(ValidationError):
             _make_settings("ftp://foresignal.biz")
+
+
+class TestBeatHeartbeatTtlValidator:
+    """beat_heartbeat_ttl_seconds validator (TASK-098 reliability)."""
+
+    def test_default_exceeds_max_interval(self) -> None:
+        """Default 600s > beat max_interval 300s — accepted."""
+        from config import Settings
+
+        assert Settings().beat_heartbeat_ttl_seconds == 600
+
+    def test_above_max_interval_allowed(self) -> None:
+        """Any TTL strictly above 300s is accepted."""
+        from config import Settings
+
+        assert Settings(beat_heartbeat_ttl_seconds=301).beat_heartbeat_ttl_seconds == 301
+
+    def test_at_or_below_max_interval_rejected(self) -> None:
+        """TTL <= 300s would let a healthy beat flap → rejected at startup."""
+        from config import Settings
+
+        for bad in (300, 60, 0):
+            with pytest.raises(ValidationError):
+                Settings(beat_heartbeat_ttl_seconds=bad)

@@ -7,6 +7,11 @@ literals (CONVENTIONS). Kept in its own module so `celery_app` imports it withou
 a cycle; task *names* come from `pipeline.constants` (no `celery_app` import).
 """
 
+import logging
+
+from celery.beat import PersistentScheduler
+from redis import RedisError
+
 from alerts.constants import RESWEEP_PENDING_ALERTS_TASK
 from analytics.constants import AGGREGATE_BUSINESS_METRICS_TASK
 from billing.constants import CHECK_EXPIRING_SUBSCRIPTIONS_TASK
@@ -18,8 +23,51 @@ from observability.constants import EMIT_SIGNAL_LATENCY_TASK
 from pipeline.constants import ENQUEUE_BATCHES_TASK, SCORE_TICK_TASK
 from scorer.constants import ADAPT_THRESHOLDS_TASK
 from showcase.constants import SHOWCASE_AUTOPOST_TASK
+from storage.redis_client import get_redis_client
+
+logger = logging.getLogger(__name__)
 
 _settings = get_settings()
+
+# Redis key the beat scheduler stamps on every tick (TASK-098). Beat is the SINGLE
+# scheduler (replicas:1); a hung beat freezes every periodic task. `inspect ping`
+# only probes workers, so beat needs its own liveness signal — this key, with a TTL
+# greater than beat's max_interval, vanishes only if beat stops ticking.
+BEAT_HEARTBEAT_KEY = "beat:heartbeat"
+
+
+class HeartbeatScheduler(PersistentScheduler):
+    """PersistentScheduler that stamps a TTL'd Redis heartbeat on every tick.
+
+    Wired via `celery -A celery_app beat --scheduler scheduler:HeartbeatScheduler`.
+    The heartbeat is written by BEAT ITSELF (not a worker-run task) so the signal is
+    beat-only and does not conflate worker health. The beat container's Docker
+    healthcheck checks `BEAT_HEARTBEAT_KEY` existence; the TTL
+    (`beat_heartbeat_ttl_seconds` > 300s max_interval) is the freshness window, so no
+    clock arithmetic is needed in the probe.
+    """
+
+    # PersistentScheduler.__init__ forwards *args/**kwargs to Scheduler(app, ...);
+    # `object` (not Any) keeps the passthrough real-typed without re-stating Celery's
+    # internal constructor signature.
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)
+        self._redis = get_redis_client()
+        self._heartbeat_ttl: int = _settings.beat_heartbeat_ttl_seconds
+
+    # Override accepts *args/**kwargs (real `object`, not Any) only to stay
+    # Liskov-compatible with the base's optional params; Celery's beat Service always
+    # calls `tick()` with NO arguments, so we delegate to `super().tick()` and let the
+    # base use its own internal defaults (event_t/min/heappush).
+    def tick(self, *args: object, **kwargs: object) -> float:
+        # Best-effort heartbeat: a Redis blip must NEVER crash the scheduler loop
+        # (enqueuing periodic tasks matters more), so catch RedisError, log, continue.
+        try:
+            self._redis.set(BEAT_HEARTBEAT_KEY, "1", ex=self._heartbeat_ttl)
+        except RedisError:
+            logger.warning("beat heartbeat write failed (Redis); continuing tick", exc_info=True)
+        return super().tick()
+
 
 # Mapping of schedule entry name -> celery beat entry config. Beat entries are
 # heterogeneous (schedule float/seconds, task name, args/kwargs), so the value

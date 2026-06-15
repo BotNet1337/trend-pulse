@@ -11,13 +11,30 @@ services:
       args:
         PYTHON_VERSION: ${PYTHON_VERSION}
         UV_VERSION: ${UV_VERSION}
-    command: celery -A celery_app beat -l info
+    # --scheduler HeartbeatScheduler (TASK-098): stamps a TTL'd `beat:heartbeat`
+    # Redis key each tick so the healthcheck below can detect a hung-but-alive beat.
+    command: celery -A celery_app beat -l info --scheduler scheduler:HeartbeatScheduler
     env_file:
       - ../env/deploy.env
       - ../env/sensitive.env
     networks:
       - postgres_net
       - redis_net
+    # Liveness probe (TASK-098): beat has no `inspect ping`. The scheduler stamps
+    # `beat:heartbeat` (TTL > 300s max_interval) every tick; a hung beat lets it
+    # expire → this probe fails → Swarm reschedules (restart_policy `any` below).
+    # Existence check only — the TTL is the freshness window.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import os,sys,redis;
+          sys.exit(0 if redis.Redis.from_url(os.environ.get('REDIS_URL','redis://redis:6379/0')).exists('beat:heartbeat')
+          else 1)"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
     deploy:
       # Strictly 1 — see invariant above. Single scheduler only.
       replicas: 1

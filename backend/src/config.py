@@ -164,6 +164,14 @@ _DEFAULT_PENDING_RESWEEP_GRACE_SECONDS = 300
 _DEFAULT_PENDING_RESWEEP_INTERVAL_SECONDS = 300
 _DEFAULT_PENDING_RESWEEP_MAX_BATCH = 500
 _DEFAULT_CELERY_PING_TIMEOUT_SECONDS = 2
+# TASK-098: TTL (seconds) of the `beat:heartbeat` Redis key the HeartbeatScheduler
+# stamps each tick. MUST exceed Celery beat's 300s max_interval so a healthy beat
+# always refreshes it before expiry; a hung beat lets it expire → the beat container
+# healthcheck fails → Swarm reschedules. 600s = 2x max_interval (no flapping).
+_DEFAULT_BEAT_HEARTBEAT_TTL_SECONDS = 600
+# Celery beat's default `max_interval` (seconds) — beat wakes (and ticks) at least
+# this often even with no due task. The heartbeat TTL MUST exceed it (validator below).
+_BEAT_MAX_INTERVAL_SECONDS = 300
 
 # Auth deeplink base URL (TASK-026). Named, non-secret default — never a magic
 # literal at the call site (CONVENTIONS). Dev default → nginx on :80 (same-host
@@ -436,6 +444,8 @@ class Settings(BaseSettings):
     pending_resweep_max_batch: int = _DEFAULT_PENDING_RESWEEP_MAX_BATCH
     # Timeout (seconds) for the Celery control-bus inspect().ping() in /ready.
     celery_ping_timeout_seconds: int = _DEFAULT_CELERY_PING_TIMEOUT_SECONDS
+    # TTL (seconds) of the beat heartbeat key (TASK-098). > beat max_interval (300s).
+    beat_heartbeat_ttl_seconds: int = _DEFAULT_BEAT_HEARTBEAT_TTL_SECONDS
 
     # --- Billing — NOWPayments (task-010, ADR-004). Secrets from sensitive.env;
     # empty defaults so the app boots without billing configured (endpoints 503). ---
@@ -737,6 +747,20 @@ class Settings(BaseSettings):
             raise ValueError(
                 "adapt shares must satisfy 0 <= threshold_adapt_down_share < "
                 "threshold_adapt_up_share <= 1"
+            )
+        return v
+
+    @field_validator("beat_heartbeat_ttl_seconds")
+    @classmethod
+    def validate_beat_heartbeat_ttl(cls, v: int) -> int:
+        """Fail fast on misconfig (TASK-098): the heartbeat TTL must exceed beat's
+        max_interval, else a HEALTHY beat could let the key expire between ticks and
+        the beat healthcheck would flap (false restarts)."""
+        if v <= _BEAT_MAX_INTERVAL_SECONDS:
+            raise ValueError(
+                f"beat_heartbeat_ttl_seconds ({v}s) must exceed Celery beat's "
+                f"max_interval ({_BEAT_MAX_INTERVAL_SECONDS}s) — a healthy beat must "
+                "always refresh the heartbeat key before it expires."
             )
         return v
 
