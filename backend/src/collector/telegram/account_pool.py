@@ -10,21 +10,52 @@ Secrets (session strings, api_hash) are stored but NEVER logged. There is no use
 `session_string` concept — only pool technical accounts (overview §2/§7).
 """
 
+import hashlib
 import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, cast
+
+from redis.exceptions import RedisError
 
 from collector.constants import (
     BACKOFF_BASE_SECONDS,
     BACKOFF_CAP_SECONDS,
     POOL_MAX,
     POOL_MIN,
+    QUARANTINE_PERSIST_TTL_SECONDS,
+    QUARANTINE_REDIS_KEY,
+    SESSION_FINGERPRINT_LEN,
 )
 from collector.errors import AllAccountsFloodWaitError, PoolConfigError, PoolExhaustedError
 from collector.telegram.client import TelegramClientFactory, TelegramClientProtocol
 
+if TYPE_CHECKING:
+    from redis import Redis
+
 logger = logging.getLogger(__name__)
+
+
+def session_fingerprint(session: str) -> str:
+    """Non-secret, stable fingerprint of a pool session string (TASK-102).
+
+    `sha256(session)[:16]` — one-way (cannot recover the session), so it is safe to
+    store/log, yet stable per session and DIFFERENT for a re-minted session (so a
+    re-minted session is never wrongly loaded as quarantined). Used as the persistent
+    quarantine key; the session string itself is never stored or logged (overview §7).
+    """
+    return hashlib.sha256(session.encode("utf-8")).hexdigest()[:SESSION_FINGERPRINT_LEN]
+
+
+def _is_valid_fingerprint(value: str) -> bool:
+    """A well-formed fingerprint is exactly SESSION_FINGERPRINT_LEN lowercase hex chars.
+
+    Defense-in-depth on the Redis read (TASK-102 security review): a corrupted/poisoned
+    set member that isn't a real fingerprint can never match a live account anyway (strict
+    equality), but filtering keeps the trust boundary explicit.
+    """
+    return len(value) == SESSION_FINGERPRINT_LEN and all(c in "0123456789abcdef" for c in value)
 
 
 @dataclass
@@ -43,6 +74,9 @@ class _Account:
     # SessionRevoked) is quarantined for the life of the pool — `acquire()` never hands
     # it out again. This is the Redis-independent dedup that stops the alert-spam loop.
     quarantined: bool = False
+    # Non-secret sha256[:16] of this account's session string (TASK-102): the key under
+    # which a quarantine is persisted in Redis so it survives a worker restart/recycle.
+    fingerprint: str = ""
 
 
 def _backoff_seconds(strikes: int) -> float:
@@ -61,6 +95,8 @@ class AccountPool:
     _index: int = 0
     # Injectable monotonic clock (seconds) so tests can advance time deterministically.
     _now: Callable[[], float] = time.monotonic
+    # Optional Redis for PERSISTENT quarantine (TASK-102); None = in-memory only.
+    _redis: "Redis | None" = None
 
     @classmethod
     def from_sessions(
@@ -68,16 +104,47 @@ class AccountPool:
         *,
         sessions: list[str],
         factory: TelegramClientFactory,
+        redis: "Redis | None" = None,
     ) -> "AccountPool":
-        """Build a pool from pool session strings; validates size POOL_MIN..POOL_MAX."""
+        """Build a pool from pool session strings; validates size POOL_MIN..POOL_MAX.
+
+        When `redis` is given, the persisted quarantine set (TASK-102) is loaded and any
+        account whose fingerprint is present is marked quarantined at construction — so a
+        dead session stays quarantined across worker restarts/recycling (not re-tried, and
+        the boot-time `healthy` count is accurate). Fail-open: a Redis error logs a warning
+        and builds the pool in-memory-only (construction must never crash on a Redis blip).
+        """
         size = len(sessions)
         if size < POOL_MIN or size > POOL_MAX:
             raise PoolConfigError(
                 f"telegram pool must have between {POOL_MIN} and {POOL_MAX} "
                 f"technical accounts, got {size}"
             )
-        accounts = [_Account(client=factory(session)) for session in sessions]
-        return cls(_accounts=accounts)
+        accounts = [
+            _Account(client=factory(session), fingerprint=session_fingerprint(session))
+            for session in sessions
+        ]
+        persisted = cls._load_quarantined_fingerprints(redis)
+        for account in accounts:
+            if account.fingerprint in persisted:
+                account.quarantined = True
+        return cls(_accounts=accounts, _redis=redis)
+
+    @staticmethod
+    def _load_quarantined_fingerprints(redis: "Redis | None") -> frozenset[str]:
+        """Read the persisted quarantine fingerprint set (TASK-102); fail-open to empty."""
+        if redis is None:
+            return frozenset()
+        try:
+            # smembers is bytes with decode_responses=False (get_redis_client default),
+            # str if True — handle both so a config change can't crash pool boot. Cast to
+            # a concrete union (not Any) so mypy reasons about the members.
+            members = cast("set[bytes | str]", redis.smembers(QUARANTINE_REDIS_KEY))
+        except RedisError:
+            logger.warning("could not load persisted quarantine (Redis); in-memory only")
+            return frozenset()
+        decoded = (m if isinstance(m, str) else m.decode("utf-8") for m in members)
+        return frozenset(fp for fp in decoded if _is_valid_fingerprint(fp))
 
     def _clock(self) -> float:
         return float(self._now())
@@ -144,9 +211,28 @@ class AccountPool:
         if not self._accounts:
             raise PoolConfigError("account pool is empty")
         idx = self._index
-        self._accounts[idx].quarantined = True
+        account = self._accounts[idx]
+        account.quarantined = True
+        self._persist_quarantine(account.fingerprint)
         self._index = (self._index + 1) % len(self._accounts)
         return idx
+
+    def _persist_quarantine(self, fingerprint: str) -> None:
+        """Persist a dead-session fingerprint so the quarantine survives restarts
+        (TASK-102). Best-effort: a Redis failure logs and is swallowed — the in-memory
+        quarantine still holds for this process, so a persistence blip never re-enables
+        a dead session within the running pool."""
+        if self._redis is None or not fingerprint:
+            return
+        try:
+            # SADD + EXPIRE atomically in one pipeline so the key can never be left
+            # without a TTL on a partial failure (review MEDIUM) — mirrors buffer.write_post.
+            pipe = self._redis.pipeline()
+            pipe.sadd(QUARANTINE_REDIS_KEY, fingerprint)
+            pipe.expire(QUARANTINE_REDIS_KEY, QUARANTINE_PERSIST_TTL_SECONDS)
+            pipe.execute()
+        except RedisError:
+            logger.warning("could not persist session quarantine (Redis); in-memory only")
 
     def report_flood_wait(self, *, retry_after_seconds: float | None = None) -> None:
         """Mark the current account cooling down and rotate to the next.
