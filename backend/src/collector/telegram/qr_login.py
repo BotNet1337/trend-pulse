@@ -6,8 +6,10 @@ in-process registry keyed by an opaque token (the API is a single uvicorn worker
 and a live `QRLogin` cannot be serialized to Redis — epic invariant).
 
 Design rules (mirrors `collector/telegram/client.py` + `account_pool.py`):
-  * telethon is imported LAZILY inside methods only — importing this module in a
-    pure-unit context (telethon absent) must succeed.
+  * telethon is NEVER imported at module load. `from_settings_values` imports the
+    `SessionPasswordNeededError` class at construction time; the client factory
+    imports `TelegramClient`/`StringSession` only on the first `start()`. So
+    importing this module in a pure-unit context (telethon absent) must succeed.
   * `poll()` RETURNS a typed `QRLoginPoll` status for every normal terminal state
     (pending/success/expired/password_needed/error). It RAISES only for
     misconfiguration (`QRLoginNotConfiguredError`).
@@ -24,12 +26,13 @@ import asyncio
 import logging
 import secrets
 from collections.abc import Callable, Coroutine
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from time import time
 from typing import Protocol, cast
 
-from collector.errors import QRLoginNotConfiguredError
+from collector.constants import MAX_CONCURRENT_QR_LOGINS
+from collector.errors import QRLoginCapacityError, QRLoginNotConfiguredError
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +103,9 @@ class QRLoginPoll:
 
     status: QRLoginStatus
     expires_at: float
-    session_string: str | None = None
+    # repr=False: the minted session is a secret — keep it out of any `repr()` /
+    # log line / traceback frame dump while preserving equality + normal access.
+    session_string: str | None = field(default=None, repr=False)
     reason: str | None = None
 
 
@@ -254,16 +259,39 @@ class QRLoginService:
 
         Returns the opaque token, the `tg://login?token=...` deep link, and the wall
         expiry (now + timeout). Raises `QRLoginNotConfiguredError` (via the factory)
-        when api creds are missing — the only raised path."""
+        when api creds are missing, or `QRLoginCapacityError` when the registry is at
+        `MAX_CONCURRENT_QR_LOGINS` even after reaping expired logins — the raise paths."""
+        # DoS belt: bound the in-process registry. Reap first (an abandoned/expired
+        # login frees a slot), then refuse only if live logins still saturate the cap.
+        if len(self._registry) >= MAX_CONCURRENT_QR_LOGINS:
+            await self.reap_expired()
+            if len(self._registry) >= MAX_CONCURRENT_QR_LOGINS:
+                raise QRLoginCapacityError(
+                    f"too many concurrent QR logins (cap {MAX_CONCURRENT_QR_LOGINS})"
+                )
+
         client = self._client_factory()
         await client.connect()
-        qr = await client.qr_login()
+        # After a successful connect the client owns a live socket. If `qr_login()` or
+        # task creation raises BEFORE the entry is registered, disconnect best-effort
+        # so the connected client cannot leak (the registry never sees it).
+        try:
+            qr = await client.qr_login()
 
-        token = secrets.token_urlsafe(_TOKEN_NBYTES)
-        expires_at = self._now() + self._timeout_seconds
-        # Drive wait() in the background so `poll()` is non-blocking: a real
-        # QRLogin.wait() blocks until the QR is scanned (or times out).
-        wait_task: asyncio.Task[bool] = asyncio.ensure_future(qr.wait())
+            token = secrets.token_urlsafe(_TOKEN_NBYTES)
+            expires_at = self._now() + self._timeout_seconds
+            # Drive wait() in the background so `poll()` is non-blocking: a real
+            # QRLogin.wait() blocks until the QR is scanned (or times out).
+            wait_task: asyncio.Task[bool] = asyncio.create_task(qr.wait())
+        except Exception:
+            try:
+                await client.disconnect()
+            except Exception:
+                # Best-effort teardown of the pre-registration client — log (not
+                # swallow) and re-raise the original failure below.
+                logger.warning("qr-login client disconnect failed during start cleanup")
+            raise
+
         self._registry[token] = _PendingLogin(
             client=client, wait_task=wait_task, expires_at=expires_at
         )
@@ -354,13 +382,36 @@ class QRLoginService:
         return len(expired)
 
     async def _evict(self, token: str, pending: _PendingLogin) -> None:
-        """Cancel the wait task, disconnect the client (best-effort), drop the entry."""
+        """Drain the wait task, disconnect the client (best-effort), drop the entry.
+
+        Draining is CRITICAL for redaction: if a finished `wait()` task carries an
+        exception (whose message can echo the session string / api_hash) and we drop
+        it without retrieving that exception, CPython logs "Task exception was never
+        retrieved" with the FULL exception at GC time — defeating the class-name-only
+        redaction in `_resolve_error`. So: if the task is done and not cancelled,
+        retrieve-and-discard its exception; otherwise cancel it. No eviction path may
+        leave a finished-with-exception task undrained."""
         self._registry.pop(token, None)
-        if not pending.wait_task.done():
-            pending.wait_task.cancel()
+        self._drain_wait_task(pending.wait_task)
         try:
             await pending.client.disconnect()
         except Exception:
             # Best-effort teardown — log (not swallow) so one bad client can't block
             # evicting the rest; never re-raise (mirrors AccountPool.aclose).
             logger.warning("qr-login client disconnect failed during evict")
+
+    @staticmethod
+    def _drain_wait_task(task: "asyncio.Task[bool]") -> None:
+        """Drain a wait task so a finished-with-exception one can't leak at GC.
+
+        If the task already finished (not cancelled), retrieve-and-discard its
+        exception so CPython never logs "Task exception was never retrieved" with the
+        raw (possibly secret-bearing) exception. If still running, cancel it. NEVER
+        re-raise: the secret-bearing exception was already mapped to a class-name-only
+        reason in `_resolve_error` and must not propagate out of teardown."""
+        if task.done():
+            if not task.cancelled():
+                # Retrieve-and-discard — marks the exception as consumed (no GC log).
+                _ = task.exception()
+            return
+        task.cancel()

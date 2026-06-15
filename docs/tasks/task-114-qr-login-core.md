@@ -150,3 +150,39 @@ debug_runs: []
 
 **Verification (G2):** `make fmt` clean; `make lint` → All checks passed; `make typecheck` → mypy strict
 Success (186 files); `make test` → 1087 passed (15 new), 279 deselected.
+
+### Step 5/5.5 — debug/fix (review + security findings), 2026-06-16
+
+Review + security stages found 5 issues in commit `fe92187`; fixed minimally (no scope creep).
+
+1. **[HIGH] Secret-redaction bypass via undrained task exception (GC leak).** `_evict` dropped a
+   finished-with-exception `wait_task` WITHOUT retrieving its exception. CPython then logs
+   `Task exception was never retrieved` with the FULL exception (message may echo the session
+   string / api_hash) at GC time — defeating the class-name-only redaction in `_resolve_error`.
+   FIX: new `_drain_wait_task` helper called from `_evict` (so EVERY eviction path — poll-success,
+   poll-expiry, `_resolve_error`, `cancel`, `reap_expired` — is covered): if the task is `done()`
+   and not cancelled, `_ = task.exception()` (retrieve-and-discard); else `task.cancel()`. New
+   `caplog` test `test_reaping_unpolled_failed_login_does_not_leak_secret_to_logs` — proven by a
+   negative control: against the old no-drain code the test FAILS with the exact
+   `Task exception was never retrieved … SECRET-SESSION-STRING … api_hash=topsecret` log.
+2. **[MEDIUM] Unbounded registry DoS.** Added `MAX_CONCURRENT_QR_LOGINS = 20`
+   (`collector/constants.py`) + `QRLoginCapacityError(QRLoginError)` (`collector/errors.py`).
+   `start()` now reaps expired logins first when at the cap and raises `QRLoginCapacityError` if
+   still saturated by LIVE logins. New test `test_start_raises_capacity_error_when_registry_full`
+   (fill→raise; after reap→succeeds).
+3. **[LOW] Secret in dataclass repr.** `QRLoginPoll.session_string` → `field(default=None,
+   repr=False)` so the minted session never appears in any `repr()` / traceback frame dump;
+   equality/access unchanged.
+4. **[LOW] Pre-registration socket leak.** `start()` now wraps the post-`connect()` section
+   (`qr_login()` + `create_task`) so a failure before registration disconnects the connected
+   client best-effort (logged, not swallowed) before re-raising.
+5. **[LOW] Idiom + docstring.** `asyncio.ensure_future` → `asyncio.create_task`; module docstring
+   tightened to state telethon is never imported at module load (`from_settings_values` imports
+   `SessionPasswordNeededError` at construction; the factory imports `TelegramClient`/`StringSession`
+   only on first `start()`).
+
+**Re-verification (G2):** `make fmt` clean; `make lint` → All checks passed; `make typecheck` →
+mypy Success (186 files); `make test` → 1089 passed (17 in test_qr_login.py, +2 new), 279 deselected.
+
+**Public-API delta for TASK-116:** new raise path `QRLoginCapacityError` from `start()` (map to
+429/503). All other signatures unchanged.

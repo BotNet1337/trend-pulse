@@ -153,6 +153,13 @@ REDDIT_TOKEN_EXPIRY_LEEWAY_SECONDS: Final = 60
 # that drops abandoned/expired logins so a never-polled QR can't leak a client.
 QR_LOGIN_REAP_INTERVAL_SECONDS: Final = 60
 
+# Hard cap on concurrently-tracked in-progress QR logins (DoS belt). The registry
+# is in-process and each entry holds a live connected client; an unauthenticated
+# `start()` flood could otherwise grow it without bound. On overflow `start()` first
+# reaps expired entries and, if STILL at the cap, raises `QRLoginCapacityError`. Kept
+# small — a human-driven QR-login flow never needs many concurrent in-flight logins.
+MAX_CONCURRENT_QR_LOGINS: Final = 20
+
 # --- collect-tick (beat ingest task) — import-cycle-free contract constants. ---
 # Celery task name for the collect tick. Lives here (not in collector.tasks,
 # which imports celery_app) so `scheduler` can reference it without a circular

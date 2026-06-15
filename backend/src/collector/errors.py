@@ -45,6 +45,15 @@ class QRLoginNotConfiguredError(QRLoginError):
     maps it to a clear 503 so the operator sets the creds — minting can't proceed."""
 
 
+class QRLoginCapacityError(QRLoginError):
+    """`start()` was called while the in-process registry is at `MAX_CONCURRENT_QR_LOGINS`.
+
+    Raised (not a poll status) as a DoS belt: the registry holds live connected
+    clients, so an unauthenticated `start()` flood is bounded. `start()` first reaps
+    expired logins; this only fires if the cap is still saturated by live ones. The
+    API maps it to a 429/503 — try again once an in-flight login finishes or expires."""
+
+
 class TwitterAPIError(CollectorError):
     """A non-recoverable Twitter/X API error (non-2xx other than 404/429) — skip the ref."""
 

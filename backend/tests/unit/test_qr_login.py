@@ -5,14 +5,18 @@ Every Acceptance Criterion is encoded with a FAKE Telethon client and a FAKE
 module must import with telethon absent (lazy import inside methods only).
 """
 
+import asyncio
 import builtins
 import importlib
+import logging
 import sys
 
 import pytest
 
+from collector.constants import MAX_CONCURRENT_QR_LOGINS
 from collector.errors import (
     CollectorError,
+    QRLoginCapacityError,
     QRLoginError,
     QRLoginNotConfiguredError,
 )
@@ -376,3 +380,83 @@ async def test_tokens_are_unique_per_start() -> None:
     a = await svc.start()
     b = await svc.start()
     assert a.token != b.token
+
+
+# --- redaction: GC "Task exception was never retrieved" leak -----------------
+
+
+async def test_reaping_unpolled_failed_login_does_not_leak_secret_to_logs(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A login whose wait() raised must be drained on reap — never logged at GC.
+
+    If a finished-with-exception wait task is dropped WITHOUT retrieving its
+    exception, CPython logs "Task exception was never retrieved" with the FULL
+    exception message (which can echo the session string / api_hash) at GC time,
+    defeating the class-name-only redaction. Reaping must retrieve-and-discard it.
+    """
+    secret = "SECRET-SESSION-STRING and api_hash=topsecret"
+    clock = _Clock()
+    qr = _FakeQRLogin(wait_raises=_FakeTelethonError(secret))
+    client = _FakeClient(qr=qr, session_string="SECRET-SESSION-STRING")
+    svc = _service(client=client, clock=clock, timeout_seconds=300)
+
+    started = await svc.start()
+    # Let the background wait() task run to completion (finished WITH exception)
+    # WITHOUT ever polling — this is the path that would otherwise leak at GC.
+    await asyncio.sleep(0)
+
+    with caplog.at_level(logging.DEBUG):
+        clock.advance(301)  # past expiry
+        reaped = await svc.reap_expired()
+        # Force any undrained task to be collected; the asyncio GC hook would log here.
+        del started
+        import gc
+
+        gc.collect()
+        await asyncio.sleep(0)
+
+    assert reaped == 1
+    assert "SECRET-SESSION-STRING" not in caplog.text
+    assert "topsecret" not in caplog.text
+    assert "never retrieved" not in caplog.text
+    assert client.disconnect_calls == 1
+
+
+# --- DoS belt: MAX_CONCURRENT_QR_LOGINS cap ---------------------------------
+
+
+async def test_start_raises_capacity_error_when_registry_full() -> None:
+    """Filling the registry to the cap makes the next start() raise; reaping frees a slot."""
+    clock = _Clock()
+    # Each start() needs its own fake client (the factory yields them in order).
+    clients = [
+        _FakeClient(qr=_FakeQRLogin(wait_result=False), authorized=False)
+        for _ in range(MAX_CONCURRENT_QR_LOGINS + 1)
+    ]
+    pool = iter(clients)
+
+    def factory() -> _FakeClient:
+        return next(pool)
+
+    svc = QRLoginService(
+        client_factory=factory,
+        session_password_needed_error=_FakeSessionPasswordNeededError,
+        timeout_seconds=300,
+        now=clock,
+    )
+
+    started = [await svc.start() for _ in range(MAX_CONCURRENT_QR_LOGINS)]
+    assert len(started) == MAX_CONCURRENT_QR_LOGINS
+
+    # At the cap and none expired → next start() refuses with the typed error.
+    with pytest.raises(QRLoginCapacityError):
+        await svc.start()
+    assert isinstance(QRLoginCapacityError(), QRLoginError)
+    assert isinstance(QRLoginCapacityError(), CollectorError)
+
+    # Expire the in-flight logins; start() reaps them first, then succeeds.
+    clock.advance(301)
+    fresh = await svc.start()
+    assert fresh.token
+    assert len(started)  # original tokens were minted; cap is now relieved
