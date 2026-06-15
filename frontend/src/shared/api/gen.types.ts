@@ -1180,10 +1180,13 @@ export interface components {
         };
         /**
          * SourceKind
-         * @description Platform a channel belongs to. Telegram now; Twitter/X later (ADR-001).
+         * @description Platform a channel belongs to (ADR-001). Mirrors `collector.base.SourceKind`.
+         *
+         *     The `source_kind` column is `Enum(..., native_enum=False)` (VARCHAR(32), no DB
+         *     CHECK constraint — see migration 0001), so adding a member needs NO migration.
          * @enum {string}
          */
-        SourceKind: "telegram";
+        SourceKind: "telegram" | "twitter" | "reddit";
         /**
          * SubscribeResult
          * @description Result of POST /packs/{slug}/subscribe.
@@ -1376,16 +1379,46 @@ export interface components {
         /**
          * WatchlistRead
          * @description Response model: the persisted watchlist row, tenant id included (AC1).
+         *
+         *     `signal` (TASK-096) carries the live virality signal for the row's channel —
+         *     always present, graceful-empty when there is no data.
          */
         WatchlistRead: {
             alert_config: components["schemas"]["AlertConfig"];
             channel: components["schemas"]["ChannelRef"];
             /** Id */
             id: number;
+            signal?: components["schemas"]["WatchlistSignal"];
             /** Topic */
             topic: string;
             /** User Id */
             user_id: number;
+        };
+        /**
+         * WatchlistSignal
+         * @description Live signal for a watchlist row on the Signal Desk (TASK-096).
+         *
+         *     Aggregated read-only from the `Score` / `Alert` rows of the clusters the
+         *     watchlist's channel participates in (channel-overlap join, TASK-084). Every
+         *     field is graceful: `None` / empty when there is genuinely no data — never
+         *     fabricated (INV2).
+         *
+         *     - `live_velocity` — latest in-window `Score.velocity` (∈ [0, 1] normalized
+         *       cross-channel burst), `None` when no in-window score.
+         *     - `live_score` — latest in-window `Score.viral_score` (0-100), `None` when none.
+         *     - `sparkline_24h` — hourly max `viral_score` over the last 24h, oldest→newest;
+         *       empty when no in-window scores.
+         *     - `last_alert_at` — most recent alert's `first_seen`, `None` when no alert.
+         */
+        WatchlistSignal: {
+            /** Last Alert At */
+            last_alert_at?: string | null;
+            /** Live Score */
+            live_score?: number | null;
+            /** Live Velocity */
+            live_velocity?: number | null;
+            /** Sparkline 24H */
+            sparkline_24h?: number[];
         };
         /**
          * WatchlistUpdate

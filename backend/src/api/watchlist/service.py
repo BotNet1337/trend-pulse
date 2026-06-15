@@ -20,16 +20,39 @@ from api.watchlist.schemas import (
     ChannelRef,
     WatchlistCreate,
     WatchlistRead,
+    WatchlistSignal,
     WatchlistUpdate,
 )
 from storage.models.channels import Channel, SourceKind
 from storage.models.users import User
 from storage.models.watchlists import Watchlist
 from storage.repositories import ChannelRepository, WatchlistRepository
+from storage.repositories.signal_repo import (
+    EMPTY_SIGNAL,
+    WatchlistSignalData,
+    aggregate_for_user,
+)
 
 
-def _to_read(row: Watchlist, channel: Channel) -> WatchlistRead:
-    """Build the response model from a persisted row + its (global) channel."""
+def _to_signal(data: WatchlistSignalData) -> WatchlistSignal:
+    """Map the repo's aggregation DTO onto the API signal model (TASK-096)."""
+    return WatchlistSignal(
+        live_velocity=data.live_velocity,
+        live_score=data.live_score,
+        sparkline_24h=list(data.sparkline_24h),
+        last_alert_at=data.last_alert_at,
+    )
+
+
+def _to_read(
+    row: Watchlist, channel: Channel, signal: WatchlistSignalData = EMPTY_SIGNAL
+) -> WatchlistRead:
+    """Build the response model from a persisted row + its (global) channel.
+
+    `signal` (TASK-096) defaults to the empty signal so the CRUD write paths
+    (create / update) return a graceful-empty signal without an extra query — the
+    desk re-fetches the list (which carries the aggregated signal) after a mutation.
+    """
     return WatchlistRead(
         id=row.id,
         user_id=row.user_id,
@@ -40,6 +63,7 @@ def _to_read(row: Watchlist, channel: Channel) -> WatchlistRead:
             min_channels=row.min_channels,
             notification_lang=row.lang,
         ),
+        signal=_to_signal(signal),
     )
 
 
@@ -89,18 +113,37 @@ def create(session: Session, *, user: User, data: WatchlistCreate) -> WatchlistR
 
 
 def list_for_user(session: Session, *, user_id: int) -> list[WatchlistRead]:
-    """Return every watchlist owned by the user (tenant-scoped)."""
+    """Return every watchlist owned by the user, each with its live signal (TASK-096).
+
+    The live signal for the whole list is aggregated in one batched call keyed by
+    `channel_id` (no N+1, INV3); each row is then mapped onto its channel's signal.
+    """
     repo = WatchlistRepository()
     rows = repo.list(session, user_id=user_id)
-    return [_to_read(row, _channel_for(session, row.channel_id)) for row in rows]
+    signals = aggregate_for_user(
+        session, user_id=user_id, channel_ids=[row.channel_id for row in rows]
+    )
+    return [
+        _to_read(
+            row,
+            _channel_for(session, row.channel_id),
+            signals.get(row.channel_id, EMPTY_SIGNAL),
+        )
+        for row in rows
+    ]
 
 
 def get(session: Session, *, user_id: int, watchlist_id: int) -> WatchlistRead | None:
-    """Return one owned watchlist, or None if missing / other tenant's (-> 404)."""
+    """Return one owned watchlist with its live signal, or None if missing (-> 404)."""
     row = WatchlistRepository().get_by_id(session, user_id=user_id, entity_id=watchlist_id)
     if row is None:
         return None
-    return _to_read(row, _channel_for(session, row.channel_id))
+    signals = aggregate_for_user(session, user_id=user_id, channel_ids=[row.channel_id])
+    return _to_read(
+        row,
+        _channel_for(session, row.channel_id),
+        signals.get(row.channel_id, EMPTY_SIGNAL),
+    )
 
 
 def update(

@@ -12,6 +12,14 @@ export {
   matchesStatus,
   ariaSortFor,
   nextSort,
+  velocityTier,
+  formatVelocityBadge,
+  hasSparkline,
+  sparklinePoints,
+  formatLastAlert,
+  rowSignal,
+  VELOCITY_HOT_THRESHOLD,
+  VELOCITY_WARM_THRESHOLD,
 } from './signal-desk';
 export type {
   DeskStatus,
@@ -19,4 +27,5 @@ export type {
   DeskSortKey,
   DeskSortDir,
   DeskSort,
+  VelocityTier,
 } from './signal-desk';

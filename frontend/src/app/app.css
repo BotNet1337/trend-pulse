@@ -1907,6 +1907,8 @@
 /* Sparkline + velocity badge */
 .spark { display: inline-flex; align-items: center; gap: 0.55rem; }
 .spark svg { width: 76px; height: 26px; flex: none; }
+/* Real 24h sparkline (TASK-096): accent-coloured polyline via currentColor. */
+.spark__line { color: var(--fs-cyan); }
 .vel-badge {
   display: inline-flex;
   align-items: center;

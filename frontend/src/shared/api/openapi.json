@@ -941,9 +941,11 @@
         "type": "object"
       },
       "SourceKind": {
-        "description": "Platform a channel belongs to. Telegram now; Twitter/X later (ADR-001).",
+        "description": "Platform a channel belongs to (ADR-001). Mirrors `collector.base.SourceKind`.\n\nThe `source_kind` column is `Enum(..., native_enum=False)` (VARCHAR(32), no DB\nCHECK constraint — see migration 0001), so adding a member needs NO migration.",
         "enum": [
-          "telegram"
+          "telegram",
+          "twitter",
+          "reddit"
         ],
         "title": "SourceKind",
         "type": "string"
@@ -1256,7 +1258,7 @@
       },
       "WatchlistRead": {
         "additionalProperties": false,
-        "description": "Response model: the persisted watchlist row, tenant id included (AC1).",
+        "description": "Response model: the persisted watchlist row, tenant id included (AC1).\n\n`signal` (TASK-096) carries the live virality signal for the row's channel —\nalways present, graceful-empty when there is no data.",
         "properties": {
           "alert_config": {
             "$ref": "#/components/schemas/AlertConfig"
@@ -1267,6 +1269,9 @@
           "id": {
             "title": "Id",
             "type": "integer"
+          },
+          "signal": {
+            "$ref": "#/components/schemas/WatchlistSignal"
           },
           "topic": {
             "title": "Topic",
@@ -1285,6 +1290,55 @@
           "alert_config"
         ],
         "title": "WatchlistRead",
+        "type": "object"
+      },
+      "WatchlistSignal": {
+        "additionalProperties": false,
+        "description": "Live signal for a watchlist row on the Signal Desk (TASK-096).\n\nAggregated read-only from the `Score` / `Alert` rows of the clusters the\nwatchlist's channel participates in (channel-overlap join, TASK-084). Every\nfield is graceful: `None` / empty when there is genuinely no data — never\nfabricated (INV2).\n\n- `live_velocity` — latest in-window `Score.velocity` (∈ [0, 1] normalized\n  cross-channel burst), `None` when no in-window score.\n- `live_score` — latest in-window `Score.viral_score` (0-100), `None` when none.\n- `sparkline_24h` — hourly max `viral_score` over the last 24h, oldest→newest;\n  empty when no in-window scores.\n- `last_alert_at` — most recent alert's `first_seen`, `None` when no alert.",
+        "properties": {
+          "last_alert_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Alert At"
+          },
+          "live_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Live Score"
+          },
+          "live_velocity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Live Velocity"
+          },
+          "sparkline_24h": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Sparkline 24H",
+            "type": "array"
+          }
+        },
+        "title": "WatchlistSignal",
         "type": "object"
       },
       "WatchlistUpdate": {

@@ -6,8 +6,11 @@
 
 import type { components } from '@/shared/api/gen.types';
 
-/** A persisted watchlist row (one channel + topic + alert_config). */
+/** A persisted watchlist row (one channel + topic + alert_config + live signal). */
 export type WatchlistRead = components['schemas']['WatchlistRead'];
+
+/** Live virality signal for a watchlist row (velocity / score / sparkline / last-alert). */
+export type WatchlistSignal = components['schemas']['WatchlistSignal'];
 
 /** Create payload for POST /watchlists. */
 export type WatchlistCreate = components['schemas']['WatchlistCreate'];

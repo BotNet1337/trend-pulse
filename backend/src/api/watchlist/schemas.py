@@ -14,6 +14,7 @@ All ranges/defaults/regex are named module constants — no magic literals.
 """
 
 import re
+from datetime import datetime
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -123,8 +124,36 @@ class WatchlistUpdate(BaseModel):
     alert_config: AlertConfig | None = None
 
 
+class WatchlistSignal(BaseModel):
+    """Live signal for a watchlist row on the Signal Desk (TASK-096).
+
+    Aggregated read-only from the `Score` / `Alert` rows of the clusters the
+    watchlist's channel participates in (channel-overlap join, TASK-084). Every
+    field is graceful: `None` / empty when there is genuinely no data — never
+    fabricated (INV2).
+
+    - `live_velocity` — latest in-window `Score.velocity` (∈ [0, 1] normalized
+      cross-channel burst), `None` when no in-window score.
+    - `live_score` — latest in-window `Score.viral_score` (0-100), `None` when none.
+    - `sparkline_24h` — hourly max `viral_score` over the last 24h, oldest→newest;
+      empty when no in-window scores.
+    - `last_alert_at` — most recent alert's `first_seen`, `None` when no alert.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    live_velocity: float | None = None
+    live_score: float | None = None
+    sparkline_24h: list[float] = Field(default_factory=list)
+    last_alert_at: datetime | None = None
+
+
 class WatchlistRead(BaseModel):
-    """Response model: the persisted watchlist row, tenant id included (AC1)."""
+    """Response model: the persisted watchlist row, tenant id included (AC1).
+
+    `signal` (TASK-096) carries the live virality signal for the row's channel —
+    always present, graceful-empty when there is no data.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -133,3 +162,4 @@ class WatchlistRead(BaseModel):
     topic: str
     channel: ChannelRef
     alert_config: AlertConfig
+    signal: WatchlistSignal = Field(default_factory=WatchlistSignal)
