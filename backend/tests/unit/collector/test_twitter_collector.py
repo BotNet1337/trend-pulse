@@ -233,13 +233,17 @@ async def test_read_dedups_same_handle() -> None:
 
 
 @pytest.mark.asyncio
-async def test_read_filters_tweets_older_than_since() -> None:
-    since = datetime(2026, 6, 14, 12, 0, tzinfo=UTC)
-    old = _tweet("old", when=since - timedelta(hours=1))
-    new = _tweet("new", when=since + timedelta(hours=1))
-    collector = TwitterCollector(FakeTwitterClient(tweets=[old, new]))
-    posts = [p async for p in collector.read([_REF], since=since)]
-    assert [p.external_id for p in posts] == ["new"]
+async def test_read_passes_effective_window_as_start_time() -> None:
+    # The window is enforced by the API via `start_time` (= effective_since), NOT a
+    # post-loop filter. An older caller `since` (outage catch-up) is honored.
+    old_since = datetime(2026, 6, 14, 12, 0, tzinfo=UTC)
+    client = FakeTwitterClient(tweets=[_tweet("a"), _tweet("b")])
+    collector = TwitterCollector(client)  # no redis → floor or older caller_since
+    posts = [p async for p in collector.read([_REF], since=old_since)]
+    # All tweets the client returns are yielded (the API is the date bound, mocked).
+    assert [p.external_id for p in posts] == ["a", "b"]
+    # The collector queried from the older caller window (catch-up), not ~now.
+    assert client.last_start_time == old_since
 
 
 @pytest.mark.asyncio
@@ -722,3 +726,20 @@ async def test_client_malformed_json_raises_api_error() -> None:
     with pytest.raises(TwitterAPIError):
         await client.resolve_user_id("acme")
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_read_yields_tweets_within_window_not_caller_since() -> None:
+    # REGRESSION: a tweet older than the caller's ~60s tick `since` but within the
+    # floored effective window MUST be yielded. The post-loop cutoff must use
+    # effective_since, not `since` — filtering by `since` discarded everything the
+    # wider window fetched, so every read yielded 0 posts in prod.
+    now = datetime(2026, 6, 15, 12, 0, 0, tzinfo=UTC)
+    ten_min_ago = now - timedelta(minutes=10)
+    client = FakeTwitterClient(tweets=[_tweet("t10", when=ten_min_ago)])
+    redis = _FakeRedis()
+    collector = TwitterCollector(client, redis=redis, now=lambda: now)
+
+    narrow = now - timedelta(seconds=60)  # the shared tick's ~60s marker
+    posts = [p async for p in collector.read([_REF], since=narrow)]
+    assert [p.external_id for p in posts] == ["t10"]  # NOT filtered by the narrow since
