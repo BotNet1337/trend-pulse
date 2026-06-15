@@ -38,7 +38,7 @@ PROD_INVENTORY := $(ANSIBLE_DIR)/inventory/prod.yml
 
 .PHONY: help up dev-up dev-infra-up down build logs logs-once ps restart sh migrate \
         ansible-unpack tf-validate ansible-lint ansible-check \
-        deploy smoke \
+        deploy smoke vault-guard \
         lint fmt typecheck test test-cov test-integration test-integration-smoke ci ci-fast \
         gen-openapi gen-types openapi-drift-check \
         backup backup-restore-check \
@@ -178,7 +178,14 @@ ansible-check:
 # Same ansible path the tag-CD workflow runs (Invariant: one logic, two triggers).
 # Owner entry point = a single file: ops/ansible/inventory/prod.yml (copy from the
 # committed prod.example.yml). The guard below fails early with that hint.
-deploy:
+# Vault-guard (TASK-107): refuse to deploy when ANY worktree has an uncommitted vault —
+# the 2026-06-15 incident class (a divergent vault swaps prod's live TG sessions →
+# AuthKeyDuplicated → ingest down). Override with SKIP_VAULT_GUARD=1 after manual
+# reconciliation. `deploy` depends on it so the check always runs first.
+vault-guard:
+	@python3 release/scripts/vault_guard.py
+
+deploy: vault-guard
 	@if [ ! -f "$(PROD_INVENTORY)" ]; then \
 		echo "Нет $(PROD_INVENTORY)."; \
 		echo "Скопируй prod.example.yml и впиши IP/домен/ssh-ключ:"; \
