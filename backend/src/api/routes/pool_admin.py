@@ -90,7 +90,14 @@ class _RedisAdapter:
         return cast("str | None", self._client.get(name))
 
     def close(self) -> None:
-        self._client.close()
+        # Best-effort teardown: a close() that raises on an already-broken socket
+        # must NEVER mask the in-flight response (e.g. replace a 503 with a 500).
+        # Swallow + log the exception TYPE only (no DSN/secret) — mirrors
+        # `api.routes.ops._check_redis`.
+        try:
+            self._client.close()
+        except Exception as exc:
+            logger.warning("pool-health redis close failed: %s", type(exc).__name__)
 
 
 # ---------------------------------------------------------------------------

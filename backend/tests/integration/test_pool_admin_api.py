@@ -25,6 +25,7 @@ from typing import Any
 import fakeredis
 import pytest
 from fastapi.testclient import TestClient
+from redis.exceptions import RedisError
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Session
@@ -77,6 +78,33 @@ class _FakeQRService:
     async def poll(self, token: str) -> QRLoginPoll:
         assert self._poll_result is not None
         return self._poll_result
+
+
+class _RaisingRedis:
+    """`_RedisLike` whose `get` raises RedisError (Redis unreachable path).
+
+    `close` deliberately raises too, to prove the teardown guard cannot mask the
+    in-flight 503 with an unhandled 500.
+    """
+
+    def get(self, name: str) -> str | None:
+        raise RedisError("connection refused")
+
+    def close(self) -> None:
+        raise RedisError("close on broken socket")
+
+
+class _RawRedis:
+    """`_RedisLike` returning a fixed raw payload (for malformed-snapshot tests)."""
+
+    def __init__(self, raw: str) -> None:
+        self._raw = raw
+
+    def get(self, name: str) -> str | None:
+        return self._raw
+
+    def close(self) -> None:
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -282,6 +310,32 @@ class TestQRLoginPoll:
         assert body["status"] == "expired"
         assert body["session_string"] is None
 
+    @pytest.mark.parametrize(
+        ("status_enum", "wire", "reason"),
+        [
+            (QRLoginStatus.PASSWORD_NEEDED, "password_needed", "2FA password required"),
+            (QRLoginStatus.ERROR, "error", "SessionRevokedError"),
+        ],
+    )
+    def test_poll_non_success_surfaces_reason_without_session(
+        self,
+        client: TestClient,
+        db_session: Session,
+        status_enum: QRLoginStatus,
+        wire: str,
+        reason: str,
+    ) -> None:
+        poll = QRLoginPoll(status=status_enum, expires_at=1_700_000_000.0, reason=reason)
+        _override_qr_service(_FakeQRService(poll_result=poll))
+        _login_as_superuser(client, db_session, f"pa-poll-{wire}@example.com")
+
+        resp = client.get(_qr_poll_path("abc123"))
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["status"] == wire
+        assert body["reason"] == reason
+        assert body["session_string"] is None
+
 
 # ---------------------------------------------------------------------------
 # GET /pool-admin/pool-health
@@ -338,3 +392,43 @@ class TestPoolHealth:
         assert body["stale"] is True
         assert body["size"] == 3
         assert len(body["accounts"]) == 3
+
+    def test_redis_unreachable_returns_503_without_leak(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        # get() raises RedisError; the teardown close() also raises — neither may
+        # turn into an unhandled 500, and no DSN/exception text may leak.
+        app.dependency_overrides[get_pool_health_redis] = lambda: _RaisingRedis()
+        _login_as_superuser(client, db_session, "pa-health-redis-down@example.com")
+
+        resp = client.get(_POOL_HEALTH_PATH)
+        assert resp.status_code == 503, resp.text
+        leaked = json.dumps(resp.json())
+        assert "connection refused" not in leaked
+        assert "broken socket" not in leaked
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "}{ not json at all",  # JSONDecodeError branch
+            '{"size": 1}',  # valid JSON, missing required fields → ValidationError branch
+        ],
+    )
+    def test_malformed_snapshot_is_stale_not_500(
+        self, client: TestClient, db_session: Session, raw: str
+    ) -> None:
+        app.dependency_overrides[get_pool_health_redis] = lambda: _RawRedis(raw)
+        _login_as_superuser(client, db_session, "pa-health-malformed@example.com")
+
+        resp = client.get(_POOL_HEALTH_PATH)
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["stale"] is True
+        assert body["accounts"] == []
+
+
+class TestQRServiceSingleton:
+    def test_get_qr_login_service_is_a_process_singleton(self) -> None:
+        # start() and poll() must share ONE in-process registry (TASK-114), so the
+        # dependency must return the same instance across calls.
+        assert get_qr_login_service() is get_qr_login_service()
