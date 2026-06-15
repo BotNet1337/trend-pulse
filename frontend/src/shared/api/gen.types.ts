@@ -530,6 +530,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/pool-admin/pool-health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Latest pool-health snapshot (superuser only)
+         * @description Read the latest `pool:health:latest` snapshot from Redis.
+         *
+         *     Missing/old snapshot (collector down ≥ TTL, or lagging) → `stale=true` with
+         *     empty aggregates. Redis unreachable → 503 envelope (not an unhandled 500).
+         *     A parse/validation failure of a present snapshot is treated as stale.
+         */
+        get: operations["get_pool_health_v1_pool_admin_pool_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/pool-admin/qr-login/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Begin a QR login (superuser only)
+         * @description Start a QR login and return the deep link + token.
+         *
+         *     Auth: 401 unauthenticated, 403 non-superuser. Maps service raise-paths:
+         *     missing creds → 503, registry at capacity → 429. No secrets logged.
+         */
+        post: operations["start_qr_login_v1_pool_admin_qr_login_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/pool-admin/qr-login/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Poll a QR login (superuser only)
+         * @description Poll an in-progress login.
+         *
+         *     Reflects `service.poll()`: unknown/expired tokens return status `expired`
+         *     (200, never 404/500 — the UI polls in a loop). On SUCCESS the body carries the
+         *     minted `session_string` (secret, never logged).
+         */
+        get: operations["poll_qr_login_v1_pool_admin_qr_login__token__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/referral/me": {
         parameters: {
             query?: never;
@@ -1137,6 +1208,104 @@ export interface components {
          * @enum {string}
          */
         Plan: "free" | "pro" | "team";
+        /**
+         * PoolHealthAccount
+         * @description One pool account's health (per-account identity is the integer index only).
+         */
+        PoolHealthAccount: {
+            /** Cooldown Remaining Seconds */
+            cooldown_remaining_seconds?: number | null;
+            /** Index */
+            index: number;
+            /**
+             * Last Error Reason
+             * @default
+             */
+            last_error_reason: string;
+            /** State */
+            state: string;
+        };
+        /**
+         * PoolHealthResponse
+         * @description `GET /pool-admin/pool-health` body — aggregates + per-account list + staleness.
+         *
+         *     `stale` is true when the snapshot is missing/old (collector down or lagging);
+         *     in that case the aggregates are zeroed and `accounts` is empty so the UI can
+         *     say "no fresh data from collector" without erroring.
+         */
+        PoolHealthResponse: {
+            /** Accounts */
+            accounts?: components["schemas"]["PoolHealthAccount"][];
+            /** As Of */
+            as_of?: string | null;
+            /**
+             * Cooling
+             * @default 0
+             */
+            cooling: number;
+            /**
+             * Degraded
+             * @default false
+             */
+            degraded: boolean;
+            /**
+             * Healthy
+             * @default 0
+             */
+            healthy: number;
+            /**
+             * Quarantined
+             * @default 0
+             */
+            quarantined: number;
+            /**
+             * Size
+             * @default 0
+             */
+            size: number;
+            /**
+             * Stale
+             * @default true
+             */
+            stale: boolean;
+            /**
+             * Target
+             * @default 0
+             */
+            target: number;
+        };
+        /**
+         * QRLoginPollResponse
+         * @description `GET /pool-admin/qr-login/{token}` body — the current login state.
+         *
+         *     `session_string` is the NEWLY minted StringSession, present ONLY on SUCCESS.
+         *     It is a SECRET (the admin copies it to the vault); it is never logged and is
+         *     served only to a superuser over HTTPS.
+         */
+        QRLoginPollResponse: {
+            /** Expires At */
+            expires_at: number;
+            /** Reason */
+            reason?: string | null;
+            /** Session String */
+            session_string?: string | null;
+            /** Status */
+            status: string;
+        };
+        /**
+         * QRLoginStartResponse
+         * @description `POST /pool-admin/qr-login/start` body — the QR deep link + expiry.
+         */
+        QRLoginStartResponse: {
+            /** Expires At */
+            expires_at: number;
+            /** Qr Url */
+            qr_url: string;
+            /** Timeout Seconds */
+            timeout_seconds: number;
+            /** Token */
+            token: string;
+        };
         /**
          * ReferralMeRead
          * @description Response schema for GET /referral/me.
@@ -2233,6 +2402,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UnsubscribeResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pool_health_v1_pool_admin_pool_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoolHealthResponse"];
+                };
+            };
+        };
+    };
+    start_qr_login_v1_pool_admin_qr_login_start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QRLoginStartResponse"];
+                };
+            };
+        };
+    };
+    poll_qr_login_v1_pool_admin_qr_login__token__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QRLoginPollResponse"];
                 };
             };
             /** @description Validation Error */

@@ -88,13 +88,13 @@ is behind the existing protected/auth guard; backend `current_superuser` enforce
   load `/admin/pool`, exercise start→QR render→poll, against the running stack.
 
 ## Checkpoints
-current_step: 3
+current_step: 4
 baseline_commit: 6949babd443c7bc0d3152a2f6cf097c72ec3f42f
 branch: ""
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD where FE setup allows → minimal code)
+- [x] 3 do (TDD where FE setup allows → minimal code)
 - [ ] 4 verify (G2 — build + typecheck + lint + load page)
 - [ ] 5 review (auto, adversarial)
 - [ ] 5.5 security (renders/handles session secret in UI — REQUIRED)
@@ -103,4 +103,50 @@ lock: ""
 debug_runs: []
 
 ## Details
-(initial)
+
+### do (step 3) — 2026-06-16
+
+Implemented the FSD `pool-admin` feature + `/admin/pool` page, mirroring
+`admin-metrics`. All types from the regenerated OpenAPI schema (no hand-rolled
+shapes); TypeScript strict, no `any`.
+
+**Files (new):**
+- `frontend/src/features/pool-admin/lib.ts` — pure helpers: `AccountState`/
+  `QrLoginStatus` literal unions, `isTerminalQrStatus`, `asQrLoginStatus`/
+  `asAccountState` narrowers (unknown → fail-safe), `accountStateLabel`/
+  `accountStateBadgeVariant`, `qrStatusMessage` (reason-bearing, never generic),
+  `formatCooldown` (m:ss), `shouldShowPoolAdminNotFound` (404-clone guard).
+- `frontend/src/features/pool-admin/api.ts` — `startQrLogin`, `pollQrLogin`,
+  `getPoolHealth` over `apiClient`; types = `components['schemas'][…]`.
+- `frontend/src/features/pool-admin/queries.ts` — `usePoolHealth` (15s
+  background refresh + manual refetch, retry:false), `useQrLoginStart` mutation,
+  `useQrLoginPoll` (refetchInterval 2s while non-terminal, → false on terminal).
+- `frontend/src/features/pool-admin/ui/pool-health-table.tsx` — per-account row
+  (index, state badge, cooldown for cooling, last_error_reason for quarantined),
+  aggregates line, stale banner, empty state. `fs-*`/`fs-table` styling.
+- `frontend/src/features/pool-admin/ui/qr-login-dialog.tsx` — start→QR(`QRCodeSVG`)
+  →poll→success(copy session string + vault note) / specific reason + Regenerate.
+  Secret never logged; poll query removed on close so it does not linger.
+- `frontend/src/features/pool-admin/index.ts` — barrel.
+- `frontend/src/pages/admin/pool.tsx` — page shell (mirrors admin-metrics): head
+  with Refresh + Add-account, loading/error (503 messaging), `PoolHealthTable`,
+  `QrLoginDialog`.
+- `frontend/tests/unit/admin/pool-admin.spec.ts` — 17 tests (api paths, query/
+  poll options incl. terminal stop condition, status/state narrowing, messages,
+  cooldown, not-found guard).
+
+**Files (edited):** `path.ts` (+`admin.pool`), `router.ts` (+`adminPoolRoute`),
+`pages/admin/index.ts` (barrel), `pages/index/app-shell.tsx` (superuser-gated
+"TG pool (admin)" link in the account menu), `package.json`/`package-lock.json`
+(+`qrcode.react@^4.2.0`), `openapi.json` + `gen.types.ts` (regen, additive only).
+
+**Verify (authoritative gate):** `tsc -b` clean; `eslint .` clean (only a
+baseline-data advisory); `vitest run` 303/303 (17 new); `npm run build` green.
+Live `/admin/pool` render against the running stack deferred to the TEST stage
+(needs backend); build+typecheck is the gate here.
+
+**Notes/gotchas:** backend types `state`/`status` as plain `string` (not enums)
+in OpenAPI → local literal unions + narrowers in `lib.ts`. OpenAPI dump = `make
+gen-openapi` (`GEN_DUMP_ENV uv run --directory backend python scripts/dump_openapi.py`,
+writes straight to `frontend/src/shared/api/openapi.json`) then `npm run gen:api`;
+diff is additive (271/0 openapi, 240/0 types) so no drift on existing routes.

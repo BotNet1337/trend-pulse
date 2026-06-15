@@ -9,6 +9,7 @@ import { ProtectedLayout, RootLayout } from '@/pages/index/layout';
 import {
   AccountSettingsPage,
   AdminMetricsPage,
+  AdminPoolPage,
   AlertDetailPage,
   AlertsListPage,
   AnonymousLayout,
@@ -89,6 +90,14 @@ const adminMetricsRoute = createRoute({
   getParentRoute: () => protectedContentRoute,
   path: paths.admin.metrics,
   component: AdminMetricsPage,
+});
+
+// Admin TG pool dashboard (TASK-117) — same static registration + 404-clone
+// gate for non-superusers; the real gate is `current_superuser` on the server.
+const adminPoolRoute = createRoute({
+  getParentRoute: () => protectedContentRoute,
+  path: paths.admin.pool,
+  component: AdminPoolPage,
 });
 
 const accountSettingsRoute = createRoute({
@@ -192,6 +201,7 @@ const routeTree = rootRoute.addChildren([
     protectedContentRoute.addChildren([
       indexRoute,
       adminMetricsRoute,
+      adminPoolRoute,
       accountSettingsRoute,
       accountInviteRoute,
       billingRoute,

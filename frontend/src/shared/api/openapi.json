@@ -839,6 +839,175 @@
         "title": "Plan",
         "type": "string"
       },
+      "PoolHealthAccount": {
+        "additionalProperties": false,
+        "description": "One pool account's health (per-account identity is the integer index only).",
+        "properties": {
+          "cooldown_remaining_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cooldown Remaining Seconds"
+          },
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          },
+          "last_error_reason": {
+            "default": "",
+            "title": "Last Error Reason",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "state"
+        ],
+        "title": "PoolHealthAccount",
+        "type": "object"
+      },
+      "PoolHealthResponse": {
+        "additionalProperties": false,
+        "description": "`GET /pool-admin/pool-health` body — aggregates + per-account list + staleness.\n\n`stale` is true when the snapshot is missing/old (collector down or lagging);\nin that case the aggregates are zeroed and `accounts` is empty so the UI can\nsay \"no fresh data from collector\" without erroring.",
+        "properties": {
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/PoolHealthAccount"
+            },
+            "title": "Accounts",
+            "type": "array"
+          },
+          "as_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "cooling": {
+            "default": 0,
+            "title": "Cooling",
+            "type": "integer"
+          },
+          "degraded": {
+            "default": false,
+            "title": "Degraded",
+            "type": "boolean"
+          },
+          "healthy": {
+            "default": 0,
+            "title": "Healthy",
+            "type": "integer"
+          },
+          "quarantined": {
+            "default": 0,
+            "title": "Quarantined",
+            "type": "integer"
+          },
+          "size": {
+            "default": 0,
+            "title": "Size",
+            "type": "integer"
+          },
+          "stale": {
+            "default": true,
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "target": {
+            "default": 0,
+            "title": "Target",
+            "type": "integer"
+          }
+        },
+        "title": "PoolHealthResponse",
+        "type": "object"
+      },
+      "QRLoginPollResponse": {
+        "additionalProperties": false,
+        "description": "`GET /pool-admin/qr-login/{token}` body — the current login state.\n\n`session_string` is the NEWLY minted StringSession, present ONLY on SUCCESS.\nIt is a SECRET (the admin copies it to the vault); it is never logged and is\nserved only to a superuser over HTTPS.",
+        "properties": {
+          "expires_at": {
+            "title": "Expires At",
+            "type": "number"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "session_string": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session String"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "expires_at"
+        ],
+        "title": "QRLoginPollResponse",
+        "type": "object"
+      },
+      "QRLoginStartResponse": {
+        "additionalProperties": false,
+        "description": "`POST /pool-admin/qr-login/start` body — the QR deep link + expiry.",
+        "properties": {
+          "expires_at": {
+            "title": "Expires At",
+            "type": "number"
+          },
+          "qr_url": {
+            "title": "Qr Url",
+            "type": "string"
+          },
+          "timeout_seconds": {
+            "title": "Timeout Seconds",
+            "type": "integer"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "qr_url",
+          "expires_at",
+          "timeout_seconds"
+        ],
+        "title": "QRLoginStartResponse",
+        "type": "object"
+      },
       "ReferralMeRead": {
         "additionalProperties": false,
         "description": "Response schema for GET /referral/me.\n\nref_code: the authenticated user's unique share code (generated lazily).\nreferral_link: full registration URL pre-filled with the ref code.\nrewards: list of reward rows earned by this user (pending and paid).",
@@ -2628,6 +2797,108 @@
         "summary": "Subscribe Pack",
         "tags": [
           "packs"
+        ]
+      }
+    },
+    "/v1/pool-admin/pool-health": {
+      "get": {
+        "description": "Read the latest `pool:health:latest` snapshot from Redis.\n\nMissing/old snapshot (collector down ≥ TTL, or lagging) → `stale=true` with\nempty aggregates. Redis unreachable → 503 envelope (not an unhandled 500).\nA parse/validation failure of a present snapshot is treated as stale.",
+        "operationId": "get_pool_health_v1_pool_admin_pool_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolHealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Latest pool-health snapshot (superuser only)",
+        "tags": [
+          "pool-admin"
+        ]
+      }
+    },
+    "/v1/pool-admin/qr-login/start": {
+      "post": {
+        "description": "Start a QR login and return the deep link + token.\n\nAuth: 401 unauthenticated, 403 non-superuser. Maps service raise-paths:\nmissing creds → 503, registry at capacity → 429. No secrets logged.",
+        "operationId": "start_qr_login_v1_pool_admin_qr_login_start_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QRLoginStartResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Begin a QR login (superuser only)",
+        "tags": [
+          "pool-admin"
+        ]
+      }
+    },
+    "/v1/pool-admin/qr-login/{token}": {
+      "get": {
+        "description": "Poll an in-progress login.\n\nReflects `service.poll()`: unknown/expired tokens return status `expired`\n(200, never 404/500 — the UI polls in a loop). On SUCCESS the body carries the\nminted `session_string` (secret, never logged).",
+        "operationId": "poll_qr_login_v1_pool_admin_qr_login__token__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QRLoginPollResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Poll a QR login (superuser only)",
+        "tags": [
+          "pool-admin"
         ]
       }
     },
