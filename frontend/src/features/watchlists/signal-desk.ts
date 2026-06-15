@@ -2,16 +2,18 @@
  * Signal Desk — pure presentational helpers for the watchlists table.
  *
  * VISUAL ONLY: these helpers drive the client-side UI state (search, status
- * segment, density, column sort) of the redesigned `/watchlists` screen. They
- * never touch data fetching, mutations or routing.
+ * segment, density, column sort) and shape the live-signal columns of the
+ * redesigned `/watchlists` screen. They never touch data fetching, mutations or
+ * routing.
  *
  * Backend reality (WatchlistRead, ADR-001): a watchlist = exactly one channel
- * plus a topic and an alert_config (score_threshold / min_channels / lang).
- * There is no live-velocity, sparkline, last-alert or pause/active field, so
- * those columns degrade to neutral placeholders — we never fabricate values.
+ * plus a topic, an alert_config (score_threshold / min_channels / lang) and a
+ * live `signal` (TASK-096): `live_velocity`, `live_score`, `sparkline_24h`,
+ * `last_alert_at`. Every signal field is graceful (null / empty when there is no
+ * data) — these helpers preserve that and never fabricate values.
  */
 
-import type { WatchlistRead } from '@/entities/watchlist';
+import type { WatchlistRead, WatchlistSignal } from '@/entities/watchlist';
 
 /** Client-side status segment. Only states the backend can back truthfully. */
 export type DeskStatus = 'all' | 'active';
@@ -115,4 +117,105 @@ export function nextSort(current: DeskSort, column: DeskSortKey): DeskSort {
     return { key: column, dir: current.dir === 'asc' ? 'desc' : 'asc' };
   }
   return { key: column, dir: 'desc' };
+}
+
+// ── Live signal helpers (TASK-096) ─────────────────────────────────────────────
+
+/** Velocity badge tier — maps the CSS classes `.vel-badge.{hot,warm,calm}`. */
+export type VelocityTier = 'hot' | 'warm' | 'calm';
+
+/**
+ * Velocity tiers over the scorer's normalized velocity (∈ [0, 1]). Thresholds:
+ * hot ≥ 0.5, warm ≥ 0.2, else calm. `null`/non-finite velocity → `calm` (the
+ * neutral, no-data tier). Chosen in TASK-096 ## Discussion.
+ */
+export const VELOCITY_HOT_THRESHOLD = 0.5;
+export const VELOCITY_WARM_THRESHOLD = 0.2;
+
+export function velocityTier(velocity: number | null | undefined): VelocityTier {
+  if (velocity == null || !Number.isFinite(velocity)) return 'calm';
+  if (velocity >= VELOCITY_HOT_THRESHOLD) return 'hot';
+  if (velocity >= VELOCITY_WARM_THRESHOLD) return 'warm';
+  return 'calm';
+}
+
+/**
+ * Human label for the velocity badge: a "×baseline"-style multiplier. The scorer
+ * velocity is a normalized [0, 1] burst term, surfaced as `×{n.n}` (one decimal).
+ * Returns `null` when there is no velocity → the row shows its no-data placeholder.
+ */
+export function formatVelocityBadge(velocity: number | null | undefined): string | null {
+  if (velocity == null || !Number.isFinite(velocity)) return null;
+  return `×${velocity.toFixed(1)} baseline`;
+}
+
+/** A sparkline column has a real series only when it carries ≥1 finite point. */
+export function hasSparkline(series: readonly number[] | null | undefined): boolean {
+  return Array.isArray(series) && series.some((v) => Number.isFinite(v));
+}
+
+/**
+ * Map an hourly `viral_score` series (0-100, oldest→newest) to SVG polyline
+ * points inside `width`×`height`. Y is inverted (higher score → higher on
+ * screen) and the series is normalized to its own max so a flat-but-present
+ * series still draws a visible line. Empty/invalid series → `''` (caller renders
+ * the placeholder). A single point draws a flat mid line across the width.
+ */
+export function sparklinePoints(
+  series: readonly number[] | null | undefined,
+  width: number,
+  height: number,
+): string {
+  if (!hasSparkline(series) || width <= 0 || height <= 0) return '';
+  const points = (series as number[]).filter((v) => Number.isFinite(v));
+  const max = Math.max(...points, 0);
+  const safeMax = max > 0 ? max : 1;
+  if (points.length === 1) {
+    const y = height - (points[0] / safeMax) * height;
+    return `0,${y.toFixed(1)} ${width},${y.toFixed(1)}`;
+  }
+  const stepX = width / (points.length - 1);
+  return points
+    .map((value, index) => {
+      const x = index * stepX;
+      const y = height - (value / safeMax) * height;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(' ');
+}
+
+/**
+ * Short, locale-agnostic "last alert" label from an ISO timestamp. Returns
+ * `null` when there is no alert (caller renders the `—` placeholder). Compact
+ * relative form: `just now`, `Nm ago`, `Nh ago`, `Nd ago`, else a date.
+ */
+export function formatLastAlert(
+  isoTimestamp: string | null | undefined,
+  now: Date = new Date(),
+): string | null {
+  if (!isoTimestamp) return null;
+  const then = new Date(isoTimestamp);
+  if (Number.isNaN(then.getTime())) return null;
+  const diffMs = now.getTime() - then.getTime();
+  if (diffMs < 0) return 'just now';
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return then.toISOString().slice(0, 10);
+}
+
+/** Convenience accessor: the row's signal, or an all-empty signal fallback. */
+export function rowSignal(watchlist: WatchlistRead): WatchlistSignal {
+  return (
+    watchlist.signal ?? {
+      live_velocity: null,
+      live_score: null,
+      sparkline_24h: [],
+      last_alert_at: null,
+    }
+  );
 }

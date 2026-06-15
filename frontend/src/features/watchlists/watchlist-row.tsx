@@ -1,16 +1,31 @@
 /**
  * WatchlistRow — one row of the Signal Desk table (`/watchlists`).
  *
- * VISUAL ONLY: renders a watchlist with the SAME data and the SAME edit/delete
- * handlers the previous card used. Signal columns the backend does not provide
- * yet (24h sparkline series, live ×baseline velocity, last-alert) degrade to a
- * neutral placeholder — no fabricated values, no fabricated API calls (there is
- * no pause endpoint, so no pause action is rendered).
+ * Renders a watchlist with the SAME edit/delete handlers the previous card used,
+ * plus the live `signal` (TASK-096): a real 24h sparkline, the live ×baseline
+ * velocity badge (hot/warm/calm tiers) and the last-alert time. Every signal
+ * field is graceful — when the backend has no data the column falls back to its
+ * neutral placeholder; no fabricated values, no pause action (no pause endpoint).
  */
 
 import React from 'react';
 import type { WatchlistRead } from '@/entities/watchlist';
-import { sourcesCount, thresholdBarPercent } from './signal-desk';
+import {
+  sourcesCount,
+  thresholdBarPercent,
+  rowSignal,
+  velocityTier,
+  formatVelocityBadge,
+  hasSparkline,
+  sparklinePoints,
+  formatLastAlert,
+} from './signal-desk';
+
+// Sparkline SVG canvas (matches the `.spark svg` CSS box and the placeholder viewBox).
+const SPARK_WIDTH = 76;
+const SPARK_HEIGHT = 26;
+// Draw the line within an inset band so the stroke is never clipped at the edges.
+const SPARK_INSET = 6;
 
 interface WatchlistRowProps {
   watchlist: WatchlistRead;
@@ -54,6 +69,20 @@ export const WatchlistRow: React.FC<WatchlistRowProps> = ({
   const barPercent = thresholdBarPercent(threshold);
   const sources = sourcesCount(watchlist);
 
+  // Live signal (TASK-096) — every field graceful-empty when there is no data.
+  const signal = rowSignal(watchlist);
+  const velocity = signal.live_velocity;
+  const tier = velocityTier(velocity);
+  const velocityLabel = formatVelocityBadge(velocity);
+  const sparklineSeries = signal.sparkline_24h ?? [];
+  const sparklineOn = hasSparkline(sparklineSeries);
+  const sparkPoints = sparklinePoints(
+    sparklineSeries,
+    SPARK_WIDTH - SPARK_INSET * 2,
+    SPARK_HEIGHT - SPARK_INSET * 2,
+  );
+  const lastAlertLabel = formatLastAlert(signal.last_alert_at);
+
   return (
     <tr tabIndex={0} aria-label={`Watchlist ${handle} — ${topic}`}>
       <td>
@@ -69,21 +98,44 @@ export const WatchlistRow: React.FC<WatchlistRowProps> = ({
           </span>
         </div>
       </td>
-      {/* Live signal: no backend series yet → neutral placeholder, not fake data. */}
+      {/* Live signal: real 24h sparkline + ×baseline velocity, graceful placeholder when empty. */}
       <td>
         <div className="spark">
-          <svg className="spark__placeholder" viewBox="0 0 76 26" fill="none" aria-hidden="true">
-            <polyline
-              points="0,14 12,14 24,14 36,14 48,14 60,14 76,14"
-              stroke="var(--fs-text-faint)"
-              strokeWidth="2"
-              strokeDasharray="3 3"
-              strokeLinecap="round"
-            />
+          <svg
+            className={sparklineOn ? 'spark__line' : 'spark__placeholder'}
+            viewBox={`0 0 ${SPARK_WIDTH} ${SPARK_HEIGHT}`}
+            fill="none"
+            aria-hidden="true"
+          >
+            {sparklineOn ? (
+              <g transform={`translate(${SPARK_INSET} ${SPARK_INSET})`}>
+                <polyline
+                  points={sparkPoints}
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </g>
+            ) : (
+              <polyline
+                points="0,14 12,14 24,14 36,14 48,14 60,14 76,14"
+                stroke="var(--fs-text-faint)"
+                strokeWidth="2"
+                strokeDasharray="3 3"
+                strokeLinecap="round"
+              />
+            )}
           </svg>
-          <span className="vel-badge calm" title="Live velocity data is not available yet">
-            — no live data
-          </span>
+          {velocityLabel !== null ? (
+            <span className={`vel-badge ${tier}`} title={`Live velocity: ${velocityLabel}`}>
+              {velocityLabel}
+            </span>
+          ) : (
+            <span className="vel-badge calm" title="Live velocity data is not available yet">
+              — no live data
+            </span>
+          )}
         </div>
       </td>
       <td>
@@ -98,9 +150,15 @@ export const WatchlistRow: React.FC<WatchlistRowProps> = ({
           <span className="thr__num">{threshold}</span>
         </span>
       </td>
-      {/* Last alert: no backend field → neutral placeholder. */}
+      {/* Last alert: real timestamp when present, neutral placeholder otherwise. */}
       <td>
-        <span className="cell-mute">—</span>
+        {lastAlertLabel !== null ? (
+          <span className="cell-mute" title={signal.last_alert_at ?? undefined}>
+            {lastAlertLabel}
+          </span>
+        ) : (
+          <span className="cell-mute">—</span>
+        )}
       </td>
       <td>
         <span className="cell-status">

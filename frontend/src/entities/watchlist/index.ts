@@ -1,5 +1,6 @@
 export type {
   WatchlistRead,
+  WatchlistSignal,
   WatchlistCreate,
   WatchlistUpdate,
   ChannelRef,
