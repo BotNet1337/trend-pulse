@@ -54,5 +54,18 @@ uv run python scripts/quality_report.py \
 
 ---
 
-## B1–C2 — pending (see loop doc for queue)
-Not yet started. Next: B1 forward feature-snapshot capture (`cluster_feature_snapshots` Alembic migration + scorer hook).
+## B1 — Forward feature-snapshot capture (TASK-109)
+
+**What.** New `cluster_feature_snapshots` table (Alembic migration 0023) + a hook in the 5-min scorer tick (`scorer.tasks._capture_feature_snapshots`) that, for EVERY fresh cluster, writes a **metrics-only** snapshot at fixed early observation windows (15m/30m/1h after `first_seen`): cumulative-over-`[first_seen, now]` views/forwards/reactions, post_count, distinct_channels, breadth_velocity (channels/hr), age_seconds. Idempotent (`UNIQUE(user_id,cluster_id,window_label)` + ON CONFLICT DO NOTHING). NO raw text (compliance: text purged at 48h). The future label is NOT stored — it is a B2 join (leak-free).
+
+This is the lever that grows the thin quality subset B0 revealed: TrendPulse builds its OWN forward-labeled dataset from the live stream going forward (self-supervised), instead of being capped by the backfill-shaped historical corpus.
+
+**Design highlights.**
+- Pure logic (`scorer/feature_snapshots.py`) is DB-free + unit-tested (window-due crossing, breadth-velocity clamp, aggregation, validation).
+- The snapshot write is SAVEPOINT-isolated + try/except-guarded → a capture failure can NEVER abort the user's score/alert transaction (data capture is best-effort; alerts are revenue-critical).
+- KNOWN LIMITATION (documented + tested): capture is coupled to scoring freshness (`scorer_recent_window_seconds`, default 1h). A cluster that goes quiet before ~1h ages out of the freshness window before its `1h` snapshot is written → the `1h` feature is missing-not-at-random for short-lived stories. B2 must treat a missing window as missing (not impute). The 15m/30m windows are reliably captured for active clusters.
+
+**Verification (real pgvector:pg16).** 12 unit + 5 integration (crossed-windows-only, backfill+idempotent, young→none, stale-freshness→none, per-user isolation) + 3 migration (upgrade head, 0023 up/down round-trip). Full backend unit suite **1019 passed**; ruff + mypy --strict (184 files) clean; no `Any`/`# type: ignore`. Adversarial code + database reviews (opus, fresh ctx) PASS; all HIGH/MEDIUM findings folded into the PR. PR: _pending_.
+
+## B2–C2 — pending (see loop doc for queue)
+Next: B2 forward-time-split harness (Cheng "doubling" label) — features from `[birth, T_obs]` only (the B1 snapshots become the live feature source), chronological train/val/test split with a gap, PR-AUC/ROC-AUC vs observation window.

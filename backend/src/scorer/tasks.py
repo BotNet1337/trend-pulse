@@ -56,10 +56,12 @@ from billing.limits import effective_plan
 from billing.plans import Plan
 from config import get_settings
 from observability.logging import log_event
+from scorer.feature_snapshots import build_snapshot_metrics, windows_due
 from scorer.score import FORWARD_FACTOR, REACTION_FACTOR, ScoreInputs, compute_components
 from storage.database import get_session
 from storage.models.alerts import Alert
 from storage.models.base import utcnow
+from storage.models.cluster_feature_snapshots import ClusterFeatureSnapshot
 from storage.models.clusters import Cluster
 from storage.models.posts import Post
 from storage.models.scores import Score
@@ -482,6 +484,93 @@ def _resolve_deliver_after(
     return None
 
 
+def _capture_feature_snapshots(session: Session, *, user_id: int, cluster: Cluster) -> None:
+    """Write any DUE forward feature snapshots for a cluster (TASK-109, B1).
+
+    Opportunistic at the 5-min scorer tick: computes the cluster's age (now -
+    first_seen), reads which observation windows (15m/30m/1h) are already captured,
+    and inserts a metrics-only snapshot for each crossed-but-uncaptured window. The
+    metrics are cumulative over `[first_seen, now]` (posts with `first_seen <=
+    posted_at <= now`), NOT the score's 24h rolling window — the early-window feature
+    is "what accrued by T_obs". The `<= now` upper bound keeps the feature leak-free at
+    the observation instant: a source-supplied future `posted_at` (clock skew) can never
+    leak post-T_obs data into an early-window snapshot. Idempotent via the unique
+    `(user_id, cluster_id, window_label)` constraint + ON CONFLICT DO NOTHING, so
+    re-ticking never duplicates and a missed earlier tick is backfilled. NO raw text is
+    read or stored (compliance: metrics only).
+
+    Capture freshness is coupled to scoring freshness (this runs only for clusters the
+    scorer iterates, i.e. `updated_at` within `scorer_recent_window_seconds`, default
+    1h). KNOWN LIMITATION: a cluster that goes quiet before ~1h can age out of the
+    freshness window before its `1h` snapshot is written, so the `1h` feature is
+    missing-not-at-random for short-lived stories. B2 must treat a missing window as
+    such (not impute it). The 15m/30m windows are reliably captured within the first
+    hour of an active cluster.
+    """
+    now = utcnow()
+    age_seconds = int((now - cluster.first_seen).total_seconds())
+
+    captured = frozenset(
+        session.scalars(
+            select(ClusterFeatureSnapshot.window_label)
+            .where(ClusterFeatureSnapshot.user_id == user_id)
+            .where(ClusterFeatureSnapshot.cluster_id == cluster.id)
+        ).all()
+    )
+    due = windows_due(age_seconds=age_seconds, captured=captured)
+    if not due:
+        return
+
+    posts = list(
+        session.scalars(
+            select(Post)
+            .where(Post.user_id == user_id)
+            .where(Post.cluster_id == cluster.id)
+            .where(Post.posted_at >= cluster.first_seen)
+            .where(Post.posted_at <= now)
+        ).all()
+    )
+    if not posts:
+        # Nothing accrued since birth → nothing to snapshot (a fresh cluster whose
+        # posts all fell outside the [first_seen, now] cumulative window).
+        return
+
+    metrics = build_snapshot_metrics(
+        post_views=[p.views for p in posts],
+        post_forwards=[p.forwards for p in posts],
+        post_reactions=[p.reactions for p in posts],
+        channel_ids=[p.channel_id for p in posts],
+        age_seconds=age_seconds,
+    )
+
+    # The snapshot writes run in a SAVEPOINT so a snapshot-side error (e.g. a DB
+    # constraint hiccup) rolls back ONLY the snapshot and can never abort the
+    # surrounding score/alert transaction — data capture (B1) must never suppress the
+    # revenue-critical alert path. Mirrors `_create_alert_idempotent`'s SAVEPOINT.
+    with session.begin_nested():
+        for window_label in due:
+            stmt = (
+                pg_insert(ClusterFeatureSnapshot)
+                .values(
+                    user_id=user_id,
+                    cluster_id=cluster.id,
+                    window_label=window_label,
+                    age_seconds=age_seconds,
+                    post_count=metrics.post_count,
+                    views=metrics.views,
+                    forwards=metrics.forwards,
+                    reactions=metrics.reactions,
+                    distinct_channels=metrics.distinct_channels,
+                    breadth_velocity=metrics.breadth_velocity,
+                    captured_at=now,
+                )
+                .on_conflict_do_nothing(
+                    constraint="uq_cluster_feature_snapshots_user_cluster_window"
+                )
+            )
+            session.execute(stmt)
+
+
 def _score_user(
     session: Session, *, user_id: int, window_start: datetime
 ) -> list[tuple[int, int | None]]:
@@ -506,6 +595,19 @@ def _score_user(
 
     created: list[tuple[int, int | None]] = []
     for cluster in _recent_clusters(session, user_id=user_id, window_start=window_start):
+        # B1 (TASK-109): capture the forward early-window feature snapshot for EVERY
+        # fresh cluster (independent of topic-match — data capture, not alerting), so
+        # the self-supervised dataset records every story's early trajectory. Guarded:
+        # a snapshot failure is logged and skipped — it must NEVER suppress this user's
+        # scoring/alerts (data capture is best-effort, alerts are revenue-critical).
+        try:
+            _capture_feature_snapshots(session, user_id=user_id, cluster=cluster)
+        except Exception:
+            # Best-effort capture; never break the alert path. Logged, not swallowed.
+            logger.warning(
+                "feature_snapshot_capture_failed", extra={"cluster_id": cluster.id}, exc_info=True
+            )
+
         # Match by CHANNEL OVERLAP, not topic-string equality (TASK-084 root cause):
         # cluster.topic is free text, watchlist.topic is a category — never equal.
         cluster_channels = _cluster_channel_ids(
