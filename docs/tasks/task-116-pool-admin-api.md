@@ -93,13 +93,13 @@ All endpoints `Depends(current_superuser)` (403 for non-admin, 401 unauthenticat
   pool-health fresh/stale, 503 when unconfigured.
 
 ## Checkpoints
-current_step: 3
+current_step: 4
 baseline_commit: 6949babd443c7bc0d3152a2f6cf097c72ec3f42f
-branch: ""
+branch: "feat/tg-qr-login"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
+- [x] 3 do (TDD: failing test → minimal code)
 - [ ] 4 verify (G2 — tests + lint + typecheck + real request)
 - [ ] 5 review (auto, adversarial)
 - [ ] 5.5 security (auth + secrets + public API — REQUIRED)
@@ -108,4 +108,43 @@ lock: ""
 debug_runs: []
 
 ## Details
-(initial)
+
+### Step 3 — do (TDD, RED→GREEN)
+
+Implemented `backend/src/api/routes/pool_admin.py` — a superuser-gated `APIRouter(prefix="/pool-admin")`
+mirroring `routes/ops_business.py` (the `Depends(current_superuser)` idiom) and `routes/ops.py`
+(short-lived, socket-bounded Redis client). Wired into `api/main.py` v1 router next to
+`ops_business_router`. No `errors.py` change: failures use plain `HTTPException` (503/429), mapped to the
+unified envelope by the existing `_http_exception_handler` (status→ErrorCode).
+
+Endpoints (all superuser-gated; 401 anon / 403 non-admin):
+- `POST /pool-admin/qr-login/start` → 200 `QRLoginStartResponse {token, qr_url, expires_at, timeout_seconds}`;
+  `QRLoginNotConfiguredError`→503 (generic message, no leak), `QRLoginCapacityError`→429.
+- `GET /pool-admin/qr-login/{token}` → 200 `QRLoginPollResponse {status, expires_at, session_string?, reason?}`;
+  unknown/expired token → status `expired` (200, not 404/500); `session_string` present only on success.
+- `GET /pool-admin/pool-health` → 200 `PoolHealthResponse {size,cooling,quarantined,healthy,target,degraded,as_of,stale,accounts[]}`;
+  missing/old snapshot → `stale=true` (zeroed aggregates / empty accounts); Redis unreachable (`RedisError`) → 503; malformed snapshot → treated as stale.
+
+Design notes:
+- `get_qr_login_service()` — module-level lazy PROCESS-SINGLETON `QRLoginService.from_settings_values`
+  (one in-process registry per worker, per TASK-114). `get_pool_health_redis()` — fresh client per request,
+  socket-timeout bounded, `decode_responses=True`, returned behind a narrow `_RedisLike` protocol via a
+  one-`cast` `_RedisAdapter` seam (no bare `Any`, no `# type: ignore`).
+- Pydantic boundary models all `ConfigDict(extra="forbid")`; `_PoolHealthSnapshot` validates the raw
+  TASK-115 JSON (`extra="ignore"` for forward-compat). `session_string` field documented SECRET; router
+  logs no request/response bodies. Staleness = snapshot age > 2× `collect_interval_seconds`.
+
+Tests `backend/tests/integration/test_pool_admin_api.py` (`@pytest.mark.integration`): auth matrix
+(anon 401 / user 403 / superuser 200 across all 3 routes), start happy/503/429, poll success(+session_string)/
+expired, pool-health fresh(stale=false)/missing(stale=true)/old(stale=true). QR service + Redis faked via
+`app.dependency_overrides` (fakeredis); Origin header set on the client for CSRF on the POST.
+
+Evidence (worktree root):
+- `make fmt && make lint` → "All checks passed!"; `make typecheck` → "Success: no issues found in 187 source files".
+- `make test` (unit) → `1100 passed, 290 deselected`.
+- New integration file (postgres @5433 pgvector + fake redis): `11 passed` —
+  `uv run --directory backend pytest -m integration tests/integration/test_pool_admin_api.py`.
+- OpenAPI dump confirms all 3 paths under `/v1/pool-admin/...` with `APIKeyCookie` security (authoritative
+  behavioral proof is the fake-redis + DB-superuser integration suite; no live stack needed).
+
+Scope = pool_admin.py (new) + main.py (+5 lines) + test_pool_admin_api.py (new) + this task doc.

@@ -53,6 +53,7 @@ from api.referral import router as referral_router
 from api.routes import account_router, ops_router
 from api.routes.email_unsubscribe import router as email_unsubscribe_router
 from api.routes.ops_business import router as ops_business_router
+from api.routes.pool_admin import router as pool_admin_router
 from api.security.csrf import CSRFOriginMiddleware
 from api.trending.router import router as trending_router
 from api.watchlist import router as watchlist_router
@@ -362,6 +363,10 @@ v1_router.include_router(email_unsubscribe_router)
 
 # --- Business metrics dashboard (TASK-051): GET /ops/business-metrics — superuser-only. ---
 v1_router.include_router(ops_business_router)
+
+# --- Pool-admin (TASK-116): POST/GET /pool-admin/qr-login/* + GET /pool-admin/pool-health
+# — superuser-only QR-login + pool-health snapshot read (EPIC-TG-QR-POOL). ---
+v1_router.include_router(pool_admin_router)
 
 # Mount the versioned router on the app (all routes become /v1/...).
 app.include_router(v1_router)
