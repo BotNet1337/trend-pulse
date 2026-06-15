@@ -19,13 +19,14 @@ from storage import (
     Base,
     Channel,
     Cluster,
+    ClusterFeatureSnapshot,
     Post,
     Score,
     Watchlist,
 )
 
 _EXPECTED_DIM = 384
-_USER_OWNED = (Watchlist, Post, Cluster, Score, Alert)
+_USER_OWNED = (Watchlist, Post, Cluster, Score, Alert, ClusterFeatureSnapshot)
 
 
 def test_embedding_dim_is_384() -> None:
@@ -55,6 +56,7 @@ def test_all_models_share_base_metadata() -> None:
         "showcase_cases",  # TASK-045: proof-of-speed marketing cases
         "referral_rewards",  # TASK-046: referral program reward rows
         "business_metrics_daily",  # TASK-050: daily funnel aggregate
+        "cluster_feature_snapshots",  # TASK-109: forward early-window feature capture (B1)
     }
 
 

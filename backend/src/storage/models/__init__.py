@@ -11,6 +11,7 @@ from storage.models.api_keys import ApiKey
 from storage.models.base import Base
 from storage.models.business_metrics import BusinessMetricsDaily
 from storage.models.channels import Channel, SourceKind
+from storage.models.cluster_feature_snapshots import ClusterFeatureSnapshot
 from storage.models.clusters import EMBEDDING_DIM, Cluster
 from storage.models.posts import Post
 from storage.models.referral_rewards import ReferralReward
@@ -31,6 +32,7 @@ __all__ = [
     "BusinessMetricsDaily",
     "Channel",
     "Cluster",
+    "ClusterFeatureSnapshot",
     "OAuthAccount",
     "Post",
     "ReferralReward",
