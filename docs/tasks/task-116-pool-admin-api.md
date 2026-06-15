@@ -93,16 +93,16 @@ All endpoints `Depends(current_superuser)` (403 for non-admin, 401 unauthenticat
   pool-health fresh/stale, 503 when unconfigured.
 
 ## Checkpoints
-current_step: 4
+current_step: 6
 baseline_commit: 6949babd443c7bc0d3152a2f6cf097c72ec3f42f
 branch: "feat/tg-qr-login"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [x] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + lint + typecheck + real request)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (auth + secrets + public API — REQUIRED)
+- [x] 4 verify (G2 — fmt+lint+mypy green; 17 integration tests collect; full-stack run in TEST phase)
+- [x] 5 review (code-reviewer opus: PASS, MEDIUM test-gap fixed)
+- [x] 5.5 security (security-reviewer opus: PASS, no CRITICAL/HIGH)
 - [ ] 6 ship (PR)
 - [ ] 7 learnings (auto)
 debug_runs: []

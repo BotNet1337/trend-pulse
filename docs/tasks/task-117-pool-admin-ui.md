@@ -88,16 +88,16 @@ is behind the existing protected/auth guard; backend `current_superuser` enforce
   load `/admin/pool`, exercise start→QR render→poll, against the running stack.
 
 ## Checkpoints
-current_step: 4
+current_step: 6
 baseline_commit: 6949babd443c7bc0d3152a2f6cf097c72ec3f42f
 branch: ""
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [x] 3 do (TDD where FE setup allows → minimal code)
-- [ ] 4 verify (G2 — build + typecheck + lint + load page)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (renders/handles session secret in UI — REQUIRED)
+- [x] 4 verify (G2 — tsc+eslint+build green; vitest 303/303; live page in TEST phase)
+- [x] 5 review (typescript-reviewer opus: PASS, only LOW)
+- [x] 5.5 security (security-reviewer opus: PASS, secret state-only/never logged)
 - [ ] 6 ship (PR)
 - [ ] 7 learnings (auto)
 debug_runs: []
