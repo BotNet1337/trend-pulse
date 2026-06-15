@@ -38,6 +38,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, cast
 
 from celery.exceptions import SoftTimeLimitExceeded
+from celery.signals import worker_process_shutdown
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -94,6 +95,33 @@ def _ensure_event_loop() -> asyncio.AbstractEventLoop:
         _loop = asyncio.new_event_loop()
         asyncio.set_event_loop(_loop)
     return _loop
+
+
+@worker_process_shutdown.connect
+def _close_collectors_on_shutdown(**_kwargs: object) -> None:
+    """Gracefully disconnect cached collectors when a prefork child exits (TASK-106).
+
+    A child exits on `worker_max_tasks_per_child` recycle (TASK-099) or worker stop.
+    Without a clean MTProto disconnect, the NEXT child reconnecting the SAME Telegram
+    session can trigger `AuthKeyDuplicatedError` (the session looks used from "two
+    places") — which permanently kills the session on a small pool. Disconnecting here
+    (audit finding-5) reduces that on graceful exits. Best-effort: a SIGKILL (hard time
+    limit) skips this, and any aclose error is logged, never raised out of shutdown.
+    """
+    if _loop is None or _loop.is_closed():
+        return
+    for collector in registry.cached_collectors():
+        try:
+            _loop.run_until_complete(collector.aclose())
+        except Exception:
+            logger.warning(
+                "collector aclose failed on worker shutdown",
+                extra={"kind": collector.kind.value},
+            )
+    try:
+        _loop.close()
+    except Exception:
+        logger.warning("event loop close failed on worker shutdown")
 
 
 def watched_source_refs(session: Session) -> list[SourceRef]:

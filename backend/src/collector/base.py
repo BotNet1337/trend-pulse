@@ -87,3 +87,8 @@ class SourceCollector(Protocol):
     def read(self, refs: list[SourceRef], since: datetime | None) -> AsyncIterator[RawPost]:
         """Yield normalized posts for the unique union of `refs` newer than `since`."""
         ...
+
+    async def aclose(self) -> None:
+        """Gracefully release network clients (MTProto/httpx). Called on worker-process
+        shutdown/recycle so the next child reconnects cleanly (TASK-106). Never raises."""
+        ...

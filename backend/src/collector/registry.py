@@ -39,6 +39,15 @@ def get(kind: SourceKind) -> SourceCollector:
     return _INSTANCES[kind]
 
 
+def cached_collectors() -> list[SourceCollector]:
+    """The collectors instantiated so far (for graceful shutdown — TASK-106).
+
+    Returns only ALREADY-built instances (never triggers lazy construction), so a
+    child that never collected has nothing to close.
+    """
+    return list(_INSTANCES.values())
+
+
 def _build_telegram_collector() -> SourceCollector:
     """Build the production Telegram collector from env settings (lazy)."""
     from collector.telegram.account_pool import AccountPool
