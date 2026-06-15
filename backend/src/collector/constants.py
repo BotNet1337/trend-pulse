@@ -27,6 +27,18 @@ BACKOFF_CAP_SECONDS: Final = 300
 POOL_MIN: Final = 1
 POOL_MAX: Final = 10
 
+# Persistent dead-session quarantine (TASK-102). A Redis SET of NON-SECRET session
+# fingerprints (sha256[:16]) so a quarantine survives worker restarts/recycling
+# (FM-2). TTL is refreshed on each write — generous (30d) since the set is tiny
+# (<= POOL_MAX entries); expiry just means a still-dead session is retried once more
+# after a long idle, and a re-minted session (new fingerprint) auto-recovers.
+QUARANTINE_REDIS_KEY: Final = "pool:quarantined_fingerprints"
+_QUARANTINE_PERSIST_TTL_DAYS: Final = 30
+QUARANTINE_PERSIST_TTL_SECONDS: Final = _QUARANTINE_PERSIST_TTL_DAYS * 24 * 60 * 60
+# Truncation length (hex chars) of the sha256 session fingerprint: 16 hex = 64 bits,
+# collision-safe for a <=10-session pool, one-way (cannot recover the session string).
+SESSION_FINGERPRINT_LEN: Final = 16
+
 # Small courtesy delay between per-channel requests to stay under rate limits.
 INTER_REQUEST_SLEEP_SECONDS: Final = 0.5
 

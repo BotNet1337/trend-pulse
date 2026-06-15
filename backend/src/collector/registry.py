@@ -53,9 +53,13 @@ def _build_telegram_collector() -> SourceCollector:
     factory = build_telethon_client(
         api_id=settings.telegram_api_id, api_hash=settings.telegram_api_hash
     )
-    pool = AccountPool.from_sessions(sessions=telegram_pool_sessions(settings), factory=factory)
-    # Pass settings + redis for pool health self-observation (TASK-035).
-    return TelegramCollector(pool, settings=settings, redis=get_redis_client())
+    # One Redis client, shared by the pool (persistent quarantine, TASK-102) and the
+    # collector (pool-health self-observation, TASK-035).
+    redis = get_redis_client()
+    pool = AccountPool.from_sessions(
+        sessions=telegram_pool_sessions(settings), factory=factory, redis=redis
+    )
+    return TelegramCollector(pool, settings=settings, redis=redis)
 
 
 def _build_twitter_collector() -> SourceCollector:
