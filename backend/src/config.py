@@ -367,6 +367,14 @@ _DEFAULT_FIELD_ENCRYPTION_KEY: str = _make_dev_fernet_key()
 _DEFAULT_POOL_MIN_HEALTHY = 3
 # Ops self-alert throttle: at most one Telegram message per reason per window.
 _DEFAULT_OPS_ALERT_THROTTLE_SECONDS = 3600
+# TASK-100 resource alert thresholds (the 300s metric tick fires a throttled ops
+# self-alert when crossed): Redis used/maxmemory ratio (the prod cap is 224mb
+# noeviction — 0.9 leaves headroom before broker writes get rejected) and the
+# ingest-staleness window (no ingested post for this long = ingest stalled — dead
+# pool / undrained buffer / wedged collector; 1800s since crypto-RU channels post
+# constantly). Ratio is validated ∈ (0, 1].
+_DEFAULT_REDIS_MEMORY_ALERT_RATIO = 0.9
+_DEFAULT_INGEST_STALENESS_ALERT_SECONDS = 1800
 
 # Email — templates service + SMTP transport (TASK-025). Named, non-secret
 # defaults — never magic literals (CONVENTIONS). Dev defaults point to the
@@ -623,6 +631,9 @@ class Settings(BaseSettings):
     # Supplied via sensitive.env / vault; NEVER logged or hardcoded.
     ops_telegram_bot_token: str = ""
     ops_telegram_chat_id: str = ""
+    # Resource alert thresholds (TASK-100). Non-secret, settable; defaults above.
+    redis_memory_alert_ratio: float = _DEFAULT_REDIS_MEMORY_ALERT_RATIO
+    ingest_staleness_alert_seconds: int = _DEFAULT_INGEST_STALENESS_ALERT_SECONDS
     # Non-secret: throttle window (seconds) per alert reason (default 1 hour).
     ops_alert_throttle_seconds: int = _DEFAULT_OPS_ALERT_THROTTLE_SECONDS
 
@@ -810,6 +821,24 @@ class Settings(BaseSettings):
                 f"celery_task_time_limit_seconds ({v}s) so the per-user lock outlives a "
                 "hard-killed run_user_batch (no concurrent same-user batch on redelivery)."
             )
+        return v
+
+    @field_validator("redis_memory_alert_ratio")
+    @classmethod
+    def validate_redis_memory_alert_ratio(cls, v: float) -> float:
+        """Fail fast (TASK-100): the Redis-memory alert ratio must be a fraction in
+        (0, 1] — 0 would alert always, >1 would never alert."""
+        if not 0.0 < v <= 1.0:
+            raise ValueError(f"redis_memory_alert_ratio ({v}) must be in (0, 1].")
+        return v
+
+    @field_validator("ingest_staleness_alert_seconds")
+    @classmethod
+    def validate_ingest_staleness_alert_seconds(cls, v: int) -> int:
+        """Fail fast (TASK-100): the staleness window must be positive — 0/negative
+        would mark every (even just-ingested) post stale and alert every tick."""
+        if v <= 0:
+            raise ValueError(f"ingest_staleness_alert_seconds ({v}) must be > 0.")
         return v
 
     @field_validator("public_base_url", mode="before")

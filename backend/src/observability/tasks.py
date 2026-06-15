@@ -24,10 +24,13 @@ import logging
 from celery_app import celery_app
 from config import get_settings
 from observability.constants import EMIT_SIGNAL_LATENCY_TASK
+from observability.pool_health import notify_ops
 from observability.signal_latency import (
     emit_alert_precision,
+    emit_ingest_staleness,
     emit_redis_memory,
     emit_signal_latency,
+    is_redis_memory_critical,
 )
 from storage.database import get_session
 from storage.redis_client import get_redis_client
@@ -58,10 +61,25 @@ def emit_signal_latency_task() -> None:
             extra={"exc_type": type(exc).__name__},
         )
 
-    # --- Part 2: Redis memory metric ---
+    # --- Part 2: Redis memory metric (+ near-cap ops alert, TASK-100) ---
     try:
         redis = get_redis_client()
-        emit_redis_memory(redis)
+        mem = emit_redis_memory(redis)
+        used = mem.get("used", 0)
+        maxmemory = mem.get("max", 0)
+        if (
+            isinstance(used, int)
+            and isinstance(maxmemory, int)
+            and is_redis_memory_critical(used, maxmemory, settings.redis_memory_alert_ratio)
+        ):
+            pct = used / maxmemory * 100 if maxmemory else 0
+            notify_ops(
+                "redis_memory_high",
+                f"Redis memory {pct:.0f}% of cap ({used} / {maxmemory} bytes) - "
+                "approaching the noeviction limit; broker writes will be rejected at 100%.",
+                settings,
+                redis,
+            )
     except Exception as exc:
         logger.warning(
             "emit_signal_latency_task: Redis metric failed",
@@ -78,5 +96,28 @@ def emit_signal_latency_task() -> None:
     except Exception as exc:
         logger.warning(
             "emit_signal_latency_task: alert_precision metric failed",
+            extra={"exc_type": type(exc).__name__},
+        )
+
+    # --- Part 4: Ingest staleness (+ ops alert, TASK-100) — best-effort. ---
+    # Alerts when no post has been ingested for `ingest_staleness_alert_seconds`
+    # (dead pool / undrained buffer / wedged collector). Empty corpus (NULL) → no alert.
+    try:
+        with get_session() as session:
+            ingest = emit_ingest_staleness(session, settings)
+        if ingest.get("stale"):
+            age_s = ingest.get("age_s")
+            age_min = int(float(age_s) // 60) if isinstance(age_s, (int, float)) else "?"
+            notify_ops(
+                "ingest_stale",
+                f"Ingest stalled - no post ingested for ~{age_min} min "
+                f"(threshold {settings.ingest_staleness_alert_seconds // 60} min). "
+                "Check the TG pool / collector / raw buffer.",
+                settings,
+                get_redis_client(),
+            )
+    except Exception as exc:
+        logger.warning(
+            "emit_signal_latency_task: ingest_staleness metric failed",
             extra={"exc_type": type(exc).__name__},
         )

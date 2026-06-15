@@ -260,6 +260,42 @@ def emit_redis_memory(redis: Redis) -> dict[str, object]:
     return {"used": used, "peak": peak, "max": maxmemory}
 
 
+def is_redis_memory_critical(used: int, maxmemory: int, ratio: float) -> bool:
+    """True iff Redis used memory is at/above ``ratio`` of its configured cap (TASK-100).
+
+    ``maxmemory <= 0`` means an unbounded Redis (dev / no cap) — never critical (there is
+    no cap to approach). Pure + side-effect-free so the alert decision is unit-testable
+    independently of the metric tick and Redis I/O.
+    """
+    if maxmemory <= 0:
+        return False
+    return used / maxmemory >= ratio
+
+
+def emit_ingest_staleness(session: Session, settings: Settings) -> dict[str, object]:
+    """Compute + log how long since the last ingested post; flag ingest staleness (TASK-100).
+
+    ``posts.fetched_at`` (``default=utcnow``) is the ingestion timestamp; ``MAX(fetched_at)``
+    is the most recent ingestion. ``age_s = NOW() - MAX(fetched_at)``; ``stale`` iff a post
+    exists AND ``age_s >= ingest_staleness_alert_seconds``. NULL MAX (no posts — cold start)
+    → ``stale=False`` (do not alert on an empty corpus). Read-only; logs aggregates only;
+    raises on unexpected DB error (caller wraps best-effort, like the other metric parts).
+
+    Returns ``{"age_s": float|None, "stale": bool, "threshold_s": int}``.
+    """
+    threshold_s: int = settings.ingest_staleness_alert_seconds
+    # NOTE: `fetched_at` is unindexed → MAX is a seqscan. Cheap at current table size;
+    # add `ix_posts_fetched_at (fetched_at DESC)` when the table grows large (TASK-104,
+    # backlog — relates to the audit's "Postgres rows grow" finding).
+    row = session.execute(
+        text("SELECT EXTRACT(EPOCH FROM (NOW() - MAX(fetched_at))) AS age_s FROM posts")
+    ).one()
+    age_s: float | None = _extract_seconds(row._mapping["age_s"])
+    stale: bool = age_s is not None and age_s >= threshold_s
+    log_event("ingest_staleness", age_s=age_s, stale=stale, threshold_s=threshold_s)
+    return {"age_s": age_s, "stale": stale, "threshold_s": threshold_s}
+
+
 def emit_alert_precision(
     session: Session,
     settings: Settings,
