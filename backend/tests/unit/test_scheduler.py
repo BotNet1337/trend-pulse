@@ -83,3 +83,55 @@ def test_dispatcher_no_active_users_enqueues_nothing() -> None:
         tasks.enqueue_active_user_batches()
 
     apply_async.assert_not_called()
+
+
+# --- TASK-098: beat heartbeat scheduler (hung-beat liveness signal) ---
+
+
+def test_heartbeat_scheduler_stamps_key_with_ttl() -> None:
+    """tick() stamps a TTL'd Redis heartbeat, then delegates to super().tick()."""
+    import scheduler as sched
+
+    fake_redis = MagicMock(name="redis")
+    with (
+        patch.object(sched, "get_redis_client", return_value=fake_redis),
+        patch.object(sched.PersistentScheduler, "__init__", return_value=None),
+        patch.object(sched.PersistentScheduler, "tick", return_value=42.0) as super_tick,
+    ):
+        scheduler = sched.HeartbeatScheduler()
+        result = scheduler.tick()
+
+    assert result == 42.0  # delegates to super, returns "seconds to next tick"
+    super_tick.assert_called_once()
+    fake_redis.set.assert_called_once()
+    call = fake_redis.set.call_args
+    assert call.args[0] == sched.BEAT_HEARTBEAT_KEY
+    assert call.kwargs.get("ex") == get_settings().beat_heartbeat_ttl_seconds
+
+
+def test_heartbeat_scheduler_tolerates_redis_error() -> None:
+    """A Redis blip in the heartbeat write must NOT crash the scheduler loop."""
+    from redis import RedisError
+
+    import scheduler as sched
+
+    fake_redis = MagicMock(name="redis")
+    fake_redis.set.side_effect = RedisError("boom")
+    with (
+        patch.object(sched, "get_redis_client", return_value=fake_redis),
+        patch.object(sched.PersistentScheduler, "__init__", return_value=None),
+        patch.object(sched.PersistentScheduler, "tick", return_value=7.0) as super_tick,
+    ):
+        scheduler = sched.HeartbeatScheduler()
+        result = scheduler.tick()  # must not raise
+
+    assert result == 7.0
+    super_tick.assert_called_once()
+
+
+def test_beat_heartbeat_ttl_exceeds_beat_max_interval() -> None:
+    """TTL must exceed Celery beat's 300s max_interval so a healthy beat never lets
+    the heartbeat key expire (else the healthcheck would flap)."""
+    settings = get_settings()
+    assert settings.beat_heartbeat_ttl_seconds == 600
+    assert settings.beat_heartbeat_ttl_seconds > 300
