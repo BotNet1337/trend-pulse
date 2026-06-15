@@ -52,6 +52,11 @@ only-include = ["src"]
 # explicitly with `uv sync --group ml` (wired into the worker in a later task).
 ml = [
     "sentence-transformers>=3.3,<4",
+    # C1 (TASK-112): the GBDT virality model. Loaded LAZILY by scorer.viral_model
+    # (the import is inside GbdtViralModel.load) so the api/worker boot path never
+    # imports it unless a model artifact is actually loaded — like sentence-transformers
+    # it stays out of the default image. Offline-installable wheel.
+    "lightgbm>=4.5,<5",
 ]
 dev = [
     "pytest>=8.3,<9",
@@ -148,6 +153,13 @@ ignore_missing_imports = true
 # stubs, so scope the missing-import allowance here instead of inline ignores.
 [[tool.mypy.overrides]]
 module = "sentence_transformers.*"
+ignore_missing_imports = true
+
+# lightgbm (TASK-112, C1): in the opt-in `ml` group (not synced in CI), imported
+# LAZILY inside GbdtViralModel.load (never at module import) and ships without type
+# stubs — scope the missing-import allowance here, not with an inline ignore.
+[[tool.mypy.overrides]]
+module = "lightgbm.*"
 ignore_missing_imports = true
 
 # fastapi-users BaseUserCreate.create_update_dict() is not annotated upstream;
