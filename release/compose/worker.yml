@@ -13,6 +13,9 @@ services:
         UV_VERSION: ${UV_VERSION}
         INSTALL_ML: "true"
     # Consume default + batch + scorer queues (TASK-006 routing).
+    # NOTE: concurrency is intentionally governed by CELERY_WORKER_CONCURRENCY in
+    # settings (TASK-099), NOT a `-c` flag here — do not add `-c`, it would silently
+    # override the setting and can drift from the cpus limit / memory budget below.
     command: celery -A celery_app worker -Q celery,batch,score:global -l info
     env_file:
       - ../env/deploy.env
