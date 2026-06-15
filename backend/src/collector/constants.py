@@ -142,6 +142,17 @@ REDDIT_RATE_LIMIT_INLINE_CAP_SECONDS: Final = 60
 REDDIT_OAUTH_TOKEN_PATH: Final = "/api/v1/access_token"
 REDDIT_TOKEN_EXPIRY_LEEWAY_SECONDS: Final = 60
 
+# --- QR-login (TASK-114, EPIC-TG-QR-POOL) ----------------------------------
+# Drives Telethon `client.qr_login()` to mint a NEW StringSession behind a typed
+# service with an in-process registry of in-progress logins. The minted session
+# never touches the live pool (epic ADR). No magic literals (CONVENTIONS).
+
+# How often the TTL reaper sweeps the in-process registry and disconnects clients
+# whose login has passed its deadline (seconds). A login's own expiry is governed
+# by `config.qr_login_timeout_seconds` (default 300s); the reaper is the janitor
+# that drops abandoned/expired logins so a never-polled QR can't leak a client.
+QR_LOGIN_REAP_INTERVAL_SECONDS: Final = 60
+
 # --- collect-tick (beat ingest task) — import-cycle-free contract constants. ---
 # Celery task name for the collect tick. Lives here (not in collector.tasks,
 # which imports celery_app) so `scheduler` can reference it without a circular

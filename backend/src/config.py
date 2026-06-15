@@ -173,6 +173,10 @@ _DEFAULT_CELERY_PING_TIMEOUT_SECONDS = 2
 # always refreshes it before expiry; a hung beat lets it expire → the beat container
 # healthcheck fails → Swarm reschedules. 600s = 2x max_interval (no flapping).
 _DEFAULT_BEAT_HEARTBEAT_TTL_SECONDS = 600
+# TASK-114: how long a QR-login stays valid before it expires (seconds). Telegram's
+# QR token itself is short-lived; 300s gives the user time to scan in the dashboard.
+# Named here (no magic literal) and consumed by `collector.telegram.qr_login`.
+_DEFAULT_QR_LOGIN_TIMEOUT_SECONDS = 300
 # Celery beat's default `max_interval` (seconds) — beat wakes (and ticks) at least
 # this often even with no due task. The heartbeat TTL MUST exceed it (validator below).
 _BEAT_MAX_INTERVAL_SECONDS = 300
@@ -490,6 +494,10 @@ class Settings(BaseSettings):
     # TELEGRAM_POOL_SESSIONS. Secret — supplied via sensitive.env; NEVER a user
     # session_string (overview §2/§7). Parsed via `telegram_pool_sessions()`.
     telegram_pool_sessions: str = ""
+    # TASK-114: QR-login token validity window (seconds). The QR-login service mints
+    # a brand-new StringSession for a user-owned account; this bounds how long an
+    # in-progress login lives before `poll()` reports `expired`. Named default.
+    qr_login_timeout_seconds: int = _DEFAULT_QR_LOGIN_TIMEOUT_SECONDS
 
     # --- Twitter/X source (TASK-031, ADR-001). Optional: app boots without it
     # (collector unregistered → ingest no-op for TWITTER refs, like an empty TG

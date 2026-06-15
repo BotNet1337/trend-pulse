@@ -30,6 +30,21 @@ class BufferWriteError(CollectorError):
     """A raw post could not be written to the Redis buffer (not silently dropped)."""
 
 
+class QRLoginError(CollectorError):
+    """Base for QR-login service errors (TASK-114, EPIC-TG-QR-POOL).
+
+    The service prefers RETURNING a typed `QRLoginPoll` status for normal terminal
+    states (expired/password_needed/error) and RAISES only for misconfiguration or
+    programmer errors — see the subclasses below."""
+
+
+class QRLoginNotConfiguredError(QRLoginError):
+    """`start()` was called without `telegram_api_id`/`telegram_api_hash` configured.
+
+    Raised (not a poll status) because it is a deployment misconfiguration: the API
+    maps it to a clear 503 so the operator sets the creds — minting can't proceed."""
+
+
 class TwitterAPIError(CollectorError):
     """A non-recoverable Twitter/X API error (non-2xx other than 404/429) — skip the ref."""
 
