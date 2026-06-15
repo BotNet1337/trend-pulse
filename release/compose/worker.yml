@@ -24,6 +24,24 @@ services:
     # Long-running tasks (embed batches): give in-flight work time to drain
     # before SIGKILL on rolling-update / scale-down.
     stop_grace_period: 60s
+    # Liveness probe (TASK-097): detect a HUNG-but-alive worker so Swarm reschedules
+    # it (restart_policy `any` below). `inspect ping` is answered by the main process'
+    # control plane even while prefork children run long embed batches, so it stays
+    # responsive under load. `-d celery@$$HOSTNAME` targets THIS container's node
+    # (Celery default nodename `celery@%h`; Docker sets $HOSTNAME to the container id);
+    # `$$` escapes compose interpolation so the shell expands it at runtime.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          celery -A celery_app inspect ping -d celery@$$HOSTNAME --timeout 10
+          >/dev/null 2>&1 || exit 1
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      # Worker boots fast; the ML model loads lazily on first embed, not at boot —
+      # 90s margin so a cold start never flaps the probe.
+      start_period: 90s
     deploy:
       replicas: 1
       resources:
