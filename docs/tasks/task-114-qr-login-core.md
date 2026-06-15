@@ -99,16 +99,16 @@ an opaque token, and returns `(token, qr_url, expires_at)`; (2) `poll(token)` �
   status transitions, redaction, expiry reaping, lazy import. Target full coverage of the new module.
 
 ## Checkpoints
-current_step: 4
+current_step: 6
 baseline_commit: 6949babd443c7bc0d3152a2f6cf097c72ec3f42f
 branch: "feat/tg-qr-login"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [x] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + lint + typecheck)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (touches secrets/auth — REQUIRED)
+- [x] 4 verify (G2 — 1089 tests + lint + mypy strict green)
+- [x] 5 review (code-reviewer opus: 1 HIGH fixed)
+- [x] 5.5 security (security-reviewer opus: MEDIUM cap + LOW repr/socket fixed)
 - [ ] 6 ship (PR)
 - [ ] 7 learnings (auto)
 debug_runs: []
