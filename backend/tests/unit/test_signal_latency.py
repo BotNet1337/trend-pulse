@@ -9,7 +9,7 @@ Follows the caplog pattern from test_log_hygiene.py.
 """
 
 import logging
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError
@@ -227,3 +227,158 @@ def test_settings_latency_defaults() -> None:
     settings = get_settings()
     assert settings.latency_emit_interval_seconds == 300
     assert settings.latency_window_seconds == 3600
+
+
+# ---------------------------------------------------------------------------
+# TASK-100 — is_redis_memory_critical predicate
+# ---------------------------------------------------------------------------
+
+
+def test_is_redis_memory_critical_truth_table() -> None:
+    from observability.signal_latency import is_redis_memory_critical
+
+    # at/above ratio → critical
+    assert is_redis_memory_critical(used=90, maxmemory=100, ratio=0.9) is True
+    assert is_redis_memory_critical(used=95, maxmemory=100, ratio=0.9) is True
+    # below ratio → not critical
+    assert is_redis_memory_critical(used=80, maxmemory=100, ratio=0.9) is False
+    # unbounded Redis (no cap) → never critical
+    assert is_redis_memory_critical(used=10_000, maxmemory=0, ratio=0.9) is False
+    assert is_redis_memory_critical(used=10_000, maxmemory=-1, ratio=0.9) is False
+
+
+# ---------------------------------------------------------------------------
+# TASK-100 — emit_ingest_staleness
+# ---------------------------------------------------------------------------
+
+
+def _staleness_session(age_s: float | None) -> MagicMock:
+    mock_session = MagicMock(name="session")
+    row = MagicMock()
+    row._mapping = {"age_s": age_s}
+    result = MagicMock()
+    result.one.return_value = row
+    mock_session.execute.return_value = result
+    return mock_session
+
+
+def test_emit_ingest_staleness_stale_when_old() -> None:
+    from observability.signal_latency import emit_ingest_staleness
+
+    settings = MagicMock()
+    settings.ingest_staleness_alert_seconds = 1800
+    out = emit_ingest_staleness(_staleness_session(2000.0), settings)
+    assert out["stale"] is True
+    assert out["age_s"] == 2000.0
+    assert out["threshold_s"] == 1800
+
+
+def test_emit_ingest_staleness_fresh_when_recent() -> None:
+    from observability.signal_latency import emit_ingest_staleness
+
+    settings = MagicMock()
+    settings.ingest_staleness_alert_seconds = 1800
+    out = emit_ingest_staleness(_staleness_session(120.0), settings)
+    assert out["stale"] is False
+
+
+def test_emit_ingest_staleness_empty_corpus_not_stale() -> None:
+    """NULL MAX(fetched_at) (no posts yet, cold start) must NOT alert."""
+    from observability.signal_latency import emit_ingest_staleness
+
+    settings = MagicMock()
+    settings.ingest_staleness_alert_seconds = 1800
+    out = emit_ingest_staleness(_staleness_session(None), settings)
+    assert out["stale"] is False
+    assert out["age_s"] is None
+
+
+# ---------------------------------------------------------------------------
+# TASK-100 — redis_memory_alert_ratio validator
+# ---------------------------------------------------------------------------
+
+
+def test_redis_memory_alert_ratio_validator() -> None:
+    from pydantic import ValidationError
+
+    from config import Settings
+
+    assert Settings(redis_memory_alert_ratio=0.5).redis_memory_alert_ratio == 0.5
+    assert Settings(redis_memory_alert_ratio=1.0).redis_memory_alert_ratio == 1.0
+    for bad in (0.0, -0.1, 1.1, 2.0):
+        with pytest.raises(ValidationError):
+            Settings(redis_memory_alert_ratio=bad)
+
+
+def test_ingest_staleness_alert_seconds_validator() -> None:
+    from pydantic import ValidationError
+
+    from config import Settings
+
+    assert Settings(ingest_staleness_alert_seconds=60).ingest_staleness_alert_seconds == 60
+    for bad in (0, -1):
+        with pytest.raises(ValidationError):
+            Settings(ingest_staleness_alert_seconds=bad)
+
+
+# ---------------------------------------------------------------------------
+# TASK-100 — task-level alert wiring (emit_signal_latency_task -> notify_ops)
+# ---------------------------------------------------------------------------
+
+
+def test_task_fires_redis_alert_when_critical() -> None:
+    """Redis near the cap -> the metric tick calls notify_ops('redis_memory_high')."""
+    from observability import tasks
+
+    with (
+        patch.object(tasks, "get_session"),
+        patch.object(tasks, "emit_signal_latency"),
+        patch.object(tasks, "emit_alert_precision"),
+        patch.object(tasks, "get_redis_client", return_value=MagicMock()),
+        patch.object(tasks, "emit_redis_memory", return_value={"used": 95, "peak": 95, "max": 100}),
+        patch.object(tasks, "emit_ingest_staleness", return_value={"stale": False, "age_s": 1.0}),
+        patch.object(tasks, "notify_ops") as notify,
+    ):
+        tasks.emit_signal_latency_task()
+
+    reasons = [c.args[0] for c in notify.call_args_list]
+    assert "redis_memory_high" in reasons
+    assert "ingest_stale" not in reasons
+
+
+def test_task_fires_ingest_alert_when_stale_only() -> None:
+    """Ingest stale + Redis healthy -> only the ingest alert fires."""
+    from observability import tasks
+
+    with (
+        patch.object(tasks, "get_session"),
+        patch.object(tasks, "emit_signal_latency"),
+        patch.object(tasks, "emit_alert_precision"),
+        patch.object(tasks, "get_redis_client", return_value=MagicMock()),
+        patch.object(tasks, "emit_redis_memory", return_value={"used": 10, "peak": 10, "max": 100}),
+        patch.object(tasks, "emit_ingest_staleness", return_value={"stale": True, "age_s": 2000.0}),
+        patch.object(tasks, "notify_ops") as notify,
+    ):
+        tasks.emit_signal_latency_task()
+
+    reasons = [c.args[0] for c in notify.call_args_list]
+    assert "ingest_stale" in reasons
+    assert "redis_memory_high" not in reasons
+
+
+def test_task_no_alerts_when_all_healthy() -> None:
+    """Healthy Redis + fresh ingest -> no ops alerts at all."""
+    from observability import tasks
+
+    with (
+        patch.object(tasks, "get_session"),
+        patch.object(tasks, "emit_signal_latency"),
+        patch.object(tasks, "emit_alert_precision"),
+        patch.object(tasks, "get_redis_client", return_value=MagicMock()),
+        patch.object(tasks, "emit_redis_memory", return_value={"used": 10, "peak": 10, "max": 100}),
+        patch.object(tasks, "emit_ingest_staleness", return_value={"stale": False, "age_s": 5.0}),
+        patch.object(tasks, "notify_ops") as notify,
+    ):
+        tasks.emit_signal_latency_task()
+
+    notify.assert_not_called()
