@@ -84,6 +84,38 @@ def _tie_averaged_ranks(values: Sequence[float]) -> list[float]:
     return ranks
 
 
+def average_precision(scores: Sequence[float], labels: Sequence[int]) -> float:
+    """Area under the precision-recall curve (average precision) — PR-AUC.
+
+    PR-AUC is the metric of record for the early-detection task (TASK-110, B2): unlike
+    ROC-AUC it is sensitive to the positive prevalence, so on a balanced or imbalanced
+    virality label it reflects how well the score concentrates true positives at the
+    top. Computed as the standard interpolation-free average precision: the sum over
+    each rank k (in descending score order) of ``(R_k - R_{k-1}) * P_k``,
+    where ``P_k`` / ``R_k`` are the precision /
+    recall after including the top-k scored items. Ties in score are broken by original
+    index (deterministic, reproducible). A no-positive label set has no PR curve and
+    raises (the caller reports n alongside).
+    """
+    _check_pairs(scores, labels)
+    _check_binary_labels(labels)
+    n_pos = sum(1 for label in labels if label == 1)
+    if n_pos == 0:
+        raise MetricInputError("average precision is undefined with no positive labels")
+    order = sorted(range(len(scores)), key=lambda i: (-scores[i], i))
+    cumulative_tp = 0
+    ap = 0.0
+    prev_recall = 0.0
+    for rank, index in enumerate(order, start=1):
+        if labels[index] == 1:
+            cumulative_tp += 1
+        precision = cumulative_tp / rank
+        recall = cumulative_tp / n_pos
+        ap += (recall - prev_recall) * precision
+        prev_recall = recall
+    return ap
+
+
 def precision_at_k(scores: Sequence[float], labels: Sequence[int], k: int) -> float:
     """Fraction of the top-`k` items (ranked by score, descending) that are truly viral.
 
