@@ -10,12 +10,37 @@ import pytest
 
 from eval.metrics import (
     MetricInputError,
+    average_precision,
     confusion_at_threshold,
     precision_at_k,
     roc_auc,
     separation,
     spearman_rho,
 )
+
+
+@pytest.mark.unit
+def test_average_precision_perfect() -> None:
+    # both positives ranked first → AP = 1.0
+    scores = [0.9, 0.8, 0.2, 0.1]
+    labels = [1, 1, 0, 0]
+    assert average_precision(scores, labels) == pytest.approx(1.0)
+
+
+@pytest.mark.unit
+def test_average_precision_known_value() -> None:
+    # descending order labels: pos at ranks 1 and 3.
+    # rank1: P=1/1, R=1/2 → +0.5*1.0 ; rank3: P=2/3, R=1 → +0.5*(2/3)
+    # AP = 0.5 + 1/3
+    scores = [0.9, 0.8, 0.7, 0.6]
+    labels = [1, 0, 1, 0]
+    assert average_precision(scores, labels) == pytest.approx(0.5 + 1.0 / 3.0)
+
+
+@pytest.mark.unit
+def test_average_precision_no_positives_raises() -> None:
+    with pytest.raises(MetricInputError):
+        average_precision([0.1, 0.2], [0, 0])
 
 
 @pytest.mark.unit
