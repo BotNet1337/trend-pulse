@@ -170,9 +170,10 @@ class TwitterCollector:
             ) from exc
         self._charge_read_budget(len(tweets))
         for tweet in tweets:
-            # `start_time` already bounds the API result; double-guard the cutoff.
-            if since is not None and tweet.created_at is not None and tweet.created_at < since:
-                continue
+            # No post-loop date filter: `start_time=effective_since` already bounds
+            # the API result to the window we queried. A previous double-guard filtered
+            # by the caller's ~60s tick `since` (NOT effective_since) and discarded
+            # every tweet the wider window fetched → every read yielded 0 posts in prod.
             yield map_tweet(tweet, ref)
 
     async def _resolve_user_id_cached(self, ref: SourceRef) -> str | None:
