@@ -99,13 +99,13 @@ Aggregates are already emitted by `observability/pool_health.py`.
   write + TTL). Reader reason-setting covered via existing reader unit harness or a focused test.
 
 ## Checkpoints
-current_step: 3
+current_step: 4
 baseline_commit: 6949babd443c7bc0d3152a2f6cf097c72ec3f42f
 branch: ""
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
+- [x] 3 do (TDD: failing test → minimal code)
 - [ ] 4 verify (G2 — tests + lint + typecheck)
 - [ ] 5 review (auto, adversarial)
 - [ ] 5.5 security (no auth/secret surface — likely N/A)
@@ -114,4 +114,37 @@ lock: ""
 debug_runs: []
 
 ## Details
-(initial)
+
+### 3 do (TDD, GREEN)
+Smallest-diff implementation across the 4 declared source files + 3 test files.
+
+- **`collector/constants.py`** — added `POOL_HEALTH_REDIS_KEY = "pool:health:latest"` and
+  `POOL_HEALTH_SNAPSHOT_TTL_SECONDS = 5 * 60` (300s, via private `_POOL_HEALTH_SNAPSHOT_TTL_MINUTES`).
+- **`collector/telegram/account_pool.py`** —
+  - `_Account` gained `last_error_reason: str = ""` (last-known only; never a secret).
+  - new `AccountState = Literal["healthy","cooling","quarantined"]` + frozen `AccountStatus`
+    dataclass `(index:int, state, cooldown_remaining_seconds: float|None, last_error_reason:str)`.
+  - `account_statuses() -> list[AccountStatus]` mirrors the `cooling_count` clock logic
+    (quarantine precedes cooling; cooldown seconds only for cooling; index-only identity; empty
+    pool → `[]`).
+  - `note_current_error(reason)` helper sets the reason on the CURRENT account (no rotation/cooldown
+    /quarantine change) — keeps the reader from reaching into `_accounts`.
+- **`collector/telegram/reader.py`** — at the EXISTING catch sites only: `note_current_error(
+  type(exc).__name__)` before `quarantine_current()` (in `_quarantine_dead_account`), and
+  `note_current_error("FLOOD_WAIT")` before each `report_flood_wait(...)` (both flood branches),
+  set BEFORE the call that rotates `_index`. `_emit_health_best_effort` now passes `self._redis`
+  into `emit_pool_health`. No new control flow.
+- **`observability/pool_health.py`** — `emit_pool_health(pool, settings, redis=None)`; return
+  shape unchanged. When `redis` is given, `_publish_snapshot` writes JSON to
+  `POOL_HEALTH_REDIS_KEY` with `ex=POOL_HEALTH_SNAPSHOT_TTL_SECONDS`. Snapshot = aggregates +
+  `as_of` (UTC ISO) + `accounts` (`[asdict(s) for s in pool.account_statuses()]`). Best-effort:
+  `RedisError|TypeError|ValueError` → warn + continue (never breaks the collect-tick).
+
+### Verify
+`make fmt` (clean) · `make lint` (All checks passed) · `make typecheck` (Success: no issues in 186
+files) · `make test` (**1100 passed**, 279 deselected). Existing rotation/quarantine/pool-health
+tests pass unchanged.
+
+### Schema (for TASK-116)
+See `cache/tgqr-notes-task-115.md` — exact Redis key, JSON field types, TTL, and how the API
+should read/parse and compute staleness from `as_of`.

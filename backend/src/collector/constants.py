@@ -160,6 +160,18 @@ QR_LOGIN_REAP_INTERVAL_SECONDS: Final = 60
 # small — a human-driven QR-login flow never needs many concurrent in-flight logins.
 MAX_CONCURRENT_QR_LOGINS: Final = 20
 
+# --- pool health snapshot bridge (TASK-115, EPIC-TG-QR-POOL) ----------------
+# The AccountPool lives in the Celery worker process; the API process cannot read
+# it directly. Each collect-tick the worker writes the full pool-health snapshot
+# (aggregates + per-account statuses) as JSON to this fixed Redis key so the API
+# (TASK-116) can read the freshest state cross-process. The snapshot carries NO
+# secrets — per-account identity is the stable pool INDEX only (never the session
+# string). The key holds a short TTL so a dead worker's snapshot ages out and the
+# API can render "stale" instead of a frozen-but-confident state.
+POOL_HEALTH_REDIS_KEY: Final = "pool:health:latest"
+_POOL_HEALTH_SNAPSHOT_TTL_MINUTES: Final = 5
+POOL_HEALTH_SNAPSHOT_TTL_SECONDS: Final = _POOL_HEALTH_SNAPSHOT_TTL_MINUTES * 60  # 300
+
 # --- collect-tick (beat ingest task) — import-cycle-free contract constants. ---
 # Celery task name for the collect tick. Lives here (not in collector.tasks,
 # which imports celery_app) so `scheduler` can reference it without a circular

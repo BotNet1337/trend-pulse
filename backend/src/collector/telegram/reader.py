@@ -103,7 +103,9 @@ class TelegramCollector:
         try:
             from observability.pool_health import emit_pool_health, notify_ops
 
-            result = emit_pool_health(self._pool, self._settings)
+            # Pass redis so the full snapshot is bridged to `pool:health:latest`
+            # for the API to read cross-process (TASK-115); best-effort write.
+            result = emit_pool_health(self._pool, self._settings, self._redis)
             if notify_reason is not None and notify_text is not None:
                 notify_ops(
                     reason=notify_reason,
@@ -139,6 +141,9 @@ class TelegramCollector:
         (`auth_dead:{n}`) so the owner re-mints that session. The fingerprint `n` is
         the account's pool index — NEVER a session string/secret.
         """
+        # Record the dead-session reason on the CURRENT account BEFORE quarantine
+        # rotates the index (TASK-115) — the error CLASS NAME, never a secret.
+        self._pool.note_current_error(type(exc).__name__)
         fingerprint = self._pool.quarantine_current()
         self._emit_health_best_effort(
             notify_reason=f"auth_dead:{fingerprint}",
@@ -212,6 +217,9 @@ class TelegramCollector:
             entity = await client.get_entity(ref.handle)
         except Exception as exc:
             if (wait := _flood_wait_seconds(exc)) is not None:
+                # Record the reason on the CURRENT account before report_flood_wait
+                # rotates the index (TASK-115) — annotation only, no behaviour change.
+                self._pool.note_current_error("FLOOD_WAIT")
                 self._pool.report_flood_wait(retry_after_seconds=wait)
                 if wait <= FLOOD_WAIT_INLINE_CAP_SECONDS:
                     await self._sleep(wait)
@@ -268,6 +276,9 @@ class TelegramCollector:
             self._pool.report_success()
         except Exception as exc:
             if (wait := _flood_wait_seconds(exc)) is not None:
+                # Record the reason on the CURRENT account before report_flood_wait
+                # rotates the index (TASK-115) — annotation only, no behaviour change.
+                self._pool.note_current_error("FLOOD_WAIT")
                 self._pool.report_flood_wait(retry_after_seconds=wait)
                 if wait <= FLOOD_WAIT_INLINE_CAP_SECONDS:
                     await self._sleep(wait)
