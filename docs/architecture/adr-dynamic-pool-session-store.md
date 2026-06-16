@@ -102,3 +102,13 @@ whole-pool rebuild the prior ADR feared.
   the "failing" state (TASK-118) is additive and never gates `acquire()`.
 - We still NEVER reuse a pool session for backfill, and NEVER deploy from a worktree with an
   uncommitted vault (TASK-107).
+
+## Consequence — env-only accounts revive as ADD on first re-mint (gap-check MEDIUM)
+An account that exists ONLY in the bootstrap env `TELEGRAM_POOL_SESSIONS` (never QR-added) has no
+`tg_user_id` on its slot, and if that env session is DEAD, `get_me()` can't resolve its identity — so
+a QR re-mint of that account is classified ADD (a new store row), not an in-place REVIVE: the dead env
+slot lingers until the owner removes that session from the vault on the next deploy. This is NOT the
+AuthKeyDuplicated class (a fresh QR login mints a DISTINCT session/auth-key). **Migration path:** to get
+clean in-place revives, onboard accounts via QR (they land in the dynamic store with identity) and
+remove the dead bootstrap sessions from `TELEGRAM_POOL_SESSIONS`. Once an account lives in the store,
+every later revive flips its existing row in place (verified end-to-end).
