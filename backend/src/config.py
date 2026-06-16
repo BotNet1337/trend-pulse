@@ -34,7 +34,12 @@ _DEFAULT_JWT_LIFETIME_SECONDS = 3600
 # the lock would expire mid-task and a redelivered/next-tick batch could run that user
 # concurrently. 1260 = task_time_limit (1200) + 60s grace. Enforced by a validator below.
 _DEFAULT_BATCH_INTERVAL_SECONDS = 60
-_DEFAULT_SCORER_INTERVAL_SECONDS = 300
+# Scorer beat cadence (TASK-127, S6 latency). 60s (was 300s): with batch=60s the
+# worst-case post->alert path drops from ~6-7 min to ~2-3 min (P3 "we sell speed").
+# The tick is idempotent (Score ON CONFLICT upsert + uq_alerts_user_cluster) and
+# skips when nothing is fresh, so 5x frequency = more DB reads, not duplicate alerts.
+# Env-overridable via SCORER_INTERVAL_SECONDS; true event-driven scoring is TASK-053.
+_DEFAULT_SCORER_INTERVAL_SECONDS = 60
 _DEFAULT_BATCH_LOCK_TTL_SECONDS = 1260
 
 # Collector ingest tick (collect-tick). Named, non-secret defaults; time in

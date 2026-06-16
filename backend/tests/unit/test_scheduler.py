@@ -25,10 +25,13 @@ def test_beat_schedule_has_both_entries_with_config_intervals() -> None:
 
 
 def test_intervals_match_documented_defaults() -> None:
-    # AC4: batch every 60s, scorer every 300s — sourced from config, asserted here.
+    # AC4: batch every 60s, scorer every 60s (TASK-127: lowered 300->60 for latency).
+    # Invariant collect <= batch <= scorer keeps the scorer from out-pacing ingest.
     settings = get_settings()
     assert settings.batch_interval_seconds == 60
-    assert settings.scorer_interval_seconds == 300
+    assert settings.scorer_interval_seconds == 60
+    assert settings.collect_interval_seconds <= settings.batch_interval_seconds
+    assert settings.batch_interval_seconds <= settings.scorer_interval_seconds
 
 
 @contextmanager
