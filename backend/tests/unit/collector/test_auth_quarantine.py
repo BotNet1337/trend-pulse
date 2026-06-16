@@ -307,3 +307,51 @@ def test_emit_pool_health_counts_quarantined_as_unhealthy() -> None:
     assert result["size"] == 3
     assert result["quarantined"] == 1
     assert result["healthy"] == 2  # size - cooling - quarantined
+
+
+# ---------------------------------------------------------------------------
+# TASK-115 — reader records last_error_reason at the existing catch sites
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_reader_sets_last_error_reason_on_permanent_auth() -> None:
+    """On a permanent auth error the quarantined account's last_error_reason is the
+    error CLASS NAME (TASK-115 AC2)."""
+    dead = FakeClient(raise_on_entity=AuthKeyDuplicatedError("dup"))
+    healthy = FakeClient(messages=[make_message(7)])
+    pool = make_pool([dead, healthy])
+    collector = TelegramCollector(pool)
+
+    with pytest.raises(SourceUnavailableError):
+        _ = [p async for p in collector.read([_REF], since=None)]
+
+    statuses = {s.index: s for s in pool.account_statuses()}
+    assert statuses[0].state == "quarantined"
+    assert statuses[0].last_error_reason == "AuthKeyDuplicatedError"
+
+
+@pytest.mark.asyncio
+async def test_reader_sets_flood_wait_reason() -> None:
+    """On a flood-wait the cooling account's last_error_reason == 'FLOOD_WAIT'
+    (TASK-115 AC3)."""
+    from .conftest import FakeFloodWaitError
+
+    flooded = FakeClient(raise_on_entity=FakeFloodWaitError(seconds=10_000))
+    other = FakeClient(messages=[make_message(3)])
+    pool = make_pool([flooded, other])
+
+    slept: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        slept.append(seconds)
+
+    collector = TelegramCollector(pool, sleep=fake_sleep)
+
+    # A long flood (> inline cap) marks the account cooling and rotates; the read
+    # eventually serves from `other`. Drain the generator.
+    _ = [p async for p in collector.read([_REF], since=None)]
+
+    statuses = {s.index: s for s in pool.account_statuses()}
+    assert statuses[0].state == "cooling"
+    assert statuses[0].last_error_reason == "FLOOD_WAIT"

@@ -3,6 +3,7 @@ export const paths = {
   onboarding: '/onboarding',
   admin: {
     metrics: '/admin/metrics',
+    pool: '/admin/pool',
   },
   account: {
     settings: '/account/settings',

@@ -600,3 +600,114 @@ def test_notify_ops_http_status_error_warns_no_raise(
         )
 
     assert any(rec.levelno >= logging.WARNING for rec in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# TASK-115 — emit_pool_health bridges the full snapshot to Redis
+# ---------------------------------------------------------------------------
+
+
+def test_emit_pool_health_writes_snapshot_to_redis_with_ttl() -> None:
+    """emit_pool_health(..., redis) writes JSON to pool:health:latest with a TTL,
+    containing aggregates + an accounts list + as_of (TASK-115 AC4)."""
+    import json
+
+    from collector.constants import (
+        POOL_HEALTH_REDIS_KEY,
+        POOL_HEALTH_SNAPSHOT_TTL_SECONDS,
+    )
+
+    clock = _Clock()
+    pool = _pool_with_clock(3, clock)
+    # 1 cooling.
+    pool.acquire()
+    pool.report_flood_wait(retry_after_seconds=60)
+
+    settings = _make_settings(pool_min_healthy=3)
+
+    mock_redis = MagicMock()
+
+    from observability.pool_health import emit_pool_health
+
+    result = emit_pool_health(pool, settings, mock_redis)
+
+    # Return shape unchanged (existing callers).
+    assert set(result.keys()) == {
+        "size",
+        "cooling",
+        "quarantined",
+        "healthy",
+        "target",
+        "degraded",
+    }
+
+    assert mock_redis.set.called
+    args, kwargs = mock_redis.set.call_args
+    assert args[0] == POOL_HEALTH_REDIS_KEY
+    assert kwargs.get("ex") == POOL_HEALTH_SNAPSHOT_TTL_SECONDS
+
+    snapshot = json.loads(args[1])
+    assert snapshot["size"] == 3
+    assert snapshot["cooling"] == 1
+    assert "as_of" in snapshot
+    assert isinstance(snapshot["accounts"], list)
+    assert len(snapshot["accounts"]) == 3
+    states = {a["state"] for a in snapshot["accounts"]}
+    assert states == {"healthy", "cooling"}
+    cooling = next(a for a in snapshot["accounts"] if a["state"] == "cooling")
+    assert cooling["cooldown_remaining_seconds"] is not None
+    assert {"index", "state", "cooldown_remaining_seconds", "last_error_reason"} == set(
+        cooling.keys()
+    )
+
+
+def test_emit_pool_health_snapshot_has_no_secrets() -> None:
+    """The Redis snapshot must not contain session strings / fingerprints (index only)."""
+    import json
+
+    pool = make_pool([FakeClient(), FakeClient()])
+    settings = _make_settings(pool_min_healthy=3)
+    mock_redis = MagicMock()
+
+    from observability.pool_health import emit_pool_health
+
+    emit_pool_health(pool, settings, mock_redis)
+    payload = json.loads(mock_redis.set.call_args[0][1])
+    blob = json.dumps(payload)
+    assert "session-" not in blob
+    for account in payload["accounts"]:
+        assert "fingerprint" not in account
+        assert "session" not in json.dumps(account)
+
+
+def test_emit_pool_health_no_redis_does_not_write() -> None:
+    """Without a redis client, no snapshot is written (backwards-compat)."""
+    pool = make_pool([FakeClient(), FakeClient()])
+    settings = _make_settings(pool_min_healthy=3)
+
+    from observability.pool_health import emit_pool_health
+
+    # No redis arg → no write, no raise; return shape preserved.
+    result = emit_pool_health(pool, settings)
+    assert result["size"] == 2
+
+
+def test_emit_pool_health_redis_write_failure_is_swallowed(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A Redis error on the snapshot write logs a warning and never raises (Invariant)."""
+    from redis.exceptions import RedisError
+
+    pool = make_pool([FakeClient(), FakeClient()])
+    settings = _make_settings(pool_min_healthy=3)
+
+    mock_redis = MagicMock()
+    mock_redis.set.side_effect = RedisError("redis down")
+
+    with caplog.at_level(logging.WARNING, logger="trendpulse"):
+        from observability.pool_health import emit_pool_health
+
+        result = emit_pool_health(pool, settings, mock_redis)  # must NOT raise
+
+    assert result["size"] == 2
+    assert any(rec.levelno >= logging.WARNING for rec in caplog.records)

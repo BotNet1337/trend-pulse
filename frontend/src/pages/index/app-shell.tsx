@@ -26,6 +26,8 @@ function shortEmail(email: string): string {
 
 interface AccountMenuProps {
   email: string
+  /** Superuser → expose the admin links (TG pool). Server enforces 403. */
+  isSuperuser: boolean
 }
 
 /**
@@ -34,7 +36,7 @@ interface AccountMenuProps {
  * Accessible: toggled by click, closed on outside-click and Escape; Sign out
  * calls the existing logout mutation (behaviour unchanged).
  */
-const AccountMenu: React.FC<AccountMenuProps> = ({ email }) => {
+const AccountMenu: React.FC<AccountMenuProps> = ({ email, isSuperuser }) => {
   const [open, setOpen] = React.useState(false)
   const containerRef = React.useRef<HTMLDivElement>(null)
   const logoutMutation = useLogout()
@@ -112,6 +114,19 @@ const AccountMenu: React.FC<AccountMenuProps> = ({ email }) => {
         <a className="fs-menu__item" href={`mailto:${SUPPORT_EMAIL}`} role="menuitem">
           Support
         </a>
+        {isSuperuser && (
+          <>
+            <hr className="fs-menu__separator" role="separator" />
+            <Link
+              className="fs-menu__item"
+              to={paths.admin.pool}
+              role="menuitem"
+              onClick={() => setOpen(false)}
+            >
+              TG pool (admin)
+            </Link>
+          </>
+        )}
         <hr className="fs-menu__separator" role="separator" />
         <button
           type="button"
@@ -142,6 +157,7 @@ export interface AppShellProps {
 export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   const { data: user } = useCurrentUser()
   const email = user?.email ?? ''
+  const isSuperuser = user?.is_superuser === true
 
   return (
     <div className="fs-app">
@@ -191,7 +207,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
 
             <span className="fs-appbar__spacer" />
 
-            {email && <AccountMenu email={email} />}
+            {email && <AccountMenu email={email} isSuperuser={isSuperuser} />}
           </div>
         </nav>
       </header>

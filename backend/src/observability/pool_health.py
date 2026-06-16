@@ -29,12 +29,16 @@ circular dependencies.
 
 from __future__ import annotations
 
+import json
 import logging
+from dataclasses import asdict
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import httpx
 from redis.exceptions import RedisError
 
+from collector.constants import POOL_HEALTH_REDIS_KEY, POOL_HEALTH_SNAPSHOT_TTL_SECONDS
 from observability.logging import log_event
 
 if TYPE_CHECKING:
@@ -52,8 +56,12 @@ _THROTTLE_KEY_PREFIX = "ops_alert"
 _HTTP_ERROR_FLOOR = 400
 
 
-def emit_pool_health(pool: AccountPool, settings: Settings) -> dict[str, object]:
-    """Compute and log pool health aggregates.
+def emit_pool_health(
+    pool: AccountPool,
+    settings: Settings,
+    redis: Redis | None = None,
+) -> dict[str, object]:
+    """Compute and log pool health aggregates; optionally bridge a snapshot to Redis.
 
     Aggregates emitted (no session strings, no secrets):
     - ``size``     — total accounts in pool
@@ -62,12 +70,21 @@ def emit_pool_health(pool: AccountPool, settings: Settings) -> dict[str, object]
     - ``target``   — ``pool_min_healthy`` operational target
     - ``degraded`` — True when healthy < target
 
+    When ``redis`` is given (TASK-115), the FULL snapshot (the aggregates above plus an
+    ``accounts`` list of per-account statuses and an ``as_of`` UTC-ISO timestamp) is
+    written as JSON to ``POOL_HEALTH_REDIS_KEY`` with ``POOL_HEALTH_SNAPSHOT_TTL_SECONDS``
+    TTL, so the API process (TASK-116) can read the freshest state cross-process and
+    compute staleness. The write is BEST-EFFORT: any failure logs and is swallowed so
+    self-observation never breaks the collect-tick (Invariant). The snapshot carries NO
+    secrets — per-account identity is the stable pool INDEX only.
+
     Args:
         pool:     The ``AccountPool`` instance to inspect.
         settings: Application settings (provides ``pool_min_healthy``).
+        redis:    Optional Redis client; when given, the snapshot is published.
 
     Returns:
-        Dict with the same keys as the logged aggregates.
+        Dict of the logged aggregates (return shape unchanged for existing callers).
     """
     size: int = pool.size
     cooling: int = pool.cooling_count
@@ -87,7 +104,7 @@ def emit_pool_health(pool: AccountPool, settings: Settings) -> dict[str, object]
         target=target,
         degraded=degraded,
     )
-    return {
+    aggregates: dict[str, object] = {
         "size": size,
         "cooling": cooling,
         "quarantined": quarantined,
@@ -95,6 +112,39 @@ def emit_pool_health(pool: AccountPool, settings: Settings) -> dict[str, object]
         "target": target,
         "degraded": degraded,
     }
+    if redis is not None:
+        _publish_snapshot(pool, aggregates, redis)
+    return aggregates
+
+
+def _publish_snapshot(
+    pool: AccountPool,
+    aggregates: dict[str, object],
+    redis: Redis,
+) -> None:
+    """Write the full pool-health snapshot as JSON to Redis (TASK-115; best-effort).
+
+    The snapshot is ``aggregates`` plus an ``accounts`` list (per-account statuses as
+    plain dicts) and an ``as_of`` UTC-ISO timestamp for staleness computation. A
+    serialization or Redis failure is logged and swallowed — the collect-tick must
+    never break on self-observation (Invariant). No secrets: index-only identity.
+    """
+    try:
+        snapshot: dict[str, object] = {
+            **aggregates,
+            "as_of": datetime.now(UTC).isoformat(),
+            "accounts": [asdict(status) for status in pool.account_statuses()],
+        }
+        redis.set(
+            POOL_HEALTH_REDIS_KEY,
+            json.dumps(snapshot),
+            ex=POOL_HEALTH_SNAPSHOT_TTL_SECONDS,
+        )
+    except (RedisError, TypeError, ValueError) as exc:
+        logger.warning(
+            "pool health snapshot Redis write failed — skipping",
+            extra={"exc_type": type(exc).__name__},
+        )
 
 
 def notify_ops(

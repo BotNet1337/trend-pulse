@@ -272,3 +272,82 @@ async def test_pool_exhausted_emits_repeating_ops_alert_and_reraises(
 
     reasons = [c.get("reason") for c in calls]
     assert "pool_exhausted" in reasons
+
+
+# ---------------------------------------------------------------------------
+# TASK-115 — per-account health snapshot view + last_error_reason
+# ---------------------------------------------------------------------------
+
+
+def test_account_statuses_reports_healthy_cooling_quarantined() -> None:
+    """1 healthy, 1 cooling (cooldown_until>now), 1 quarantined → correct AccountStatus.
+
+    Cooldown seconds are present ONLY for the cooling account; index is the stable
+    pool position; the recorded last_error_reason is surfaced (TASK-115 AC1).
+    """
+    from collector.telegram.account_pool import AccountStatus
+
+    clock = _Clock()
+    pool = _pool_with_clock(3, clock)
+
+    # index 0 stays healthy.
+    # index 1 → cooling: acquire it (rotate to it first), record reason, flood-wait it.
+    pool.acquire()  # current = 0
+    pool.report_flood_wait(retry_after_seconds=10)  # 0 cooling, rotate → current = 1
+    # Make index 0 healthy again by advancing past its cooldown, but keep index 1/2 work.
+    # Simpler: build explicit states directly on the dataclasses (no behaviour change).
+    pool._accounts[0].cooldown_until = 0.0  # healthy
+    pool._accounts[0].last_error_reason = ""
+    pool._accounts[1].cooldown_until = clock.t + 30.0  # cooling
+    pool._accounts[1].last_error_reason = "FLOOD_WAIT"
+    pool._accounts[2].quarantined = True
+    pool._accounts[2].last_error_reason = "AuthKeyDuplicatedError"
+
+    statuses = pool.account_statuses()
+    assert len(statuses) == 3
+    assert all(isinstance(s, AccountStatus) for s in statuses)
+
+    by_index = {s.index: s for s in statuses}
+    assert by_index[0].state == "healthy"
+    assert by_index[0].cooldown_remaining_seconds is None
+
+    assert by_index[1].state == "cooling"
+    assert by_index[1].cooldown_remaining_seconds == pytest.approx(30.0)
+    assert by_index[1].last_error_reason == "FLOOD_WAIT"
+
+    assert by_index[2].state == "quarantined"
+    assert by_index[2].cooldown_remaining_seconds is None
+    assert by_index[2].last_error_reason == "AuthKeyDuplicatedError"
+
+
+def test_account_statuses_empty_pool_is_empty_list() -> None:
+    from collector.telegram.account_pool import AccountPool
+
+    pool = AccountPool()
+    assert pool.account_statuses() == []
+
+
+def test_account_statuses_is_immutable() -> None:
+    """AccountStatus is frozen — callers cannot mutate the snapshot view."""
+    import dataclasses
+
+    pool = make_pool([FakeClient()])
+    status = pool.account_statuses()[0]
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        status.state = "cooling"  # type: ignore[misc]
+
+
+def test_note_current_error_sets_reason_on_current_account() -> None:
+    pool = make_pool([FakeClient(), FakeClient()])
+    pool.acquire()  # current = 0
+    pool.note_current_error("FLOOD_WAIT")
+    assert pool.account_statuses()[0].last_error_reason == "FLOOD_WAIT"
+    assert pool.account_statuses()[1].last_error_reason == ""
+
+
+def test_note_current_error_empty_pool_is_noop() -> None:
+    from collector.telegram.account_pool import AccountPool
+
+    pool = AccountPool()
+    pool.note_current_error("FLOOD_WAIT")  # must not raise
+    assert pool.account_statuses() == []

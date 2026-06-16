@@ -15,7 +15,7 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 from redis.exceptions import RedisError
 
@@ -77,6 +77,30 @@ class _Account:
     # Non-secret sha256[:16] of this account's session string (TASK-102): the key under
     # which a quarantine is persisted in Redis so it survives a worker restart/recycle.
     fingerprint: str = ""
+    # Most-recent error reason for this account (TASK-115): the permanent-auth error
+    # CLASS NAME (e.g. "AuthKeyDuplicatedError") or "FLOOD_WAIT", set by the reader at
+    # the existing catch sites. Last-known only (not history); NEVER a session string.
+    last_error_reason: str = ""
+
+
+# Account lifecycle state exposed in the health snapshot (TASK-115).
+AccountState = Literal["healthy", "cooling", "quarantined"]
+
+
+@dataclass(frozen=True)
+class AccountStatus:
+    """Read-only, immutable per-account health view for the snapshot (TASK-115).
+
+    Carries NO secrets: `index` is the stable pool position (the only per-account
+    identifier), never the session string or fingerprint. `cooldown_remaining_seconds`
+    is populated only for a cooling account (None otherwise). `last_error_reason` is the
+    last-known reason (may persist after recovery — acceptable, last-known).
+    """
+
+    index: int
+    state: AccountState
+    cooldown_remaining_seconds: float | None
+    last_error_reason: str
 
 
 def _backoff_seconds(strikes: int) -> float:
@@ -171,6 +195,47 @@ class AccountPool:
     def quarantined_count(self) -> int:
         """Number of permanently quarantined (dead-session) accounts (TASK-087)."""
         return sum(1 for a in self._accounts if a.quarantined)
+
+    def account_statuses(self) -> list[AccountStatus]:
+        """Read-only per-account health view for the cross-process snapshot (TASK-115).
+
+        Mirrors the `cooling_count` clock logic (a LIVE account whose
+        `cooldown_until > now` is cooling); quarantine takes precedence over cooling.
+        Returns one `AccountStatus` per pool account in index order. NO mutation, NO
+        secrets — `index` is the only per-account identifier. An empty pool returns `[]`.
+        """
+        now = self._clock()
+        statuses: list[AccountStatus] = []
+        for index, account in enumerate(self._accounts):
+            if account.quarantined:
+                state: AccountState = "quarantined"
+                cooldown_remaining: float | None = None
+            elif account.cooldown_until > now:
+                state = "cooling"
+                cooldown_remaining = account.cooldown_until - now
+            else:
+                state = "healthy"
+                cooldown_remaining = None
+            statuses.append(
+                AccountStatus(
+                    index=index,
+                    state=state,
+                    cooldown_remaining_seconds=cooldown_remaining,
+                    last_error_reason=account.last_error_reason,
+                )
+            )
+        return statuses
+
+    def note_current_error(self, reason: str) -> None:
+        """Record the last-known error `reason` on the CURRENT account (TASK-115).
+
+        Called by the reader at the existing catch sites BEFORE rotation/quarantine, so
+        the reason lands on the account that actually failed. Does NOT change rotation,
+        cooldown, or quarantine semantics — it only annotates for the health snapshot.
+        `reason` is a class name or "FLOOD_WAIT", NEVER a session string.
+        """
+        if self._accounts:
+            self._accounts[self._index].last_error_reason = reason
 
     def acquire(self) -> TelegramClientProtocol:
         """Return the client of the next account that is live and not cooling down.
