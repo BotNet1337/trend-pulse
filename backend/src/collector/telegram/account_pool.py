@@ -98,6 +98,10 @@ class _Account:
     # for a slot loaded from the DB store, so a revive-signal can target THIS slot by
     # identity (None for an env-only bootstrap slot). NEVER a secret.
     tg_user_id: int | None = None
+    # The NON-SECRET display label (TASK-120): a masked id / `@username` from the store,
+    # surfaced in the health snapshot so the UI labels each row by account (None for an
+    # env-only bootstrap slot with no store identity). NEVER a secret (not the session).
+    display_label: str | None = None
 
 
 # Account lifecycle state exposed in the health snapshot (TASK-115; `failing` TASK-118).
@@ -112,12 +116,18 @@ class AccountStatus:
     identifier), never the session string or fingerprint. `cooldown_remaining_seconds`
     is populated only for a cooling account (None otherwise). `last_error_reason` is the
     last-known reason (may persist after recovery — acceptable, last-known).
+
+    `display_label`/`tg_user_id` (TASK-120) are the NON-SECRET store identity for a
+    DB-loaded slot (masked id / `@username` / numeric id), None for an env-only slot —
+    so the UI labels rows by account, never by session string.
     """
 
     index: int
     state: AccountState
     cooldown_remaining_seconds: float | None
     last_error_reason: str
+    display_label: str | None = None
+    tg_user_id: int | None = None
 
 
 def _backoff_seconds(strikes: int) -> float:
@@ -151,6 +161,7 @@ class AccountPool:
         factory: TelegramClientFactory,
         redis: "Redis | None" = None,
         tg_user_ids: list[int | None] | None = None,
+        display_labels: list[str | None] | None = None,
     ) -> "AccountPool":
         """Build a pool from pool session strings; validates size POOL_MIN..POOL_MAX.
 
@@ -164,6 +175,10 @@ class AccountPool:
         (positional with `sessions`); a DB-store slot carries its `tg_user_id` so a
         revive-signal can target it by identity. Env bootstrap slots pass None. The
         `factory` is retained so a revive can build a fresh client for the swapped slot.
+
+        `display_labels` (TASK-120, optional) is the per-session NON-SECRET display label
+        (positional with `sessions`); a DB-store slot carries its masked id / `@username`
+        so the health snapshot can label the row by account. Env slots pass None.
         """
         size = len(sessions)
         if size < POOL_MIN or size > POOL_MAX:
@@ -174,13 +189,19 @@ class AccountPool:
         ids: list[int | None] = tg_user_ids if tg_user_ids is not None else [None] * size
         if len(ids) != size:
             raise PoolConfigError(f"tg_user_ids length ({len(ids)}) must match sessions ({size})")
+        labels: list[str | None] = display_labels if display_labels is not None else [None] * size
+        if len(labels) != size:
+            raise PoolConfigError(
+                f"display_labels length ({len(labels)}) must match sessions ({size})"
+            )
         accounts = [
             _Account(
                 client=factory(session),
                 fingerprint=session_fingerprint(session),
                 tg_user_id=tg_user_id,
+                display_label=display_label,
             )
-            for session, tg_user_id in zip(sessions, ids, strict=True)
+            for session, tg_user_id, display_label in zip(sessions, ids, labels, strict=True)
         ]
         persisted = cls._load_quarantined_fingerprints(redis)
         for account in accounts:
@@ -261,6 +282,8 @@ class AccountPool:
                     state=state,
                     cooldown_remaining_seconds=cooldown_remaining,
                     last_error_reason=account.last_error_reason,
+                    display_label=account.display_label,
+                    tg_user_id=account.tg_user_id,
                 )
             )
         return statuses
@@ -452,6 +475,7 @@ class AccountPool:
         slot_index: int,
         tg_user_id: int,
         session_string: str,
+        display_label: str | None = None,
     ) -> None:
         """SAFELY swap ONE slot's client to a NEW session (disconnect-then-connect).
 
@@ -501,6 +525,10 @@ class AccountPool:
         # 3. Swap in place + reset THIS slot's state (single-slot only).
         account.client = new_client
         account.tg_user_id = tg_user_id
+        # Refresh the non-secret display label for the revived slot (TASK-120); keep the
+        # prior label when the caller does not supply one (env-only revive path).
+        if display_label is not None:
+            account.display_label = display_label
         account.fingerprint = session_fingerprint(session_string)
         account.quarantined = False
         account.cooldown_until = 0.0

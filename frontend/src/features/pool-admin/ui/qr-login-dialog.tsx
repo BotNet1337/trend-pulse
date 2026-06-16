@@ -22,8 +22,20 @@ import { ModalDialog } from '@/shared/components/modal-dialog';
 import { CheckCircle2, Copy, Loader2, RefreshCw } from '@/shared/images';
 import { copyToClipboard } from '@/shared/lib';
 
-import { useQrLoginPoll, useQrLoginStart, qrLoginPollQueryKey } from '../queries';
-import { asQrLoginStatus, isTerminalQrStatus, qrStatusMessage } from '../lib';
+import {
+  useQrLoginPoll,
+  useQrLoginStart,
+  qrLoginPollQueryKey,
+  invalidatePoolHealth,
+} from '../queries';
+import {
+  accountLabel,
+  asQrLoginStatus,
+  asReviveOutcome,
+  isTerminalQrStatus,
+  qrStatusMessage,
+  reviveSuccessMessage,
+} from '../lib';
 import type { AxiosError } from 'axios';
 
 interface QrLoginDialogProps {
@@ -32,7 +44,9 @@ interface QrLoginDialogProps {
 }
 
 const VAULT_NOTE =
-  'Add this to TELEGRAM_POOL_SESSIONS in the vault and redeploy. It is shown only once.';
+  'The account is already persisted and will appear in the pool automatically. ' +
+  'This session string is a one-time backup — optionally copy it to the vault ' +
+  '(TELEGRAM_POOL_SESSIONS) for disaster recovery. It is shown only once.';
 
 const COPY_FAILED_MESSAGE =
   'Copy failed — select the session string above and copy it manually.';
@@ -55,6 +69,16 @@ export const QrLoginDialog: React.FC<QrLoginDialogProps> = ({ open, onClose }) =
 
   const poll = useQrLoginPoll(token);
   const status = poll.data ? asQrLoginStatus(poll.data.status) : null;
+
+  // On a SUCCESS poll the session was persisted server-side (revive/add); invalidate the
+  // pool-health snapshot so the table refetches and the affected row flips to Connected
+  // within ~one collect cycle (HONEST, no fake optimistic flip). Keyed on token+status so
+  // it fires once per successful login, not on every poll re-render.
+  React.useEffect(() => {
+    if (status === 'success') {
+      void invalidatePoolHealth(queryClient);
+    }
+  }, [status, token, queryClient]);
 
   const begin = React.useCallback(() => {
     setCopied(false);
@@ -101,6 +125,10 @@ export const QrLoginDialog: React.FC<QrLoginDialogProps> = ({ open, onClose }) =
 
   const sessionString =
     status === 'success' ? poll.data?.session_string ?? null : null;
+  const outcome =
+    status === 'success' ? asReviveOutcome(poll.data?.outcome) : null;
+  const displayLabel =
+    status === 'success' ? poll.data?.display_label ?? null : null;
 
   const handleCopy = async () => {
     if (!sessionString) return;
@@ -124,8 +152,8 @@ export const QrLoginDialog: React.FC<QrLoginDialogProps> = ({ open, onClose }) =
       open={open}
       onOpenChange={handleOpenChange}
       width="confirm"
-      title="Add a pool account"
-      description="Scan the QR code with the Telegram app you want to add to the pool."
+      title="Add / re-connect account"
+      description="Scan the QR code with the Telegram app. If it is already in the pool it is re-connected (same account), otherwise it is added."
     >
       <div className="flex flex-col gap-4">
         {startError && (
@@ -162,10 +190,27 @@ export const QrLoginDialog: React.FC<QrLoginDialogProps> = ({ open, onClose }) =
         {/* Success: reveal the one-time session string */}
         {status === 'success' && sessionString && (
           <div className="flex flex-col gap-3" data-testid="qr-success">
-            <p className="m-0 flex items-center gap-2 text-sm font-medium">
+            <p
+              className="m-0 flex items-center gap-2 text-sm font-medium"
+              data-testid="qr-success-message"
+              data-outcome={outcome ?? 'none'}
+            >
               <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-              {qrStatusMessage('success', null)}
+              {reviveSuccessMessage(outcome, displayLabel)}
             </p>
+            {displayLabel && (
+              <p
+                className="m-0 text-xs text-muted-foreground"
+                data-testid="qr-success-identity"
+              >
+                Account: <span className="font-mono">{accountLabel(displayLabel, 0)}</span>
+                {outcome === 'revive'
+                  ? ' (re-connected — same account, new status)'
+                  : outcome === 'add'
+                    ? ' (new account)'
+                    : ''}
+              </p>
+            )}
             <div className="grid grid-cols-[1fr_auto] items-center gap-2">
               <code
                 data-testid="qr-session-string"

@@ -104,7 +104,7 @@ def test_union_loader_merges_env_and_store(db_engine: Engine, session: Session) 
     session.commit()
 
     env_only = "1AbCenv-only-bootstrap-session"
-    sessions, tg_user_ids = _union_pool_sessions(
+    sessions, tg_user_ids, display_labels = _union_pool_sessions(
         env_sessions=[env_only, _SESSION],  # _SESSION duplicates the DB row
         fingerprint=session_fingerprint,
     )
@@ -112,8 +112,10 @@ def test_union_loader_merges_env_and_store(db_engine: Engine, session: Session) 
     assert _SESSION in sessions
     assert env_only in sessions
     assert len(sessions) == 2
-    # The DB row carries its identity; the env-only slot is None.
+    # The DB row carries its identity + non-secret label; the env-only slot is None.
     idx_db = sessions.index(_SESSION)
     idx_env = sessions.index(env_only)
     assert tg_user_ids[idx_db] == 900_001
     assert tg_user_ids[idx_env] is None
+    assert display_labels[idx_db] == "@a"  # TASK-120: DB row carries its label
+    assert display_labels[idx_env] is None

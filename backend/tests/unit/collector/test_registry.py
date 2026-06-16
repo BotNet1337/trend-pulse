@@ -59,7 +59,7 @@ def test_union_truncates_to_pool_max_when_db_plus_env_overflow(
     monkeypatch.setattr(registry, "_load_db_store_sessions", lambda: db_rows)
 
     env_only = "1AbCenv-only-unique-bootstrap"
-    sessions, tg_user_ids = registry._union_pool_sessions(
+    sessions, tg_user_ids, display_labels = registry._union_pool_sessions(
         env_sessions=[env_only],
         fingerprint=session_fingerprint,
     )
@@ -67,8 +67,10 @@ def test_union_truncates_to_pool_max_when_db_plus_env_overflow(
     # Truncated to the cap (NOT POOL_MAX + 1) — DB-first, so the env overflow is dropped.
     assert len(sessions) == POOL_MAX
     assert len(tg_user_ids) == POOL_MAX
+    assert len(display_labels) == POOL_MAX  # positional with sessions (TASK-120)
     assert env_only not in sessions  # the env overflow slot was dropped (DB-first)
     assert all(tid is not None for tid in tg_user_ids)  # every surviving slot is a DB row
+    assert all(label is not None for label in display_labels)  # DB rows carry labels
 
 
 def test_from_sessions_builds_at_cap_not_raises_on_overflowing_union(
@@ -87,7 +89,7 @@ def test_from_sessions_builds_at_cap_not_raises_on_overflowing_union(
     ]
     monkeypatch.setattr(registry, "_load_db_store_sessions", lambda: db_rows)
 
-    sessions, tg_user_ids = registry._union_pool_sessions(
+    sessions, tg_user_ids, display_labels = registry._union_pool_sessions(
         env_sessions=["1AbCenv-only-unique-bootstrap"],
         fingerprint=session_fingerprint,
     )
@@ -96,6 +98,7 @@ def test_from_sessions_builds_at_cap_not_raises_on_overflowing_union(
         sessions=sessions,
         factory=lambda _s: FakeClient(),
         tg_user_ids=tg_user_ids,
+        display_labels=display_labels,
     )
     assert pool.size == POOL_MAX
 

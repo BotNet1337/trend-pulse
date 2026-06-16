@@ -204,6 +204,7 @@ class TelegramCollector:
                 slot_index=slot_index,
                 tg_user_id=tg_user_id,
                 session_string=stored.session_string,
+                display_label=stored.display_label or None,
             )
             self._clear_revive_signal()
             logger.info("applied pool revive for slot", extra={"slot_index": slot_index})

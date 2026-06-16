@@ -11,6 +11,7 @@
 import React from 'react';
 import type { PoolHealthResponse } from '../api';
 import {
+  accountLabel,
   accountStateBadgeVariant,
   accountStateLabel,
   asAccountState,
@@ -66,6 +67,7 @@ export const PoolHealthTable: React.FC<PoolHealthTableProps> = ({ health }) => {
               <thead>
                 <tr>
                   <th scope="col">#</th>
+                  <th scope="col">Account</th>
                   <th scope="col">State</th>
                   <th scope="col">Cooldown</th>
                   <th scope="col">Last error</th>
@@ -78,6 +80,9 @@ export const PoolHealthTable: React.FC<PoolHealthTableProps> = ({ health }) => {
                   return (
                     <tr key={account.index}>
                       <td>{account.index}</td>
+                      <td className="font-mono" data-testid="pool-account-label">
+                        {accountLabel(account.display_label, account.index)}
+                      </td>
                       <td>
                         <span
                           className={`fs-badge fs-badge--${accountStateBadgeVariant(state)}`}

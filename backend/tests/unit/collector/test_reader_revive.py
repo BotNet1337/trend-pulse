@@ -62,7 +62,7 @@ async def test_revive_signal_triggers_revive_slot(monkeypatch) -> None:  # type:
 
     pool.find_slot_index.assert_called_once_with(tg_user_id=111, fingerprint=fp)
     pool.revive_slot.assert_awaited_once_with(
-        slot_index=0, tg_user_id=111, session_string=_NEW_SESSION
+        slot_index=0, tg_user_id=111, session_string=_NEW_SESSION, display_label="@a"
     )
     # Signal cleared after application (applies once).
     assert r.get(POOL_REVIVE_SIGNAL_REDIS_KEY) is None

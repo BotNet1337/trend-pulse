@@ -81,12 +81,16 @@ def _build_telegram_collector() -> SourceCollector:
     # collector (pool-health self-observation, TASK-035; revive-signal, TASK-119).
     redis = get_redis_client()
 
-    sessions, tg_user_ids = _union_pool_sessions(
+    sessions, tg_user_ids, display_labels = _union_pool_sessions(
         env_sessions=telegram_pool_sessions(settings),
         fingerprint=session_fingerprint,
     )
     pool = AccountPool.from_sessions(
-        sessions=sessions, factory=factory, redis=redis, tg_user_ids=tg_user_ids
+        sessions=sessions,
+        factory=factory,
+        redis=redis,
+        tg_user_ids=tg_user_ids,
+        display_labels=display_labels,
     )
     return TelegramCollector(pool, settings=settings, redis=redis)
 
@@ -95,11 +99,13 @@ def _union_pool_sessions(
     *,
     env_sessions: list[str],
     fingerprint: Callable[[str], str],
-) -> tuple[list[str], list[int | None]]:
+) -> tuple[list[str], list[int | None], list[str | None]]:
     """Union env sessions with the active DB-store sessions, de-duped by fingerprint.
 
     The DB store WINS on a fingerprint conflict (its identity `tg_user_id` is carried).
-    Returns positional `(sessions, tg_user_ids)` for `AccountPool.from_sessions`. Reads
+    Returns positional `(sessions, tg_user_ids, display_labels)` for
+    `AccountPool.from_sessions` (the non-secret `display_label` labels each health row,
+    TASK-120; env slots carry None). Reads
     the store via a short-lived session; FAILS OPEN to env-only on ANY error (the worker
     must boot even if the DB is briefly unreachable — disaster-recovery floor).
 
@@ -115,6 +121,7 @@ def _union_pool_sessions(
     """
     sessions: list[str] = []
     tg_user_ids: list[int | None] = []
+    display_labels: list[str | None] = []
     seen: set[str] = set()
 
     db_sessions = _load_db_store_sessions()
@@ -125,6 +132,7 @@ def _union_pool_sessions(
         seen.add(fp)
         sessions.append(stored.session_string)
         tg_user_ids.append(stored.tg_user_id)
+        display_labels.append(stored.display_label or None)
 
     for raw in env_sessions:
         fp = fingerprint(raw)
@@ -133,6 +141,7 @@ def _union_pool_sessions(
         seen.add(fp)
         sessions.append(raw)
         tg_user_ids.append(None)
+        display_labels.append(None)
 
     if len(sessions) > POOL_MAX:
         # DB-first truncation: keep the live identity-keyed slots, drop the overflow
@@ -144,8 +153,9 @@ def _union_pool_sessions(
         )
         sessions = sessions[:POOL_MAX]
         tg_user_ids = tg_user_ids[:POOL_MAX]
+        display_labels = display_labels[:POOL_MAX]
 
-    return sessions, tg_user_ids
+    return sessions, tg_user_ids, display_labels
 
 
 def _load_db_store_sessions() -> list["StoredSession"]:

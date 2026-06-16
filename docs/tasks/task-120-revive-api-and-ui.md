@@ -150,13 +150,13 @@ and returns identity+outcome, and adds per-account identity to the health snapsh
 - FE dialog test: success state shows identity + REVIVE/ADD; button relabel.
 
 ## Checkpoints
-current_step: 3
+current_step: 4
 baseline_commit: 98bd84c834fb58f266e4837a54783d508f129070
-branch: ""
+branch: "feat/pool-health-revive"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
+- [x] 3 do (TDD: failing test → minimal code)
 - [ ] 4 verify (G2 — full suite + ruff + mypy strict + FE typecheck/vitest + OpenAPI regen green)
 - [ ] 5 review (code-reviewer)
 - [ ] 5.5 security (MANDATORY — confirm only the one-shot session copy-field is secret; identity
@@ -172,3 +172,54 @@ non-secret identity into the snapshot/UI, and (c) make the UX say the truth — 
 re-connected" with at most a one-cycle lag, no fake optimistic flip. The one-shot `session_string`
 copy-field is kept as the disaster-recovery floor (paste into the env vault) per the ADR's fail-open
 posture; flagged as an owner decision to drop it once automatic persistence is trusted in prod.
+
+## Details
+
+Implemented (TDD, RED→GREEN) within the planned scope. Notes file: `cache/poolfix-notes-task-120.md`.
+
+### Backend
+- `backend/src/api/routes/pool_admin.py`:
+  - `QRLoginPollResponse` += `tg_user_id: int | None`, `display_label: str | None`,
+    `outcome: str | None` ("revive"/"add") — all present only on SUCCESS; `session_string`
+    copy-field unchanged (DR floor).
+  - `PoolHealthAccount` += `display_label: str | None`, `tg_user_id: int | None` (null for an
+    env-only slot). `_PoolHealthSnapshot` validates them via `accounts: list[PoolHealthAccount]`
+    (no change needed — the writer already carries them via `asdict`).
+  - `poll_qr_login` now persists on SUCCESS via `_persist_qr_success`: opens a caller-owned sync
+    `Session` (new dep `get_pool_admin_db`), runs `upsert_revive_or_add(... pool_max=POOL_MAX,
+    env_floor_size=len(set(telegram_pool_sessions(settings))))` in a threadpool. On REVIVE writes the
+    non-secret revive-signal (`POOL_REVIVE_SIGNAL_REDIS_KEY`, TTL) + SREMs the OLD fingerprint from
+    `pool:quarantined_fingerprints` via a new `_ReviveRedisLike`/`_ReviveRedisAdapter` seam (new dep
+    `get_pool_revive_redis`). Over-cap ADD → 409 (`_POOL_FULL_MESSAGE`), session copy-field STILL
+    returned. Any other store/DB error → copy-field preserved, no `outcome`, class-name-only log.
+  - Idempotent: the store upsert is keyed by `tg_user_id`, so a repeated SUCCESS poll never dupes.
+- `backend/src/collector/telegram/account_pool.py`: `_Account`/`AccountStatus` += `display_label`;
+  `from_sessions(... display_labels=)`, `account_statuses()` surfaces it, `revive_slot(... display_label=)`
+  refreshes it (additive; index stays the stable id; no secret).
+- `backend/src/collector/registry.py`: `_union_pool_sessions` returns a 3-tuple incl. `display_labels`
+  (DB rows carry the label, env slots None); passed to `from_sessions`.
+- `backend/src/collector/telegram/reader.py`: revive-apply passes `display_label` from the StoredSession.
+
+### Frontend
+- `lib.ts`: `ReviveOutcome` union + `asReviveOutcome` (unknown→null), `accountLabel` (fallback
+  `account #<index>`), `reviveSuccessMessage` (distinct re-connect vs add, names the label).
+- `queries.ts`: `invalidatePoolHealth(queryClient)` invalidates exactly `POOL_HEALTH_QUERY_KEY`.
+- `qr-login-dialog.tsx`: title "Add / re-connect account"; on SUCCESS shows the outcome-aware message
+  + identity, invalidates pool-health (honest ≤1-cycle flip — no fake optimistic flip); vault note
+  re-worded to "already persisted; this is a one-time DR backup".
+- `pool-health-table.tsx`: new "Account" column (`display_label` / fallback).
+- `pages/admin/pool.tsx`: button "Add / re-connect account".
+- OpenAPI regenerated (`make gen-openapi gen-types`) → `gen.types.ts` carries the new fields (no `any`).
+
+### Verification evidence
+- Backend `make fmt` (386 unchanged) / `make lint` (All checks passed) / `make typecheck`
+  (Success: no issues, 189 files, mypy strict, no Any/ignore).
+- `make test` = 1152 passed, 307 deselected (updated 4 shape/call-assert tests for the additive fields).
+- Integration on throwaway `pgvector/pgvector:pg16` (host 127.0.0.1:55440): pool_admin(24) +
+  pool_session_store + at_rest_encryption + migrations = 38 passed; container torn down.
+- New pool_admin tests: per-account identity in health; SUCCESS ADD → store add + outcome + identity
+  + no revive-signal; SUCCESS REVIVE → revive-signal written (non-secret, no session) + OLD quarantine
+  cleared + no duplicate; over-cap → 409 with session copy-field preserved + no secret leak; idempotent
+  repeated SUCCESS poll → no duplicate.
+- Frontend: `npm install`, `npx tsc -b` clean, `npm run lint` clean, `npx vitest run` = 315 passed
+  (9 new in `tests/unit/pool-admin/revive.spec.ts`).

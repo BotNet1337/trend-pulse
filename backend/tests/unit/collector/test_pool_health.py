@@ -656,9 +656,18 @@ def test_emit_pool_health_writes_snapshot_to_redis_with_ttl() -> None:
     assert states == {"healthy", "cooling"}
     cooling = next(a for a in snapshot["accounts"] if a["state"] == "cooling")
     assert cooling["cooldown_remaining_seconds"] is not None
-    assert {"index", "state", "cooldown_remaining_seconds", "last_error_reason"} == set(
-        cooling.keys()
-    )
+    # TASK-120 additively carries the non-secret per-account identity (null here — no
+    # store identity for an in-memory test pool).
+    assert {
+        "index",
+        "state",
+        "cooldown_remaining_seconds",
+        "last_error_reason",
+        "display_label",
+        "tg_user_id",
+    } == set(cooling.keys())
+    assert cooling["display_label"] is None
+    assert cooling["tg_user_id"] is None
 
 
 def test_emit_pool_health_snapshot_has_no_secrets() -> None:
