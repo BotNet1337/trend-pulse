@@ -9,7 +9,6 @@ export {
   thresholdBarPercent,
   sourcesCount,
   matchesQuery,
-  matchesStatus,
   ariaSortFor,
   nextSort,
   velocityTier,
@@ -22,8 +21,6 @@ export {
   VELOCITY_WARM_THRESHOLD,
 } from './signal-desk';
 export type {
-  DeskStatus,
-  DeskDensity,
   DeskSortKey,
   DeskSortDir,
   DeskSort,

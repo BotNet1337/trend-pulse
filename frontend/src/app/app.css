@@ -1918,10 +1918,19 @@
   font-variant-numeric: tabular-nums;
   padding: 0.18rem 0.5rem;
   border-radius: var(--fs-radius-pill);
+  white-space: nowrap;
+  flex: none;
 }
 .vel-badge.hot { color: var(--fs-danger); background: var(--fs-danger-bg); border: 1px solid var(--fs-danger-border); }
 .vel-badge.warm { color: var(--fs-warning); background: var(--fs-warning-bg); border: 1px solid var(--fs-warning-border); }
 .vel-badge.calm { color: var(--fs-text-muted); background: var(--fs-glass-strong); border: 1px solid var(--fs-border-glass); }
+/* No-data placeholder: subtle, never a heavy badge, never wraps. */
+.vel-badge--empty {
+  color: var(--fs-text-faint);
+  background: transparent;
+  border: 1px dashed var(--fs-border-glass);
+  font-weight: 600;
+}
 
 /* Threshold mini-bar */
 .thr { display: inline-flex; align-items: center; gap: 0.45rem; }

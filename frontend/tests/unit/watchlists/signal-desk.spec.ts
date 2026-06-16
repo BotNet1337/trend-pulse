@@ -8,7 +8,6 @@ import {
   thresholdBarPercent,
   sourcesCount,
   matchesQuery,
-  matchesStatus,
   selectVisibleWatchlists,
   ariaSortFor,
   nextSort,
@@ -89,20 +88,12 @@ describe('matchesQuery', () => {
   });
 });
 
-describe('matchesStatus', () => {
-  it('all and active both match (no pause field in backend)', () => {
-    expect(matchesStatus(sample[0], 'all')).toBe(true);
-    expect(matchesStatus(sample[0], 'active')).toBe(true);
-  });
-});
-
 describe('selectVisibleWatchlists', () => {
   it('does not mutate the input array', () => {
     const input = [...sample];
     const before = input.map((w) => w.id);
     selectVisibleWatchlists(input, {
       query: '',
-      status: 'all',
       sort: { key: 'threshold', dir: 'asc' },
     });
     expect(input.map((w) => w.id)).toEqual(before);
@@ -111,7 +102,6 @@ describe('selectVisibleWatchlists', () => {
   it('filters by query then sorts by threshold ascending', () => {
     const result = selectVisibleWatchlists(sample, {
       query: '',
-      status: 'all',
       sort: { key: 'threshold', dir: 'asc' },
     });
     expect(result.map((w) => w.alert_config.score_threshold)).toEqual([65, 70, 80]);
@@ -120,7 +110,6 @@ describe('selectVisibleWatchlists', () => {
   it('sorts by threshold descending', () => {
     const result = selectVisibleWatchlists(sample, {
       query: '',
-      status: 'all',
       sort: { key: 'threshold', dir: 'desc' },
     });
     expect(result.map((w) => w.alert_config.score_threshold)).toEqual([80, 70, 65]);
@@ -129,7 +118,6 @@ describe('selectVisibleWatchlists', () => {
   it('sorts by name ascending', () => {
     const result = selectVisibleWatchlists(sample, {
       query: '',
-      status: 'all',
       sort: { key: 'name', dir: 'asc' },
     });
     expect(result.map((w) => w.channel.handle)).toEqual([
@@ -142,7 +130,6 @@ describe('selectVisibleWatchlists', () => {
   it('narrows to a single match on query', () => {
     const result = selectVisibleWatchlists(sample, {
       query: 'whale',
-      status: 'all',
       sort: { key: 'name', dir: 'asc' },
     });
     expect(result).toHaveLength(1);
@@ -156,7 +143,6 @@ describe('selectVisibleWatchlists', () => {
     ];
     const result = selectVisibleWatchlists(tied, {
       query: '',
-      status: 'all',
       sort: { key: 'threshold', dir: 'asc' },
     });
     expect(result.map((w) => w.id)).toEqual([4, 9]);

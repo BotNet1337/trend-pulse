@@ -132,8 +132,8 @@ export const WatchlistRow: React.FC<WatchlistRowProps> = ({
               {velocityLabel}
             </span>
           ) : (
-            <span className="vel-badge calm" title="Live velocity data is not available yet">
-              — no live data
+            <span className="vel-badge vel-badge--empty" title="No live velocity data yet">
+              no data
             </span>
           )}
         </div>

@@ -22,8 +22,6 @@ import {
   selectVisibleWatchlists,
   ariaSortFor,
   nextSort,
-  type DeskStatus,
-  type DeskDensity,
   type DeskSort,
   type DeskSortKey,
 } from '@/features/watchlists';
@@ -69,8 +67,6 @@ export const WatchlistsListPage: React.FC = () => {
 
   // ── Client-side desk UI state (visual only) ──────────────────────────────
   const [query, setQuery] = useState('');
-  const [status, setStatus] = useState<DeskStatus>('all');
-  const [density, setDensity] = useState<DeskDensity>('comfortable');
   const [sort, setSort] = useState<DeskSort>({ key: 'threshold', dir: 'desc' });
 
   const handleSort = (column: DeskSortKey) => {
@@ -99,8 +95,8 @@ export const WatchlistsListPage: React.FC = () => {
   };
 
   const visible = useMemo(
-    () => selectVisibleWatchlists(watchlists ?? [], { query, status, sort }),
-    [watchlists, query, status, sort],
+    () => selectVisibleWatchlists(watchlists ?? [], { query, sort }),
+    [watchlists, query, sort],
   );
 
   const total = watchlists?.length ?? 0;
@@ -117,7 +113,7 @@ export const WatchlistsListPage: React.FC = () => {
   const usagePercent = planMax > 0 ? Math.min(100, Math.round((total / planMax) * 100)) : 100;
 
   return (
-    <main className={`fs-main${density === 'compact' ? ' is-compact' : ''}`}>
+    <main className="fs-main is-compact">
       <div className="fs-container">
         <div className="fs-page-head">
           <div>
@@ -187,14 +183,7 @@ export const WatchlistsListPage: React.FC = () => {
 
         {!isLoading && !error && hasWatchlists && (
           <>
-            <WatchlistsToolbar
-              query={query}
-              onQueryChange={setQuery}
-              status={status}
-              onStatusChange={setStatus}
-              density={density}
-              onDensityChange={setDensity}
-            />
+            <WatchlistsToolbar query={query} onQueryChange={setQuery} />
 
             <div className="desk-wrap">
               <div className="desk-scroll">
@@ -203,7 +192,7 @@ export const WatchlistsListPage: React.FC = () => {
                     <tr>
                       <SortableHeader column="name" label="Watchlist" sort={sort} onSort={handleSort} />
                       <th scope="col">Live signal (24h)</th>
-                      <SortableHeader column="sources" label="Sources" sort={sort} onSort={handleSort} />
+                      <th scope="col">Sources</th>
                       <SortableHeader column="threshold" label="Threshold" sort={sort} onSort={handleSort} />
                       <th scope="col">Last alert</th>
                       <th scope="col">Status</th>

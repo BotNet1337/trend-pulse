@@ -1,33 +1,23 @@
 /**
- * WatchlistsToolbar — search + status segment + density toggle for the Signal
- * Desk. Pure presentation: it owns no data, only reflects/raises local UI state
- * (TASK-095). All controls are client-side; nothing here touches the API.
+ * WatchlistsToolbar — search box for the Signal Desk. Pure presentation: owns no
+ * data, only reflects/raises the local query state.
+ *
+ * The status segment (All/Active) and density toggle were removed: the backend
+ * model has no status/pause field (every watchlist is always active) and the desk
+ * now renders in a single compact format, so those controls filtered/changed
+ * nothing.
  */
 
 import React from 'react';
-import type { DeskStatus, DeskDensity } from './signal-desk';
 
 interface WatchlistsToolbarProps {
   query: string;
   onQueryChange: (value: string) => void;
-  status: DeskStatus;
-  onStatusChange: (value: DeskStatus) => void;
-  density: DeskDensity;
-  onDensityChange: (value: DeskDensity) => void;
 }
-
-const STATUS_OPTIONS: ReadonlyArray<{ value: DeskStatus; label: string }> = [
-  { value: 'all', label: 'All' },
-  { value: 'active', label: 'Active' },
-];
 
 export const WatchlistsToolbar: React.FC<WatchlistsToolbarProps> = ({
   query,
   onQueryChange,
-  status,
-  onStatusChange,
-  density,
-  onDensityChange,
 }) => {
   return (
     <div className="desk-toolbar" role="search">
@@ -44,36 +34,6 @@ export const WatchlistsToolbar: React.FC<WatchlistsToolbarProps> = ({
           placeholder="Filter by name or topic…"
         />
       </label>
-
-      <div className="desk-segment" role="group" aria-label="Status filter">
-        {STATUS_OPTIONS.map((opt) => (
-          <button
-            key={opt.value}
-            type="button"
-            aria-pressed={status === opt.value}
-            onClick={() => onStatusChange(opt.value)}
-          >
-            {opt.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="desk-segment" role="group" aria-label="Row density">
-        <button
-          type="button"
-          aria-pressed={density === 'comfortable'}
-          onClick={() => onDensityChange('comfortable')}
-        >
-          Comfortable
-        </button>
-        <button
-          type="button"
-          aria-pressed={density === 'compact'}
-          onClick={() => onDensityChange('compact')}
-        >
-          Compact
-        </button>
-      </div>
     </div>
   );
 };

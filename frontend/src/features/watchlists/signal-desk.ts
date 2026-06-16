@@ -15,14 +15,10 @@
 
 import type { WatchlistRead, WatchlistSignal } from '@/entities/watchlist';
 
-/** Client-side status segment. Only states the backend can back truthfully. */
-export type DeskStatus = 'all' | 'active';
-
-/** Row density toggle (mockup: Comfortable / Compact). */
-export type DeskDensity = 'comfortable' | 'compact';
-
-/** Sortable columns. `signal` has no backend series → name is the stable key. */
-export type DeskSortKey = 'name' | 'sources' | 'threshold';
+/** Sortable columns: only the ones backed by real data (name + threshold).
+ * `sources` is not sortable — every watchlist is one channel (ADR-001), so it
+ * carries no ordering signal. */
+export type DeskSortKey = 'name' | 'threshold';
 
 export type DeskSortDir = 'asc' | 'desc';
 
@@ -58,25 +54,12 @@ export function matchesQuery(watchlist: WatchlistRead, query: string): boolean {
   return handle.includes(q) || topic.includes(q);
 }
 
-/**
- * Status segment filter. Every watchlist is "active" today (no pause field),
- * so `all` and `active` are equivalent — but keeping the predicate explicit
- * means the segment stays correct if a real status field is added later.
- */
-export function matchesStatus(_watchlist: WatchlistRead, status: DeskStatus): boolean {
-  if (status === 'all') return true;
-  // No pause concept in the backend model → every row counts as active.
-  return true;
-}
-
 function compareByKey(a: WatchlistRead, b: WatchlistRead, key: DeskSortKey): number {
   switch (key) {
     case 'name':
       return a.channel.handle.localeCompare(b.channel.handle, undefined, {
         sensitivity: 'base',
       });
-    case 'sources':
-      return sourcesCount(a) - sourcesCount(b);
     case 'threshold':
       return a.alert_config.score_threshold - b.alert_config.score_threshold;
     default:
@@ -90,12 +73,10 @@ function compareByKey(a: WatchlistRead, b: WatchlistRead, key: DeskSortKey): num
  */
 export function selectVisibleWatchlists(
   watchlists: readonly WatchlistRead[],
-  options: { query: string; status: DeskStatus; sort: DeskSort },
+  options: { query: string; sort: DeskSort },
 ): WatchlistRead[] {
-  const { query, status, sort } = options;
-  const filtered = watchlists.filter(
-    (wl) => matchesQuery(wl, query) && matchesStatus(wl, status),
-  );
+  const { query, sort } = options;
+  const filtered = watchlists.filter((wl) => matchesQuery(wl, query));
   const sorted = [...filtered].sort((a, b) => {
     const cmp = compareByKey(a, b, sort.key);
     // Stable tiebreak on id so equal keys keep a deterministic order.

@@ -4,21 +4,15 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Inter — the Aurora design system font (loaded non-blocking). -->
+    <!-- Inter — the Aurora design system font. `display=swap` avoids FOIT; loaded
+         as a normal stylesheet so there is NO inline `onload` handler (which the
+         strict CSP `script-src-attr 'none'` blocks). -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
-      media="print"
-      onload="this.media='all'"
     />
-    <noscript>
-      <link
-        rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
-      />
-    </noscript>
     <link href="/src/app/app.css" rel="stylesheet">
     <title>Foresignal</title>
     <!-- TASK-068: Plausible (cookieless, privacy-first). data-domain matches the
