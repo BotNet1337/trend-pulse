@@ -166,15 +166,15 @@ exists as `observability/signal_latency.py::emit_ingest_staleness` (TASK-100).
 - FE `lib` vitest: `failing` label/variant/narrowing.
 
 ## Checkpoints
-current_step: 4
+current_step: 6
 baseline_commit: 98bd84c834fb58f266e4837a54783d508f129070
 branch: "feat/pool-health-revive"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [x] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — full suite + ruff + mypy strict + FE typecheck/vitest green)
-- [ ] 5 review (code-reviewer)
+- [x] 4 verify (1117 unit + 306 FE; mypy/lint green) (G2 — full suite + ruff + mypy strict + FE typecheck/vitest green)
+- [x] 5 review (opus PASS, only LOW) (code-reviewer)
 - [ ] 5.5 security (snapshot index-only; confirm no secret/identity leak)
 - [ ] 6 ship (PR)
 - [ ] 7 learnings (auto)
