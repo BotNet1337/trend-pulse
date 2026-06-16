@@ -5,7 +5,12 @@ import App from './app';
 import { createAuthStore } from './stores/auth.store';
 import { createAlertStore } from './stores/alert.store';
 import { createAppRouter } from './router';
-import { RouterProvider } from '@tanstack/react-router';
+// RouterClient is the SSR-hydration-aware counterpart to the server's
+// `<RouterServer>` (server/ssr/render.tsx). Plain `RouterProvider` does NOT
+// rehydrate the server-matched route, so the client renders a `<Suspense>`
+// fallback where the server rendered the resolved route → a hydration mismatch
+// (React #418) on every page. Pairing RouterServer↔RouterClient fixes it.
+import { RouterClient } from '@tanstack/react-router/ssr/client';
 import { BRAND_NAME } from '@/shared/config';
 import { createQueryClient } from './providers/query-client';
 import { hydrateQueryCache } from './hydrate-query-cache';
@@ -66,6 +71,6 @@ if (import.meta.env?.DEV) {
 hydrateRoot(
   document.getElementById('root') as HTMLElement,
   <App auth={auth} alert={alert} queryClient={queryClient}>
-    <RouterProvider router={router} />
+    <RouterClient router={router} />
   </App>,
 );

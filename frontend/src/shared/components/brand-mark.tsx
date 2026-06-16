@@ -8,13 +8,19 @@ export interface BrandMarkProps extends React.SVGProps<SVGSVGElement> {
   title?: string
 }
 
+// Stable gradient id (NOT `useId()`): the SSR server (`renderRouterToString`) and
+// the client (`hydrateRoot`) wrap the app differently, so `useId()` diverges across
+// the boundary and trips a hydration mismatch (React #418). The gradient is
+// decorative and identical per instance, so a shared constant id is safe.
+const BRAND_MARK_GRADIENT_ID = 'fs-brand-mark-gradient'
+
 export const BrandMark: React.FC<BrandMarkProps> = ({
   size = 32,
   title = BRAND_NAME,
   className,
   ...props
 }) => {
-  const gradientId = React.useId()
+  const gradientId = BRAND_MARK_GRADIENT_ID
 
   return (
     <svg

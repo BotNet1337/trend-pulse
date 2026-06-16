@@ -9,15 +9,24 @@ export interface AuroraMarkProps extends React.SVGProps<SVGSVGElement> {
 
 /**
  * Aurora brand mark — the gradient pulse-wave logo from the Foresignal app
- * design (designs/trendPulse/variants/app). Uses a `useId`-scoped gradient so
- * multiple instances on one page never collide.
+ * design (designs/trendPulse/variants/app).
+ *
+ * The gradient id is a STABLE constant, NOT `useId()`: under SSR the server
+ * (TanStack `renderRouterToString`) and the client (`hydrateRoot`) wrap the app
+ * differently, so `useId()` yields different values on each side; this mark is the
+ * first id-consumer rendered, so that divergence trips a hydration mismatch
+ * (React #418) on every page. The gradient is decorative and identical for every
+ * instance, so a shared id is safe (a duplicate decorative `<linearGradient>`
+ * resolves to the same visual result).
  */
+const AURORA_MARK_GRADIENT_ID = 'fs-aurora-mark-gradient'
+
 export const AuroraMark: React.FC<AuroraMarkProps> = ({
   size = 32,
   title = `${BRAND_NAME} logo`,
   ...props
 }) => {
-  const gradientId = React.useId()
+  const gradientId = AURORA_MARK_GRADIENT_ID
 
   return (
     <svg
