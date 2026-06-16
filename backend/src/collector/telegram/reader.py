@@ -158,6 +158,18 @@ class TelegramCollector:
                 extra={"exc_type": type(exc).__name__},
             )
 
+    async def apply_pending_revive(self) -> None:
+        """Apply a pending single-slot revive-signal ONCE per collect cycle (TASK-119).
+
+        The collect tick (`collector.tasks`) calls this exactly ONCE at the start of a
+        cycle, before its per-ref `read()` loop, so the revive-signal Redis GET fires a
+        SINGLE time per tick (not once per ref — there are ~108 refs/tick). Public so the
+        tick wrapper can drive it; the disconnect-before-connect single-slot revive
+        invariant is unchanged (it still applies at a tick boundary, never mid-read).
+        NEVER raises (best-effort — mirrors `_emit_health_best_effort`).
+        """
+        await self._apply_revive_best_effort()
+
     async def _apply_revive_best_effort(self) -> None:
         """Apply a pending single-slot revive-signal at a tick boundary (TASK-119).
 
@@ -314,11 +326,12 @@ class TelegramCollector:
         Emits a single pool health metric + degraded self-alert once per read()
         invocation — after all channels have been processed (TASK-035: periodic
         svodka, no new Beat schedule — uses existing read loop).
+
+        NOTE (TASK-119): the single-slot revive-signal check is NOT applied here — the
+        collect tick calls `apply_pending_revive()` ONCE per cycle before its per-ref
+        `read()` loop, so the revive GET is a single Redis read per tick (not per ref).
+        The disconnect-before-connect single-slot revive invariant is unchanged.
         """
-        # Apply any pending single-slot revive at the TICK BOUNDARY (before reading any
-        # channel, never mid-`iter_messages`) — best-effort, never crashes the tick
-        # (TASK-119). Disconnect-old → connect-new for the ONE affected slot only.
-        await self._apply_revive_best_effort()
         for ref in unique_refs(refs):
             async for post in self._read_one(ref, since):
                 yield post

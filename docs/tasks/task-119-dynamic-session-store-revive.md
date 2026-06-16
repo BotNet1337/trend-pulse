@@ -277,3 +277,44 @@ call-order log proves OLD `disconnect` precedes NEW `connect`; (2) `test_revive_
 token != plaintext (unit sqlite + real pg); (4) the session string never enters Redis (signal carries
 only `tg_user_id`/`fingerprint`) and is `repr=False` on both DTO + poll. TASK-118 read-outcome
 semantics consumed, not changed; rotation/cooldown/quarantine untouched (revive only CLEARS one slot).
+
+## Details (review fix — 2026-06-16)
+
+Review found one HIGH + one MEDIUM + one LOW; all fixed minimally within TASK-119 scope. Gates stay
+green (`make fmt`/`lint`/`typecheck` clean — mypy strict, no `Any`/`# type: ignore`; `make test`
+**1152 passed**, +8 new tests; integration on throwaway `pgvector/pgvector:pg16` port 55433 —
+pool_session_store 3 + migrations 4 + full integration 284 passed/13 infra-skipped; container torn down).
+
+- **[HIGH] Joint POOL_MAX cap** — the union loader (DB ∪ env) could exceed `POOL_MAX`, making
+  `from_sessions` raise `PoolConfigError` → ingest fully stops. Fixed on BOTH sides:
+  - `registry._union_pool_sessions` now TRUNCATES the de-duped union to `POOL_MAX`. Precedence is
+    **DB-first** (the live, identity-keyed, revivable slots are the dynamic source of truth and are
+    never starved by an over-provisioned env floor); env-floor sessions fill the remaining slots and
+    are the first dropped on overflow (logged). Result is always within `POOL_MIN..POOL_MAX` so
+    `from_sessions` never raises on size.
+  - `pool_session_store.upsert_revive_or_add` gained `env_floor_size: int = 0`; the ADD cap is now the
+    EFFECTIVE cap `max(0, pool_max − env_floor_size)`, so active DB rows + env can never exceed
+    `POOL_MAX`. A revive still never trips the cap; a misconfigured `env_floor ≥ pool_max` floors the
+    cap at 0 (rejects every ADD, never negative). TASK-120's API passes `env_floor_size=len(distinct
+    env sessions)`.
+  - Tests: `test_registry.py::test_union_truncates_to_pool_max_when_db_plus_env_overflow` +
+    `test_from_sessions_builds_at_cap_not_raises_on_overflowing_union` (DB at cap + unique env →
+    `size == POOL_MAX`, NOT a raise, deterministic DB-first survivors);
+    `test_pool_session_store.py::test_env_floor_reserves_capacity_against_pool_max` +
+    `test_env_floor_larger_than_pool_max_rejects_every_add`.
+- **[MEDIUM] Worker-side quarantine-clear on revive (belt-and-suspenders)** —
+  `AccountPool.revive_slot` now SREMs the swapped-out OLD fingerprint from
+  `pool:quarantined_fingerprints` (new `_clear_persisted_quarantine`, best-effort/fail-open, malformed-
+  fp guarded — mirrors `_persist_quarantine`). So a worker recycle after a revive can't reload the slot
+  as dead even if the TASK-120 producer's `clear_quarantine_for` was skipped/failed. Test:
+  `test_pool_revive.py::test_revive_clears_old_fingerprint_from_persisted_quarantine` (+ fail-open
+  without redis). Disconnect-before-connect + single-slot invariant tests unchanged.
+- **[LOW] Revive check once-per-tick** — `_apply_revive_best_effort` ran at the start of `read()`, and
+  `read()` is called per ref (~108/tick) → ~108 revive-signal GETs/tick. Extracted a public
+  `TelegramCollector.apply_pending_revive()`; the tick wrapper `collector.tasks._collect_refs` calls it
+  ONCE before the per-ref loop (via a narrow `runtime_checkable` `_SupportsPendingRevive` protocol so
+  the generic `SourceCollector` port + Twitter/Reddit are untouched). `read()` no longer checks the
+  signal → a single Redis GET per tick. Tick-boundary disconnect-before-connect single-slot invariant
+  preserved. Tests: `test_reader_revive.py::test_read_does_not_fire_revive_get_per_ref` +
+  `test_apply_pending_revive_is_single_get_per_call`; existing reader-revive tests rebased onto
+  `apply_pending_revive()`.

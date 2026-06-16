@@ -15,11 +15,18 @@ Unique constraint `uq_pool_sessions_tg_user_id`; indexes on `tg_user_id` + `revo
 Migration round-trip (up/down/re-up) verified on `pgvector/pgvector:pg16`.
 
 ## Store API — `backend/src/storage/pool_session_store.py` (all take a caller-owned `Session`)
-- `upsert_revive_or_add(session, *, tg_user_id, session_string, display_label, pool_max) -> UpsertResult`
+- `upsert_revive_or_add(session, *, tg_user_id, session_string, display_label, pool_max,
+   env_floor_size=0) -> UpsertResult`
   - row exists for `tg_user_id` → **REVIVE**: replace `session_string`+`fingerprint`, refresh
     `display_label`/`updated_at`, clear `revoked_at`. Returns `previous_fingerprint` (the OLD fp).
-  - no row → **ADD**: insert, but only if active-row count < `pool_max`, else
-    `PoolCapacityExceededError` (`collector/errors.py`). A revive NEVER trips the cap.
+  - no row → **ADD**: insert, but only if active-row count < the EFFECTIVE cap
+    `max(0, pool_max − env_floor_size)`, else `PoolCapacityExceededError` (`collector/errors.py`).
+    A revive NEVER trips the cap.
+  - **`env_floor_size` (review HIGH fix)**: the count of distinct env `TELEGRAM_POOL_SESSIONS` slots the
+    worker ALSO unions into the pool. The ADD cap reserves room for them so active DB rows + env can
+    never exceed `POOL_MAX` → `from_sessions` never raises on size. Default 0 = bare DB-only cap.
+    **TASK-120 MUST pass `env_floor_size=len(set(telegram_pool_sessions(settings)))`** on the
+    revive/add endpoint.
   - `UpsertResult{outcome: ReviveOutcome.REVIVE|ADD, tg_user_id, fingerprint, display_label,
     previous_fingerprint}` — carries NO secret (safe to log/return to the API).
 - `active_sessions(session) -> list[StoredSession]` — active (`revoked_at IS NULL`) rows, ordered by
@@ -41,6 +48,10 @@ Migration round-trip (up/down/re-up) verified on `pgvector/pgvector:pg16`.
 - `_build_telegram_collector` → `_union_pool_sessions(env_sessions, fingerprint)` returns positional
   `(sessions, tg_user_ids)`: DB store rows first (carry their `tg_user_id`), then env sessions
   (`tg_user_id=None`), de-duped by fingerprint (DB wins). FAIL-OPEN: any DB error → env-only (logged).
+- **JOINT POOL_MAX cap (review HIGH fix)**: the de-duped union is TRUNCATED to `POOL_MAX`, **DB-first**
+  (live identity-keyed slots survive; env-floor overflow dropped, logged) so `from_sessions` can never
+  raise `PoolConfigError` on size → ingest never fully stops. This is the worker-side hard guarantee;
+  the store's `env_floor_size` ADD cap is the producer-side guarantee (both implemented).
 - `AccountPool.from_sessions(... tg_user_ids=, )` is additive; the pool retains the `factory` for revive.
 
 ## Safe single-slot revive — `account_pool.py` + `reader.py`
@@ -50,12 +61,21 @@ Migration round-trip (up/down/re-up) verified on `pgvector/pgvector:pg16`.
   2. build a fresh client via the factory + `connect()`,
   3. swap `account.client` in place; reset that slot's `quarantined`/`cooldown_until`/`flood_strikes`/
      read-outcome fields/`last_error_reason`; update `fingerprint`+`tg_user_id`.
+  4. **(review MEDIUM fix)** SREM the swapped-out OLD fingerprint from `pool:quarantined_fingerprints`
+     (`_clear_persisted_quarantine`, best-effort/fail-open, malformed-fp guarded) — belt-and-suspenders
+     so a worker recycle after the revive can't reload the slot as dead even if the producer's
+     `clear_quarantine_for` was skipped/failed. (Producer `clear_quarantine_for` is still called by
+     TASK-120; this is the worker-side redundant clear.)
   INVARIANT (unit-asserted): a session is NEVER on two clients (old disconnect < new connect); only the
   one slot churns (siblings untouched).
-- `reader.py::_apply_revive_best_effort()` runs at the START of `read()` (tick boundary, never mid-read):
+- **Revive applied ONCE per tick (review LOW fix)**: the check moved out of `read()` (which is called
+  per ref, ~108×/tick → ~108 GETs) into `TelegramCollector.apply_pending_revive()`, driven ONCE by the
+  tick wrapper `collector.tasks._collect_refs` before the per-ref loop (via `runtime_checkable`
+  `_SupportsPendingRevive` — generic `SourceCollector` + Twitter/Reddit untouched). `_apply_revive_best_effort`
   reads the non-secret signal, `find_slot_index`, loads the NEW session from the store
-  (`find_active_by_tg_user_id` — secret from DB, not Redis), `revive_slot`, clears the signal.
-  Never crashes the tick (mirrors `_emit_health_best_effort`).
+  (`find_active_by_tg_user_id` — secret from DB, not Redis), `revive_slot`, clears the signal. Single
+  Redis GET per tick; tick-boundary disconnect-before-connect single-slot invariant unchanged. Never
+  crashes the tick (mirrors `_emit_health_best_effort`).
 
 ## Redis revive-signal (cross-process, NON-SECRET) — `collector/constants.py`
 - Key `POOL_REVIVE_SIGNAL_REDIS_KEY = "pool:revive:signal"`, TTL `POOL_REVIVE_SIGNAL_TTL_SECONDS = 600`.

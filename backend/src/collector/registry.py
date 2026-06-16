@@ -14,6 +14,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from collector.base import SourceCollector, SourceKind
+from collector.constants import POOL_MAX
 from collector.errors import PoolConfigError
 
 if TYPE_CHECKING:
@@ -101,6 +102,16 @@ def _union_pool_sessions(
     Returns positional `(sessions, tg_user_ids)` for `AccountPool.from_sessions`. Reads
     the store via a short-lived session; FAILS OPEN to env-only on ANY error (the worker
     must boot even if the DB is briefly unreachable — disaster-recovery floor).
+
+    JOINT `POOL_MAX` cap (TASK-119 fix): the de-duped union is TRUNCATED to `POOL_MAX`
+    so the list handed to `from_sessions` can never exceed the bound and raise
+    `PoolConfigError` (which would stop ingest entirely). PRECEDENCE — DB store sessions
+    are kept FIRST (they carry the live, identity-keyed, revivable slots that are the
+    dynamic source of truth), then env-floor sessions fill any remaining slots up to
+    `POOL_MAX`. This preserves the most-functional working pool: the live DB slots are
+    never starved by an over-provisioned env floor, while env still backstops a partial
+    DB. The store's ADD cap (effective `POOL_MAX - env_floor_size`) keeps the DB rows
+    alone within budget, so the truncation drops env-floor (not DB) slots in practice.
     """
     sessions: list[str] = []
     tg_user_ids: list[int | None] = []
@@ -122,6 +133,17 @@ def _union_pool_sessions(
         seen.add(fp)
         sessions.append(raw)
         tg_user_ids.append(None)
+
+    if len(sessions) > POOL_MAX:
+        # DB-first truncation: keep the live identity-keyed slots, drop the overflow
+        # (env floor first, by append order) so `from_sessions` never raises on size.
+        logger.warning(
+            "unioned pool (%d) exceeds POOL_MAX=%d; truncating to the cap (DB-first)",
+            len(sessions),
+            POOL_MAX,
+        )
+        sessions = sessions[:POOL_MAX]
+        tg_user_ids = tg_user_ids[:POOL_MAX]
 
     return sessions, tg_user_ids
 

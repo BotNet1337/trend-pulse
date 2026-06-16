@@ -144,6 +144,53 @@ def test_revive_over_cap_is_allowed(db: Session) -> None:
     assert result.outcome is ReviveOutcome.REVIVE
 
 
+def test_env_floor_reserves_capacity_against_pool_max(db: Session) -> None:
+    """TASK-119 HIGH fix: the ADD cap reserves room for the env floor so active DB rows +
+    env can never exceed POOL_MAX. With pool_max=3 and env_floor=2, only ONE DB ADD fits;
+    the second ADD rejects (effective cap = 3 - 2 = 1)."""
+    upsert_revive_or_add(
+        db,
+        tg_user_id=100,
+        session_string="1AbCsession-db-0",
+        display_label="@u0",
+        pool_max=_POOL_MAX,
+        env_floor_size=2,
+    )
+    with pytest.raises(PoolCapacityExceededError):
+        upsert_revive_or_add(
+            db,
+            tg_user_id=101,
+            session_string="1AbCsession-db-1",
+            display_label="@u1",
+            pool_max=_POOL_MAX,
+            env_floor_size=2,
+        )
+    # A REVIVE of the existing account still never trips the cap.
+    result = upsert_revive_or_add(
+        db,
+        tg_user_id=100,
+        session_string=_SESSION_A2,
+        display_label="@u0",
+        pool_max=_POOL_MAX,
+        env_floor_size=2,
+    )
+    assert result.outcome is ReviveOutcome.REVIVE
+
+
+def test_env_floor_larger_than_pool_max_rejects_every_add(db: Session) -> None:
+    """A misconfigured env floor >= pool_max → effective cap floored at 0, every ADD rejects
+    (never negative, never lets DB rows push the union over POOL_MAX)."""
+    with pytest.raises(PoolCapacityExceededError):
+        upsert_revive_or_add(
+            db,
+            tg_user_id=100,
+            session_string="1AbCsession-db-0",
+            display_label="@u0",
+            pool_max=_POOL_MAX,
+            env_floor_size=_POOL_MAX,
+        )
+
+
 def test_active_sessions_filters_revoked_and_revoke_idempotent(db: Session) -> None:
     upsert_revive_or_add(
         db, tg_user_id=111, session_string=_SESSION_A, display_label="@a", pool_max=_POOL_MAX

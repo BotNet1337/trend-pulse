@@ -13,8 +13,10 @@ the revive; find_slot_index locates by tg_user_id then fingerprint.
 
 from __future__ import annotations
 
+import fakeredis
 import pytest
 
+from collector.constants import QUARANTINE_REDIS_KEY
 from collector.errors import PoolConfigError
 from collector.telegram.account_pool import AccountPool, session_fingerprint
 
@@ -168,6 +170,44 @@ async def test_revive_out_of_range_raises() -> None:
     pool, _old, _sibling = _build_pool(log, new)
     with pytest.raises(PoolConfigError):
         await pool.revive_slot(slot_index=9, tg_user_id=111, session_string=_SESSION_NEW)
+
+
+async def test_revive_clears_old_fingerprint_from_persisted_quarantine() -> None:
+    """TASK-119 MEDIUM fix (belt-and-suspenders): revive_slot SREMs the swapped-out OLD
+    fingerprint from `pool:quarantined_fingerprints` so a worker recycle after the revive
+    cannot reload the slot as dead even if the producer's clear was skipped/failed."""
+    log: list[str] = []
+    new = _RecordingClient("new", log)
+    old = _RecordingClient("old", log)
+    sibling = _RecordingClient("sibling", log)
+
+    def factory(session: str) -> _RecordingClient:
+        return {_SESSION_OLD: old, _SESSION_SIBLING: sibling, _SESSION_NEW: new}[session]
+
+    r = fakeredis.FakeRedis()
+    old_fp = session_fingerprint(_SESSION_OLD)
+    # Seed the persisted quarantine with the OLD fingerprint (as a worker recycle would).
+    r.sadd(QUARANTINE_REDIS_KEY, old_fp)
+    pool = AccountPool.from_sessions(
+        sessions=[_SESSION_OLD, _SESSION_SIBLING],
+        factory=factory,
+        redis=r,
+        tg_user_ids=[111, 222],
+    )
+
+    await pool.revive_slot(slot_index=0, tg_user_id=111, session_string=_SESSION_NEW)
+
+    # The OLD fingerprint is gone from the persisted set; the sibling's is untouched.
+    assert not r.sismember(QUARANTINE_REDIS_KEY, old_fp)
+
+
+async def test_revive_quarantine_clear_fails_open_without_redis() -> None:
+    """No redis on the pool → the SREM is a silent no-op (revive still succeeds)."""
+    log: list[str] = []
+    new = _RecordingClient("new", log)
+    pool, _old, _sibling = _build_pool(log, new)  # built without redis
+    await pool.revive_slot(slot_index=0, tg_user_id=111, session_string=_SESSION_NEW)
+    assert pool._accounts[0].client is new  # revive succeeded
 
 
 def test_find_slot_index_falls_back_to_fingerprint() -> None:

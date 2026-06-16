@@ -89,6 +89,7 @@ def upsert_revive_or_add(
     session_string: str,
     display_label: str,
     pool_max: int,
+    env_floor_size: int = 0,
 ) -> UpsertResult:
     """Persist a minted session keyed by `tg_user_id`: REVIVE if it exists, else ADD.
 
@@ -97,9 +98,15 @@ def upsert_revive_or_add(
     — the same row, no duplicate. Returns the OLD fingerprint as `previous_fingerprint`
     so the caller can clear its persisted quarantine.
 
-    ADD (no row for `tg_user_id`): insert — but only if the active row count is below
-    `pool_max`; otherwise raise `PoolCapacityExceededError` (the API maps it to a 4xx).
-    A revive of an existing account never trips the cap (it replaces in place).
+    ADD (no row for `tg_user_id`): insert — but only if the active row count is below the
+    EFFECTIVE cap `pool_max - env_floor_size`; otherwise raise `PoolCapacityExceededError`
+    (the API maps it to a 4xx). `env_floor_size` (TASK-119 fix) is the count of distinct
+    env `TELEGRAM_POOL_SESSIONS` slots that the worker also unions into the pool — the ADD
+    cap MUST reserve room for them so active DB rows + env can never exceed `POOL_MAX` and
+    crash `from_sessions`. Default 0 keeps the bare DB-only cap for callers that do not
+    union an env floor. A revive of an existing account never trips the cap (it replaces
+    in place). The effective cap is floored at 0 so a misconfigured env floor larger than
+    `pool_max` rejects every ADD rather than going negative.
 
     The fingerprint is derived from the session via `session_fingerprint` (sha256[:16],
     non-secret). The session string is written through the model's `EncryptedString`
@@ -132,9 +139,11 @@ def upsert_revive_or_add(
         )
 
     active = _active_count(session)
-    if active >= pool_max:
+    effective_cap = max(0, pool_max - env_floor_size)
+    if active >= effective_cap:
         raise PoolCapacityExceededError(
-            f"cannot add pool account: {active} active sessions already at POOL_MAX={pool_max}"
+            f"cannot add pool account: {active} active DB sessions at the effective cap "
+            f"{effective_cap} (POOL_MAX={pool_max} - env_floor={env_floor_size})"
         )
     row = PoolSession(
         tg_user_id=tg_user_id,

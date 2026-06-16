@@ -472,6 +472,11 @@ class AccountPool:
         (no other `_Account.client` is reconnected). The session string is a secret and
         is NEVER logged. Raises `PoolConfigError` if the slot index is out of range or
         no factory is available (a misconstructed pool that cannot revive).
+
+        Belt-and-suspenders (TASK-119 fix): the swapped-out OLD fingerprint is SREM'd from
+        the persisted quarantine set so a worker recycle after this revive does not reload
+        the slot as dead — even if the producer's `clear_quarantine_for` was skipped/failed.
+        Fail-open: a Redis error is logged, never raised (mirrors `_persist_quarantine`).
         """
         if self._factory is None:
             raise PoolConfigError("pool has no client factory; cannot revive a slot")
@@ -480,6 +485,7 @@ class AccountPool:
 
         account = self._accounts[slot_index]
         old_client = account.client
+        old_fingerprint = account.fingerprint
         # 1. Disconnect the OLD client FIRST — best-effort (the old socket is dead).
         try:
             await old_client.disconnect()
@@ -503,6 +509,24 @@ class AccountPool:
         account.first_read_failure_at = None
         account.last_read_ok_at = None
         account.last_error_reason = ""
+
+        # 4. Belt-and-suspenders: drop the OLD fingerprint from the persisted quarantine
+        # set so a worker recycle after this revive does not reload the slot as dead.
+        self._clear_persisted_quarantine(old_fingerprint)
+
+    def _clear_persisted_quarantine(self, fingerprint: str) -> None:
+        """SREM a revived slot's OLD fingerprint from the persisted quarantine set.
+
+        Best-effort, fail-open (TASK-119): `redis=None`, an empty/malformed fingerprint,
+        or a Redis error is a no-op/logged-and-swallowed — never raised (mirrors
+        `_persist_quarantine` + `pool_session_store.clear_quarantine_for`). NEVER a secret.
+        """
+        if self._redis is None or not _is_valid_fingerprint(fingerprint):
+            return
+        try:
+            self._redis.srem(QUARANTINE_REDIS_KEY, fingerprint)
+        except RedisError:
+            logger.warning("could not clear quarantine on revive (Redis); ignoring")
 
     async def aclose(self) -> None:
         """Disconnect every pool client (worker shutdown / collector teardown).
