@@ -42,8 +42,8 @@ export const PoolHealthTable: React.FC<PoolHealthTableProps> = ({ health }) => {
       </div>
 
       <p className="fs-muted">
-        {health.healthy} of {health.target} target healthy · {health.cooling} cooling ·{' '}
-        {health.quarantined} quarantined · {health.size} total
+        {health.healthy} healthy · {health.cooling} cooling · {health.quarantined} quarantined ·{' '}
+        {health.size} total · target {health.target}
         {health.as_of && <> · as of {new Date(health.as_of).toLocaleString()}</>}
       </p>
 
