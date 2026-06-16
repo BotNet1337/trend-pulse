@@ -633,6 +633,91 @@ class TestQRLoginPersistOnSuccess:
         # No secret leaked in the error message.
         assert "1AbCoverflow-session" not in json.dumps(body)
 
+    def test_persist_db_error_rolls_back_and_keeps_session_dr_floor(
+        self,
+        client: TestClient,
+        db_session: Session,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A flush-level DB error on the persist path must NOT 500-and-lose the session.
+
+        The store FLUSHES, so a flush failure leaves the Session in a failed-transaction
+        state. Without a rollback in the degrade-gracefully branch, `get_session`'s
+        teardown commit() raises PendingRollbackError → a 500 that LOSES the minted
+        session_string (the DR floor this branch exists to protect). We inject a real
+        failed-flush via a fake `upsert_revive_or_add` that adds an INVALID row and
+        flushes (raising IntegrityError), then assert: 200 (not 500), the body still
+        carries `session_string`, `outcome` is null, and no secret leaks into logs.
+        """
+        session_secret = "1AbCdr-floor-must-survive-session"
+
+        def _flush_then_raise(
+            session: Session,
+            *,
+            tg_user_id: int,
+            session_string: str,
+            display_label: str,
+            pool_max: int,
+            env_floor_size: int = 0,
+        ) -> object:
+            # Force a genuine flush-level DB error so the Session enters a
+            # failed-transaction state (NOT a NULL fingerprint, which the model would
+            # reject pre-flush): two rows with the SAME unique tg_user_id in one flush.
+            now = datetime.now(UTC)
+            session.add(
+                PoolSession(
+                    tg_user_id=tg_user_id,
+                    session_string="1AbCdup-a",
+                    session_fingerprint="a" * 16,
+                    display_label="dup-a",
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            session.add(
+                PoolSession(
+                    tg_user_id=tg_user_id,
+                    session_string="1AbCdup-b",
+                    session_fingerprint="b" * 16,
+                    display_label="dup-b",
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            session.flush()  # raises IntegrityError (duplicate unique tg_user_id)
+            raise AssertionError("unreachable: flush above must raise")  # pragma: no cover
+
+        monkeypatch.setattr("api.routes.pool_admin.upsert_revive_or_add", _flush_then_raise)
+
+        poll = self._success_poll(
+            session_string=session_secret,
+            tg_user_id=930_001,
+            display_label="@dr-floor",
+        )
+        _override_qr_service(_FakeQRService(poll_result=poll))
+        _override_persist_deps(db_session)
+        _login_as_superuser(client, db_session, "pa-persist-dberr@example.com")
+
+        with caplog.at_level("WARNING"):
+            resp = client.get(_qr_poll_path("tok-dberr"))
+
+        # (a) HTTP 200, NOT 500 — the failed transaction was rolled back before teardown.
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        # (b) The DR floor survived: the minted session_string is still returned.
+        assert body["session_string"] == session_secret
+        # (c) No outcome — persistence did not classify (it failed).
+        assert body["outcome"] is None
+        # (d) No secret in logs: the session string never appears in any log record.
+        assert all(session_secret not in record.getMessage() for record in caplog.records)
+        assert session_secret not in caplog.text
+        # The rolled-back transaction persisted NOTHING for this identity.
+        assert (
+            db_session.scalars(select(PoolSession).where(PoolSession.tg_user_id == 930_001)).all()
+            == []
+        )
+
     def test_success_poll_is_idempotent(self, client: TestClient, db_session: Session) -> None:
         """Polling is a loop — a repeated SUCCESS poll must not create a duplicate."""
         poll = self._success_poll(

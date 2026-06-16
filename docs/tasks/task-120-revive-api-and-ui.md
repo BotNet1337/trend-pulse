@@ -223,3 +223,52 @@ Implemented (TDD, RED→GREEN) within the planned scope. Notes file: `cache/pool
   repeated SUCCESS poll → no duplicate.
 - Frontend: `npm install`, `npx tsc -b` clean, `npm run lint` clean, `npx vitest run` = 315 passed
   (9 new in `tests/unit/pool-admin/revive.spec.ts`).
+
+## Details (2026-06-16 — fix: roll back on persist-path DB error so the session DR floor survives)
+
+HIGH bug found in review of the degrade-gracefully branch of `_persist_qr_success`
+(`backend/src/api/routes/pool_admin.py`).
+
+### Problem
+On a SUCCESS poll the route persists via `upsert_revive_or_add`, which **FLUSHES**.
+The `except Exception` branch existed to preserve the DR floor — it returns a 200 still
+carrying the minted `session_string` (so the admin can paste it into the vault) with
+`outcome=None`. But a **flush-level** DB error (e.g. `IntegrityError`/`DBAPIError`) leaves
+the SQLAlchemy `Session` in a *failed-transaction* state. When the handler returned,
+`storage.database.get_session`'s teardown `commit()` then raised `PendingRollbackError`
+→ the client got a **500 and LOST the minted `session_string`** — the exact invariant
+this branch exists to protect.
+
+### Fix (minimal)
+In the `except Exception` branch, call `db.rollback()` **before** returning the response
+(mirrors `api/watchlist/service.py`, which rolls back a caught `IntegrityError` before
+continuing). The returned 200 body still carries `session_string` (DR floor) and
+`outcome=None`. The session string is never logged — the warning logs only
+`type(exc).__name__` + `tg_user_id` + the non-secret `session_fingerprint(...)`.
+
+### Test (RED→GREEN)
+`backend/tests/integration/test_pool_admin_api.py::TestQRLoginPersistOnSuccess::`
+`test_persist_db_error_rolls_back_and_keeps_session_dr_floor` (`@pytest.mark.integration`).
+Injects a genuine failed-flush by monkeypatching `api.routes.pool_admin.upsert_revive_or_add`
+with a fake that `session.add`s two rows sharing the same UNIQUE `tg_user_id` and flushes
+(raising `IntegrityError`, leaving the Session failed). Asserts: (a) HTTP **200** (not 500),
+(b) body still carries the minted `session_string` (DR floor survived), (c) `outcome` is null,
+(d) no secret in logs (`caplog`), and that the rolled-back transaction persisted **nothing**.
+Verified RED without the fix (`PendingRollbackError` → 500) and GREEN with it.
+
+### LOW (revive-signal write-before-commit) — documented, not changed
+`get_session` commits at teardown, so the revive-signal is written inside
+`_persist_qr_success` slightly before that teardown commit. Making it strictly
+post-commit is non-trivial (the commit is owned by the context-manager dependency, not
+the handler) and the window self-heals: the signal is best-effort/fail-open, a missed
+or premature signal self-heals on the next full pool build, and the persisted row is the
+source of truth. Left as-is per "do not over-engineer".
+
+### Verification evidence
+- `make fmt` — 2 files reformatted, rest unchanged.
+- `make lint` — All checks passed.
+- `make typecheck` — Success: no issues found in 189 source files (mypy strict; no `Any`/`# type: ignore`).
+- `make test` (unit, `-m 'not integration'`) — 1152 passed, 308 deselected.
+- Integration on throwaway `pgvector/pgvector:pg16` (alt `POSTGRES_HOST=localhost POSTGRES_PORT=55432`,
+  throwaway password): new test green; full `tests/integration/test_pool_admin_api.py` = 25 passed
+  (24 prior + 1 new). New test verified RED→GREEN. Container torn down after.

@@ -49,6 +49,7 @@ from collector.errors import (
     QRLoginCapacityError,
     QRLoginNotConfiguredError,
 )
+from collector.telegram.account_pool import session_fingerprint
 from collector.telegram.qr_login import QRLoginPoll, QRLoginService, QRLoginStatus
 from config import Settings, get_settings, telegram_pool_sessions
 from storage.database import get_session
@@ -480,11 +481,20 @@ async def _persist_qr_success(
             detail=_POOL_FULL_MESSAGE,
         ) from None
     except Exception as exc:
-        # DR-floor preservation: a store/DB error must NOT lose the minted session. Return
-        # the copy-field (no outcome) so the admin can still vault it. Log class name only.
+        # DR-floor preservation: a store/DB error must NOT lose the minted session. The store
+        # FLUSHES, so a flush-level failure leaves the Session in a failed-transaction state;
+        # without a rollback here, `get_session`'s teardown commit() would raise
+        # PendingRollbackError → a 500 that LOSES the session_string this branch exists to
+        # protect. Roll back first (mirrors api.watchlist.service), THEN return the copy-field
+        # (no outcome) so the admin can still vault it. Log class name only — never the secret.
+        db.rollback()
         logger.warning(
             "pool session persist on QR success failed (session copy-field preserved): %s",
             type(exc).__name__,
+            extra={
+                "tg_user_id": poll.tg_user_id,
+                "fingerprint": session_fingerprint(poll.session_string),
+            },
         )
         return response
 
