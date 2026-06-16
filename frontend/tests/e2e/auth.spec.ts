@@ -16,7 +16,8 @@ const uniqueEmail = (prefix: string) =>
 async function register(page: Page, email: string, password: string) {
   await page.goto('/auth/sign-up');
   await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(password);
+  await page.getByLabel('Password', { exact: true }).fill(password);
+  await page.getByLabel('Confirm password').fill(password);
   await page.getByRole('button', { name: /create account/i }).click();
   // After registration the app should redirect to sign-in
   await page.waitForURL(/\/auth\/sign-in/, { timeout: 8000 });
@@ -179,7 +180,8 @@ test('AC5b — register duplicate email → generic error, no email/exists/alrea
   // Attempt to register the same email again
   await page.goto('/auth/sign-up');
   await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(password);
+  await page.getByLabel('Password', { exact: true }).fill(password);
+  await page.getByLabel('Confirm password').fill(password);
   await page.getByRole('button', { name: /create account/i }).click();
 
   // An error message should appear

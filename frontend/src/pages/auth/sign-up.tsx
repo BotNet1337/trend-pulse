@@ -21,6 +21,7 @@ import { useMutation } from '@tanstack/react-query'
 import { paths } from '@/app/router/path'
 import { AuthFrame } from './auth-frame'
 import { register } from '@/features/auth'
+import { Recaptcha, RECAPTCHA_ENABLED } from '@/shared/components/recaptcha'
 
 /**
  * localStorage key for storing an incoming referral code across page loads.
@@ -51,6 +52,8 @@ export const SignUpPage: React.FC = () => {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   // On mount: capture ?ref= from URL into localStorage for persistence across
@@ -66,13 +69,28 @@ export const SignUpPage: React.FC = () => {
   const registerMutation = useMutation({
     mutationFn: () => {
       const storedRef = localStorage.getItem(REF_CODE_STORAGE_KEY) ?? undefined
-      return register({ email, password, referrer_code: storedRef })
+      return register({
+        email,
+        password,
+        referrer_code: storedRef,
+        recaptcha_token: recaptchaToken ?? undefined,
+      })
     },
   })
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    // Client-side guard: passwords must match before hitting the API.
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.')
+      return
+    }
+    // Prod-only: require a solved captcha when the widget is enabled.
+    if (RECAPTCHA_ENABLED && !recaptchaToken) {
+      setError('Please complete the captcha.')
+      return
+    }
     trackSignUpClick()
     try {
       await registerMutation.mutateAsync()
@@ -129,6 +147,27 @@ export const SignUpPage: React.FC = () => {
               minLength={3}
             />
           </div>
+          <div className="fs-field">
+            <label className="fs-label" htmlFor="confirm-password">
+              Confirm password
+            </label>
+            <input
+              className="fs-input"
+              id="confirm-password"
+              type="password"
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              disabled={pending}
+              placeholder="••••••••"
+              minLength={3}
+              aria-invalid={confirmPassword.length > 0 && password !== confirmPassword}
+            />
+          </div>
+
+          {/* Google reCAPTCHA — renders only when VITE_RECAPTCHA_SITE_KEY is set (prod). */}
+          <Recaptcha onChange={setRecaptchaToken} />
 
           {error && (
             <p className="fs-error" role="alert">

@@ -18,6 +18,8 @@ RUN npm ci --ignore-scripts
 FROM node:${NODE_VERSION}-alpine AS builder
 ARG VITE_BRAND_NAME=Foresignal
 ARG VITE_HELP_URL=https://foresignal.biz/docs
+# Public reCAPTCHA v2 site key — non-secret; empty default = captcha off in the UI.
+ARG VITE_RECAPTCHA_SITE_KEY=
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -25,6 +27,7 @@ ENV NODE_ENV=production
 # Build-time brand injection (non-secret VITE_* vars baked into the bundle)
 ENV VITE_BRAND_NAME=${VITE_BRAND_NAME}
 ENV VITE_HELP_URL=${VITE_HELP_URL}
+ENV VITE_RECAPTCHA_SITE_KEY=${VITE_RECAPTCHA_SITE_KEY}
 # tsc type-check (tsconfig references: app + node) → vite build → dist/client/
 # The SSR server (server/) is executed via tsx at runtime — NOT bundled here.
 RUN npm run build

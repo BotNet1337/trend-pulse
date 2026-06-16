@@ -170,8 +170,15 @@ class TwitterCollector:
             ) from exc
         self._charge_read_budget(len(tweets))
         for tweet in tweets:
-            # `start_time` already bounds the API result; double-guard the cutoff.
-            if since is not None and tweet.created_at is not None and tweet.created_at < since:
+            # Double-guard the cutoff against the window WE QUERIED (effective_since),
+            # NOT the caller's ~60s tick `since` — using `since` here would discard
+            # every tweet the wider effective window deliberately fetched (the bug
+            # that made every read yield 0 posts).
+            if (
+                effective_since is not None
+                and tweet.created_at is not None
+                and tweet.created_at < effective_since
+            ):
                 continue
             yield map_tweet(tweet, ref)
 

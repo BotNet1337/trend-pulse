@@ -9,9 +9,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useWatchlists, useDeleteWatchlist } from '@/features/watchlists';
+import type { WatchlistRead } from '@/entities/watchlist';
 import { PacksBlock } from '@/features/packs';
 import { WatchlistCard } from '@/entities/watchlist';
 import { Button } from '@/shared/components/button';
+import { ConfirmDialog } from '@/shared/components/confirm-dialog';
 import { EmptyState } from '@/shared/components/empty-state';
 
 export const WatchlistsListPage: React.FC = () => {
@@ -19,17 +21,27 @@ export const WatchlistsListPage: React.FC = () => {
   const { data: watchlists, isLoading, error } = useWatchlists();
   const deleteMutation = useDeleteWatchlist();
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  // Watchlist pending deletion — non-null opens the confirmation dialog.
+  const [deleteTarget, setDeleteTarget] = useState<WatchlistRead | null>(null);
 
   const handleEdit = (id: number) => {
     void navigate({ to: '/watchlists/$watchlistId', params: { watchlistId: String(id) } });
   };
 
-  const handleDelete = async (id: number) => {
+  const requestDelete = (id: number) => {
+    setDeleteError(null);
+    setDeleteTarget(watchlists?.find((wl) => wl.id === id) ?? null);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
     setDeleteError(null);
     try {
-      await deleteMutation.mutateAsync(id);
+      await deleteMutation.mutateAsync(deleteTarget.id);
+      setDeleteTarget(null);
     } catch {
       setDeleteError('Failed to delete watchlist. Please try again.');
+      setDeleteTarget(null);
     }
   };
 
@@ -83,7 +95,7 @@ export const WatchlistsListPage: React.FC = () => {
                 <WatchlistCard
                   watchlist={wl}
                   onEdit={handleEdit}
-                  onDelete={(id) => void handleDelete(id)}
+                  onDelete={requestDelete}
                   deleteIsPending={
                     deleteMutation.isPending && deleteMutation.variables === wl.id
                   }
@@ -96,6 +108,21 @@ export const WatchlistsListPage: React.FC = () => {
         {/* Curated channel packs block (TASK-038) */}
         <PacksBlock />
       </div>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Delete watchlist?"
+        description={
+          deleteTarget
+            ? `“${deleteTarget.channel.handle}” will stop being tracked. This cannot be undone.`
+            : undefined
+        }
+        confirmLabel="Delete watchlist"
+        pendingLabel="Deleting..."
+        isPending={deleteMutation.isPending}
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </main>
   );
 };

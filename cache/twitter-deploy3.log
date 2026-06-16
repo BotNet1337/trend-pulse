@@ -1,0 +1,232 @@
+cd ops/ansible && ANSIBLE_HOST_KEY_CHECKING=True ANSIBLE_CONFIG=ansible.cfg ansible-playbook site.yml -l prod -i inventory/prod.yml --vault-password-file .vault-pass
+[WARNING]: Found duplicate mapping key 'vault_nowpayments_api_key'.
+Origin: /Users/macbookpro16/work/botnet/apps/trendPulse/ops/ansible/vault/sensitive.vault.yml:27:1
+
+(source not shown: content encrypted)
+
+Using last defined value only.
+
+[WARNING]: Found duplicate mapping key 'vault_nowpayments_ipn_secret'.
+Origin: /Users/macbookpro16/work/botnet/apps/trendPulse/ops/ansible/vault/sensitive.vault.yml:28:1
+
+(source not shown: content encrypted)
+
+Using last defined value only.
+
+
+PLAY [Provision VPS host (Docker + Swarm + firewall)] **************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [trendpulse-prod]
+
+TASK [Preflight — assert enough RAM (warn, not hard-fail)] *********************
+[WARNING]: Deprecation warnings can be disabled by setting `deprecation_warnings=False` in ansible.cfg.
+[DEPRECATION WARNING]: INJECT_FACTS_AS_VARS default to `True` is deprecated, top-level facts will not be auto injected after the change. This feature will be removed from ansible-core version 2.24.
+Origin: /Users/macbookpro16/work/botnet/apps/trendPulse/ops/ansible/playbooks/provision.yml:31:19
+
+29           - ansible_memtotal_mb | int >= preflight_min_ram_mb
+30         success_msg: "RAM OK: {{ ansible_memtotal_mb }} MB"
+31         fail_msg: >-
+                     ^ column 19
+
+Use `ansible_facts["fact_name"]` (no `ansible_` prefix) instead.
+
+[DEPRECATION WARNING]: INJECT_FACTS_AS_VARS default to `True` is deprecated, top-level facts will not be auto injected after the change. This feature will be removed from ansible-core version 2.24.
+Origin: /Users/macbookpro16/work/botnet/apps/trendPulse/ops/ansible/playbooks/provision.yml:30:22
+
+28         that:
+29           - ansible_memtotal_mb | int >= preflight_min_ram_mb
+30         success_msg: "RAM OK: {{ ansible_memtotal_mb }} MB"
+                        ^ column 22
+
+Use `ansible_facts["fact_name"]` (no `ansible_` prefix) instead.
+
+[DEPRECATION WARNING]: INJECT_FACTS_AS_VARS default to `True` is deprecated, top-level facts will not be auto injected after the change. This feature will be removed from ansible-core version 2.24.
+Origin: /Users/macbookpro16/work/botnet/apps/trendPulse/ops/ansible/playbooks/provision.yml:29:13
+
+27       ansible.builtin.assert:
+28         that:
+29           - ansible_memtotal_mb | int >= preflight_min_ram_mb
+               ^ column 13
+
+Use `ansible_facts["fact_name"]` (no `ansible_` prefix) instead.
+
+ok: [trendpulse-prod] => {
+    "changed": false,
+    "msg": "RAM OK: 7751 MB"
+}
+
+TASK [Preflight — compute root filesystem free space (GB)] *********************
+[DEPRECATION WARNING]: INJECT_FACTS_AS_VARS default to `True` is deprecated, top-level facts will not be auto injected after the change. This feature will be removed from ansible-core version 2.24.
+Origin: /Users/macbookpro16/work/botnet/apps/trendPulse/ops/ansible/playbooks/provision.yml:38:23
+
+36     - name: Preflight — compute root filesystem free space (GB)
+37       ansible.builtin.set_fact:
+38         root_free_gb: >-
+                         ^ column 23
+
+Use `ansible_facts["fact_name"]` (no `ansible_` prefix) instead.
+
+ok: [trendpulse-prod]
+
+TASK [Preflight — assert enough disk (warn, not hard-fail)] ********************
+ok: [trendpulse-prod] => {
+    "changed": false,
+    "msg": "Disk OK: 30.9 GB free on /"
+}
+
+TASK [Install base system packages] ********************************************
+ok: [trendpulse-prod]
+
+TASK [Detect existing Docker engine] *******************************************
+ok: [trendpulse-prod]
+
+TASK [Install Docker engine + compose plugin (skip when an engine is already present)] ***
+skipping: [trendpulse-prod]
+
+TASK [Ensure /etc/docker config directory exists] ******************************
+ok: [trendpulse-prod]
+
+TASK [Configure Docker daemon log rotation (json-file, size-capped)] ***********
+ok: [trendpulse-prod]
+
+TASK [Ensure Docker service is running and enabled] ****************************
+ok: [trendpulse-prod]
+
+TASK [Check Docker Swarm state] ************************************************
+ok: [trendpulse-prod]
+
+TASK [Initialise Docker Swarm (single-node) when not already active] ***********
+skipping: [trendpulse-prod]
+
+TASK [UFW — default deny incoming] *********************************************
+ok: [trendpulse-prod]
+
+TASK [UFW — default allow outgoing] ********************************************
+ok: [trendpulse-prod]
+
+TASK [UFW — allow SSH/HTTP/HTTPS only (22/80/443)] *****************************
+ok: [trendpulse-prod] => (item=22)
+ok: [trendpulse-prod] => (item=80)
+ok: [trendpulse-prod] => (item=443)
+
+TASK [UFW — enable the firewall] ***********************************************
+ok: [trendpulse-prod]
+
+TASK [Install fail2ban (SSH brute-force protection)] ***************************
+ok: [trendpulse-prod]
+
+TASK [Ensure fail2ban service is running and enabled] **************************
+ok: [trendpulse-prod]
+
+PLAY [Deploy TrendPulse release bundle (Docker Swarm)] *************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [trendpulse-prod]
+
+TASK [Check out the application source on the host] ****************************
+changed: [trendpulse-prod]
+
+TASK [Resolve deployed commit sha (image tag)] *********************************
+ok: [trendpulse-prod]
+
+TASK [env : Ensure env directory exists] ***************************************
+ok: [trendpulse-prod]
+
+TASK [env : Render deploy.env (non-secret) from group_vars] ********************
+ok: [trendpulse-prod]
+
+TASK [env : Render sensitive.env (secrets) from decrypted vault] ***************
+ok: [trendpulse-prod]
+
+TASK [tls : TLS disabled — skip cert issuance (bare-IP / smoke run)] ***********
+skipping: [trendpulse-prod]
+
+TASK [tls : Assert domain + email are set when TLS is enabled] *****************
+ok: [trendpulse-prod] => {
+    "changed": false,
+    "msg": "All assertions passed"
+}
+
+TASK [tls : Install certbot] ***************************************************
+ok: [trendpulse-prod]
+
+TASK [tls : Ensure the ACME webroot exists (also inside the nginx bind-mount)] ***
+ok: [trendpulse-prod]
+
+TASK [tls : Issue / renew the Let's Encrypt certificate (standalone)] **********
+changed: [trendpulse-prod]
+
+TASK [tls : Install the certbot renew deploy-hook (force nginx service restart)] ***
+ok: [trendpulse-prod]
+
+TASK [tls : Install the systemd renew timer (override certbot to use webroot)] ***
+ok: [trendpulse-prod]
+
+TASK [tls : Install the systemd renew timer unit] ******************************
+ok: [trendpulse-prod]
+
+TASK [tls : Enable + start the certbot renew timer] ****************************
+ok: [trendpulse-prod]
+
+TASK [host_alerts : Ensure alert throttle state directory exists] **************
+ok: [trendpulse-prod]
+
+TASK [host_alerts : Install trendpulse-host-alert.sh (single host→TG alert channel)] ***
+ok: [trendpulse-prod]
+
+TASK [host_alerts : Install periodic disk/memory check cron job] ***************
+ok: [trendpulse-prod]
+
+TASK [backup : Ensure backup log file exists with correct permissions] *********
+changed: [trendpulse-prod]
+
+TASK [backup : Install logrotate config for the backup log] ********************
+ok: [trendpulse-prod]
+
+TASK [backup : Set MAILTO="" for trendpulse-pg-backup cron (suppress email, log-only)] ***
+ok: [trendpulse-prod]
+
+TASK [backup : Install daily pg_backup cron job] *******************************
+ok: [trendpulse-prod]
+
+TASK [backup : Install weekly pg restore-check cron job (TASK-061)] ************
+ok: [trendpulse-prod]
+
+TASK [Pin APP_VERSION in the release version.env] ******************************
+changed: [trendpulse-prod]
+
+TASK [Build the application images tagged 665e2427ebdf] ************************
+changed: [trendpulse-prod]
+
+TASK [Deploy the swarm stack (render | stack deploy)] **************************
+changed: [trendpulse-prod]
+
+TASK [Wait for stack convergence (services running + jobs Complete)] ***********
+ok: [trendpulse-prod]
+
+TASK [Find a running api container (swarm task on this node)] ******************
+ok: [trendpulse-prod]
+
+TASK [Showcase-init (subscribe system showcase user to catalog packs)] *********
+changed: [trendpulse-prod]
+
+TASK [Prune old release images (keep current + previous per repo)] *************
+ok: [trendpulse-prod]
+
+TASK [Smoke test (register → login → watchlist → /ready → /trending)] **********
+[DEPRECATION WARNING]: INJECT_FACTS_AS_VARS default to `True` is deprecated, top-level facts will not be auto injected after the change. This feature will be removed from ansible-core version 2.24.
+Origin: /Users/macbookpro16/work/botnet/apps/trendPulse/ops/ansible/playbooks/deploy.yml:149:15
+
+147         # The SPA + /api live at app.<domain> (apex serves the landing site), so
+148         # smoke targets the app subdomain. Bare-IP (tls off) hits the default server.
+149         HOST: "{{ 'https://app.' + prod_domain if (tls_enabled | default(true)) else 'http://' + ansible_default_...
+                  ^ column 15
+
+Use `ansible_facts["fact_name"]` (no `ansible_` prefix) instead.
+
+ok: [trendpulse-prod]
+
+PLAY RECAP *********************************************************************
+trendpulse-prod            : ok=46   changed=7    unreachable=0    failed=0    skipped=3    rescued=0    ignored=0   
+

@@ -218,6 +218,11 @@ _DEFAULT_PRECISION_WINDOW_SECONDS: int = 604_800  # 7 days
 _DEFAULT_PUBLIC_BASE_URL: str = ""
 _DEFAULT_FEEDBACK_RATE_LIMIT_PER_MINUTE: int = 30
 
+# Google reCAPTCHA v2 secret — empty = CAPTCHA verification OFF (local dev never
+# challenges; prod sets it via sensitive.env). Mirrors the SENTRY_DSN "empty = off"
+# pattern: a secret that is optional and degrades gracefully when unset.
+_DEFAULT_RECAPTCHA_SECRET_KEY: str = ""
+
 # Adaptive threshold + anti-fatigue guards (TASK-043). Named, non-secret defaults;
 # time in SECONDS (CONVENTIONS).
 # `threshold_adapt_interval_seconds`: how often the adapt-thresholds beat task runs (6h).
@@ -473,6 +478,12 @@ class Settings(BaseSettings):
     # default (prod) to avoid exposing the full API schema externally.  Dev enables via
     # env `SWAGGER_ENABLE=true`; prod must NOT set this flag.
     swagger_enable: bool = False
+
+    # --- Google reCAPTCHA v2 (sign-up bot protection). Secret; empty = OFF.
+    # Empty in local dev (no challenge); prod sets RECAPTCHA_SECRET_KEY via
+    # sensitive.env. The matching public site-key lives only in the frontend
+    # bundle (VITE_RECAPTCHA_SITE_KEY) — never here. ---
+    recaptcha_secret_key: str = _DEFAULT_RECAPTCHA_SECRET_KEY
 
     # --- Auth deeplink (TASK-026). Non-secret; prod MUST set FRONTEND_BASE_URL to
     # the HTTPS domain (e.g. https://app.trendpulse.io) via deploy.env / ansible

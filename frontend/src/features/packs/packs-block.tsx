@@ -13,6 +13,7 @@ import { usePacks, useSubscribePack, useUnsubscribePack } from './queries';
 import type { PackRead } from './api';
 import { extractErrorMessage } from './error-message';
 import { Button } from '@/shared/components/button';
+import { ConfirmDialog } from '@/shared/components/confirm-dialog';
 
 /** Manual EN pluralisation — no i18n framework (TASK-072 decision). */
 const channelsWord = (count: number): string => (count === 1 ? 'channel' : 'channels');
@@ -26,6 +27,8 @@ const PackRow: React.FC<PackRowProps> = ({ pack }) => {
   const unsubscribeMutation = useUnsubscribePack();
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Opens the disconnect confirmation dialog for this pack.
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const handleSubscribe = async () => {
     setFeedback(null);
@@ -50,8 +53,10 @@ const PackRow: React.FC<PackRowProps> = ({ pack }) => {
     try {
       const result = await unsubscribeMutation.mutateAsync(pack.slug);
       setFeedback(`Disconnected: ${result.deleted} ${channelsWord(result.deleted)} removed`);
+      setConfirmOpen(false);
     } catch (err: unknown) {
       setError(extractErrorMessage(err));
+      setConfirmOpen(false);
     }
   };
 
@@ -83,13 +88,24 @@ const PackRow: React.FC<PackRowProps> = ({ pack }) => {
               size="sm"
               variant="ghost"
               disabled={isPending}
-              onClick={() => void handleUnsubscribe()}
+              onClick={() => setConfirmOpen(true)}
               aria-label={`Disconnect pack ${pack.title}`}
             >
               {unsubscribeMutation.isPending ? 'Disconnecting…' : 'Disconnect'}
             </Button>
           </div>
         </div>
+
+        <ConfirmDialog
+          open={confirmOpen}
+          title="Disconnect pack?"
+          description={`“${pack.title}” channels will be removed from your watchlists. You can reconnect anytime.`}
+          confirmLabel="Disconnect"
+          pendingLabel="Disconnecting..."
+          isPending={unsubscribeMutation.isPending}
+          onConfirm={() => void handleUnsubscribe()}
+          onCancel={() => setConfirmOpen(false)}
+        />
         {feedback && (
           <p className="fs-list__sub fs-mt-1" aria-live="polite" style={{ marginBottom: 0 }}>
             {feedback}

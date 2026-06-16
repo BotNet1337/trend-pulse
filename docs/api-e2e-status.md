@@ -24,9 +24,17 @@
 | 11 | cases-feedback | (nginx-проба) | verified | через nginx: `GET /cases` (public, no auth)→**200** `{items:[]}` (контент proof-of-speed от showcase/pipeline вне скоупа), `top_n` валидация: valid→200, 0/негатив/huge→**422**; `GET /feedback/<bad>`→**400** (graceful HTML, no-oracle), `/feedback/`→**404**. Полный feedback round-trip требует HMAC-токена из доставленного алерта (pipeline вне скоупа) | — (PR не нужен) |
 | 12 | email-unsubscribe | (nginx-проба) | verified | через nginx `GET /email/unsubscribe?token=`: no-token→**422**, bad-token→**400** (graceful «Invalid unsubscribe link»), **валидный JWT-токен (audience trendpulse:unsubscribe, сминчен тем же `generate_unsubscribe_token`, что в письме)→200** success HTML (Foresignal, «transactional emails not affected»); `users.lifecycle_emails_opt_out` **f→t** в БД; повторный хит→200 (идемпотентно) | — (PR не нужен) |
 | 13 | ssr | ssr.spec.ts | verified | ssr.spec.ts **7/7 passed** через nginx: SSR-разметка на `/` и `/watchlists` (не пустой root div), `window.__INITIAL_STATE__` присутствует, authenticated SSR содержит user-данные, нет hydration-mismatch ошибок, unauth guarded-страница→sign-in (не сырой 401 JSON) | — (PR не нужен) |
-| 14 | admin-metrics | admin-metrics.spec.ts | verified | admin-metrics.spec.ts **2/2 passed** через nginx: regular user→«Page not found» (no existence leak) + API 403, no-auth→sign-in с корректным `redirect`-параметром. **Найден+починен реальный баг**: AuthGuard зацикливал `redirect`-параметр (`?redirect=/auth/sign-in?redirect=…` ×N), захватывая sign-in-URL как новую цель → фикс: не редиректить на sign-in, если уже на sign-in. Регрессия: auth+smoke+ssr+watchlists+alerts+api-keys+billing = все зелёные | PR (ниже) |
+| 14 | admin-metrics | admin-metrics.spec.ts | verified | admin-metrics.spec.ts **2/2 passed** через nginx: regular user→«Page not found» (no existence leak) + API 403, no-auth→sign-in с корректным `redirect`-параметром. **Найден+починен реальный баг**: AuthGuard зацикливал `redirect`-параметр (`?redirect=/auth/sign-in?redirect=…` ×N), захватывая sign-in-URL как новую цель → фикс: не редиректить на sign-in, если уже на sign-in. Регрессия: auth+smoke+ssr+watchlists+alerts+api-keys+billing = все зелёные | [#131](https://github.com/BotNet1337/trend-pulse/pull/131) merged |
 
 Легенда статусов: `pending` (не начато) · `in_progress` · `verified` (зелёный прогон через фронт + evidence) · `blocked` (HALT — нужен ответ owner).
+
+## ✅ КАМПАНИЯ ЗАВЕРШЕНА (2026-06-13) — все 14 доменов verified
+
+Доказано, что каждый домен API реально работает end-to-end через реальный фронт (nginx :80, Playwright-e2e) либо ручными HTTP-пробами через nginx — НЕ внутренними юнитами.
+
+**PR (потребовали фикса):** [#130](https://github.com/BotNet1337/trend-pulse/pull/130) email (Mailpit host-доступ + 4 фикса спеки) · [#131](https://github.com/BotNet1337/trend-pulse/pull/131) admin-metrics (баг зацикливания redirect-параметра AuthGuard). Остальные 12 доменов прошли verify-first зелёными — PR не потребовался.
+
+**Вне локального скоупа (прод/owner-only, не провал — другой уровень, см. `full-system-test.md` §B/§C):** live NOWPayments IPN settlement, live Google OAuth-редирект, Cloudflare email-routing, showcase-автопостинг, scoring/pipeline/ML-обработка (засеянные алерты/trending/cases-контент). Для них проверён только контракт эндпоинта (auth/валидация/HTTP-shape), не асинхронная обработка.
 
 ## Журнал итераций
 

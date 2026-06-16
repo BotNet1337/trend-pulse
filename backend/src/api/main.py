@@ -38,6 +38,7 @@ from api.auth import (
     fastapi_users,
 )
 from api.auth.me import router as users_me_router
+from api.auth.verify_login import router as verify_login_router
 from api.cases.router import router as cases_router
 from api.deps import get_tenant_user_id
 from api.errors import (
@@ -296,6 +297,14 @@ v1_router.include_router(
 # on_after_request_verify hook sends branded verify-email via notifications.email.
 v1_router.include_router(
     fastapi_users.get_verify_router(UserRead),
+    prefix="/auth",
+    tags=["auth"],
+)
+# --- Email-confirm auto-login (items 3+4): POST /auth/email/confirm verifies the
+# token AND sets the session cookie so the user lands authenticated on the
+# dashboard (no second sign-in step). Mounted alongside the stock verify router. ---
+v1_router.include_router(
+    verify_login_router,
     prefix="/auth",
     tags=["auth"],
 )

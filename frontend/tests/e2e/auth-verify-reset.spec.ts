@@ -133,7 +133,8 @@ test.describe('verify-reset auth flows (requires stack + mailpit)', () => {
     // Register via sign-up UI.
     await page.goto('/auth/sign-up')
     await page.getByLabel('Email').fill(email)
-    await page.getByLabel('Password').fill(password)
+    await page.getByLabel('Password', { exact: true }).fill(password)
+    await page.getByLabel('Confirm password').fill(password)
     await page.getByRole('button', { name: /create account/i }).click()
     await page.waitForURL(/\/auth\/sign-in/, { timeout: 10000 })
 
@@ -155,15 +156,10 @@ test.describe('verify-reset auth flows (requires stack + mailpit)', () => {
     const urlObj = new URL(verifyUrl)
     await page.goto(`${urlObj.pathname}${urlObj.search}`)
 
-    // The confirm-email page POSTs /api/auth/verify automatically and shows success.
-    await page.waitForURL(/\/auth\/sign-in/, { timeout: 10000 })
-
-    // Login and verify is_verified via /api/users/me.
-    await page.goto('/auth/sign-in')
-    await page.getByLabel('Email').fill(email)
-    await page.getByLabel(/^Password/i).fill(password)
-    await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-    await page.waitForURL((url) => !url.pathname.startsWith('/auth/sign-in'), { timeout: 10000 })
+    // The confirm-email page POSTs /api/v1/auth/email/confirm, which verifies AND
+    // sets the session cookie (auto-login, items 3+4), then redirects to the
+    // dashboard — no manual sign-in step.
+    await page.waitForURL((url) => !url.pathname.startsWith('/auth/'), { timeout: 10000 })
 
     // Check is_verified via API. Use page.request so the authenticated session
     // cookie is sent and the path resolves against the nginx baseURL — a fresh
@@ -183,7 +179,8 @@ test.describe('verify-reset auth flows (requires stack + mailpit)', () => {
     // Register via UI.
     await page.goto('/auth/sign-up')
     await page.getByLabel('Email').fill(email)
-    await page.getByLabel('Password').fill(originalPassword)
+    await page.getByLabel('Password', { exact: true }).fill(originalPassword)
+    await page.getByLabel('Confirm password').fill(originalPassword)
     await page.getByRole('button', { name: /create account/i }).click()
     await page.waitForURL(/\/auth\/sign-in/, { timeout: 10000 })
 

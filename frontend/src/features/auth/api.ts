@@ -22,6 +22,12 @@ export interface RegisterPayload {
    * backend User.ref_code ORM column (TASK-046 G2 fix).
    */
   referrer_code?: string;
+  /**
+   * Google reCAPTCHA v2 client token. Present only in prod (the widget renders
+   * when VITE_RECAPTCHA_SITE_KEY is set); the backend verifies it and rejects
+   * sign-up on failure. Omitted in local dev where reCAPTCHA is OFF.
+   */
+  recaptcha_token?: string;
 }
 
 /** POST /auth/register — creates a new user. */

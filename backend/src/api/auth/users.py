@@ -23,12 +23,13 @@ import logging
 from collections.abc import AsyncGenerator
 from urllib.parse import quote
 
-from fastapi import Depends, Request
-from fastapi_users import BaseUserManager, IntegerIDMixin
+from fastapi import Depends, HTTPException, Request, status
+from fastapi_users import BaseUserManager, IntegerIDMixin, schemas
 from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.auth.captcha import verify_recaptcha
 from config import get_settings
 from notifications.email import send_templated_email
 from storage.database import get_async_session
@@ -88,6 +89,27 @@ class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
         secret = get_settings().jwt_secret
         self.reset_password_token_secret = secret
         self.verification_token_secret = secret
+
+    async def create(
+        self,
+        user_create: schemas.BaseUserCreate,
+        safe: bool = False,
+        request: Request | None = None,
+    ) -> User:
+        """Verify the reCAPTCHA challenge before delegating to the library create().
+
+        reCAPTCHA is OFF in local dev (no secret → verify_recaptcha returns True),
+        so this is a no-op locally.  In production a missing/invalid client token
+        fails sign-up with HTTP 400 — fastapi-users surfaces the raised
+        HTTPException straight to the client (TASK: bot protection).
+        """
+        token = getattr(user_create, "recaptcha_token", None)
+        if not await verify_recaptcha(token):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="reCAPTCHA verification failed. Please try again.",
+            )
+        return await super().create(user_create, safe=safe, request=request)
 
     async def on_after_register(self, user: User, request: Request | None = None) -> None:
         """Audit hook — log the new user id (never email/password), bind referral

@@ -704,3 +704,20 @@ async def test_client_malformed_json_raises_api_error() -> None:
     with pytest.raises(TwitterAPIError):
         await client.resolve_user_id("acme")
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_read_yields_tweets_within_window_not_caller_since() -> None:
+    # REGRESSION: a tweet older than the caller's ~60s tick `since` but within the
+    # floored effective window MUST be yielded. The post-loop cutoff must use
+    # effective_since, not `since` — using `since` discarded everything the wider
+    # window fetched (every read yielded 0 posts in prod).
+    now = datetime(2026, 6, 15, 12, 0, 0, tzinfo=UTC)
+    ten_min_ago = now - timedelta(minutes=10)
+    client = FakeTwitterClient(tweets=[_tweet("t10", when=ten_min_ago)])
+    redis = _FakeRedis()
+    collector = TwitterCollector(client, redis=redis, now=lambda: now)
+
+    narrow = now - timedelta(seconds=60)  # the shared tick's ~60s marker
+    posts = [p async for p in collector.read([_REF], since=narrow)]
+    assert [p.external_id for p in posts] == ["t10"]  # NOT filtered by the narrow since
