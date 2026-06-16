@@ -39,6 +39,7 @@ from api.routes.pool_admin import (
 )
 from collector.constants import (
     POOL_HEALTH_REDIS_KEY,
+    POOL_RELOAD_SIGNAL_REDIS_KEY,
     POOL_REVIVE_SIGNAL_REDIS_KEY,
     QUARANTINE_REDIS_KEY,
 )
@@ -554,8 +555,14 @@ class TestQRLoginPersistOnSuccess:
             select(PoolSession).where(PoolSession.tg_user_id == self._TG_USER_ID_NEW)
         ).one()
         assert row.display_label == "@newbie"
-        # An ADD writes NO revive-signal (no live slot to swap).
+        # An ADD writes NO revive-signal (no live slot to swap)...
         assert revive_redis.get(POOL_REVIVE_SIGNAL_REDIS_KEY) is None
+        # ...but it DOES write the pool-RELOAD signal so the worker rebuilds the pool from
+        # the store on its next tick and the new session goes live without a restart
+        # (fix/pool-live-pickup — the ADD case the revive-signal misses). Flag only, no secret.
+        reload_signal = revive_redis.get(POOL_RELOAD_SIGNAL_REDIS_KEY)
+        assert reload_signal is not None
+        assert self._SESSION_NEW not in reload_signal
 
     def test_existing_account_revive_writes_signal_and_clears_quarantine(
         self, client: TestClient, db_session: Session
@@ -603,6 +610,12 @@ class TestQRLoginPersistOnSuccess:
         assert self._SESSION_REMINT not in signal
         # The OLD fingerprint's persisted quarantine was cleared.
         assert not revive_redis.sismember(QUARANTINE_REDIS_KEY, old_fp)
+        # A REVIVE ALSO writes the pool-RELOAD signal (every successful scan does), so the
+        # worker rebuilds uniformly — covering the case the single-slot swap might miss
+        # (fix/pool-live-pickup). Flag only, never the re-minted session string.
+        reload_signal = revive_redis.get(POOL_RELOAD_SIGNAL_REDIS_KEY)
+        assert reload_signal is not None
+        assert self._SESSION_REMINT not in reload_signal
 
     def test_over_capacity_add_returns_409_but_keeps_session_copy_field(
         self, client: TestClient, db_session: Session

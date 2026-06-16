@@ -47,6 +47,46 @@ def get(kind: SourceKind) -> SourceCollector:
     return _INSTANCES[kind]
 
 
+def invalidate(kind: SourceKind) -> SourceCollector | None:
+    """Drop the cached collector for `kind`; return the popped instance (or None).
+
+    Pops `_INSTANCES[kind]` so the NEXT `get(kind)` rebuilds the collector FRESH from
+    the store (DB + env) — the live-pickup path for a session QR-added/revived after the
+    pool was first built. Does NOT itself disconnect: `aclose()` is async and the caller
+    owns the event loop (the worker tick). The caller MUST `await` the returned
+    collector's `aclose()` BEFORE the next `get()` reconnects, so no Telegram session is
+    ever connected on two clients at once (the AuthKeyDuplicated invariant). Returns None
+    when nothing was cached (a build never happened or already invalidated) — a no-op.
+
+    Prefer `ainvalidate(kind)` when an event loop is available: it pops AND acloses in the
+    correct disconnect-before-rebuild order in one call.
+    """
+    return _INSTANCES.pop(kind, None)
+
+
+async def ainvalidate(kind: SourceKind) -> None:
+    """Pop the cached collector for `kind` and BEST-EFFORT `aclose()` it (disconnect).
+
+    The disconnect happens BEFORE any later `get()` rebuild/reconnect, so a session is
+    never connected on two clients at once (AuthKeyDuplicated invariant). `aclose()` is
+    contractually non-raising, but it is still guarded here so a teardown error can never
+    crash the collect tick that drives the reload. Safe to call when nothing is cached
+    (no-op). The NEXT `get(kind)` rebuilds the pool fresh from the store.
+    """
+    old = invalidate(kind)
+    if old is None:
+        return
+    try:
+        await old.aclose()
+    except Exception:
+        # Best-effort teardown — a disconnect failure must never crash the reload tick;
+        # the old collector is already dropped from the cache, so the next get() rebuilds.
+        logger.warning(
+            "collector aclose failed during invalidate (ignored)",
+            extra={"kind": kind.value},
+        )
+
+
 def cached_collectors() -> list[SourceCollector]:
     """The collectors instantiated so far (for graceful shutdown — TASK-106).
 

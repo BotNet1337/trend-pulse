@@ -216,6 +216,22 @@ POOL_REVIVE_SIGNAL_REDIS_KEY: Final = "pool:revive:signal"
 _POOL_REVIVE_SIGNAL_TTL_MINUTES: Final = 10
 POOL_REVIVE_SIGNAL_TTL_SECONDS: Final = _POOL_REVIVE_SIGNAL_TTL_MINUTES * 60  # 600
 
+# --- live pool pickup on QR add/revive (cache invalidation) --------------------
+# The single-slot revive-signal above swaps ONE existing live slot in place, but it
+# CANNOT pick up a brand-new ADD (a session added after the pool was built sits in the
+# DB store, unused, until the worker restarts — the registry caches the built collector
+# in `_INSTANCES`). This RELOAD signal generalizes that: on EVERY successful QR scan
+# (add AND revive) the API sets this NON-SECRET flag (a timestamp only, never a session
+# string); the worker checks it ONCE per tick (mirrors `apply_pending_revive`) and, if
+# set, invalidates the cached collector (disconnect-old-then-pop) so the NEXT `get()`
+# rebuilds the pool fresh from the DB store — picking up adds AND revives uniformly,
+# with no restart. aclose-before-rebuild preserves the AuthKeyDuplicated invariant (a
+# session is never connected on two clients at once). A missed signal self-heals on the
+# next worker restart / full build. Short TTL so a stale flag ages out harmlessly.
+POOL_RELOAD_SIGNAL_REDIS_KEY: Final = "pool:reload:signal"
+_POOL_RELOAD_SIGNAL_TTL_MINUTES: Final = 10
+POOL_RELOAD_SIGNAL_TTL_SECONDS: Final = _POOL_RELOAD_SIGNAL_TTL_MINUTES * 60  # 600
+
 # Column widths for the `pool_sessions` table (named constants, no magic literals).
 # `session_string` holds a Fernet-encrypted Telethon StringSession: a StringSession
 # is ~350 chars; Fernet adds ~89 bytes overhead + base64 expansion → a generous cap

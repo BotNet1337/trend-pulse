@@ -169,11 +169,13 @@ export function reviveSuccessMessage(
   const named = label ? ` ${label}` : '';
   switch (outcome) {
     case 'revive':
-      return `Re-connected${named} — the same account is back. The pool will show it Connected within ~one collect cycle.`;
+      return `Re-connected${named} — the same account is back. It is picked up automatically within ~one minute (no restart).`;
     case 'add':
-      return `Added${named} as a new pool account. It will appear in the table within ~one collect cycle.`;
+      return `Added${named} — the account is picked up automatically within ~one minute (no restart).`;
     case null:
-      return 'Logged in. Copy the session string below as a backup.';
+      // Persistence not reached (e.g. a store error); the session string backup below is
+      // the fallback the admin can still vault. No "copy this" headline either way.
+      return 'Logged in. The account could not be auto-persisted — use the backup below.';
   }
 }
 

@@ -50,26 +50,32 @@ describe('accountLabel', () => {
 });
 
 describe('reviveSuccessMessage', () => {
-  it('says re-connected (same account) for a revive and names the label', () => {
+  it('says re-connected (same account) for a revive, names the label, leads with auto-pickup', () => {
     const msg = reviveSuccessMessage('revive', '@alice');
     expect(msg).toContain('Re-connected');
     expect(msg).toContain('@alice');
     expect(msg).toContain('same account');
+    // No manual copy step in the face: lead with automatic pickup (fix/pool-live-pickup).
+    expect(msg).toContain('automatically');
+    expect(msg).not.toContain('Copy the session');
   });
 
-  it('says added (new account) for an add and names the label', () => {
+  it('says added for an add, names the label, leads with auto-pickup (no copy step)', () => {
     const msg = reviveSuccessMessage('add', '@bob');
     expect(msg).toContain('Added');
     expect(msg).toContain('@bob');
-    expect(msg).toContain('new pool account');
+    expect(msg).toContain('automatically');
+    expect(msg).not.toContain('Copy the session');
   });
 
-  it('falls back to a neutral success line when the outcome is null', () => {
+  it('falls back to a neutral success line when the outcome is null (no copy headline)', () => {
     const msg = reviveSuccessMessage(null, '@x');
     expect(msg).toContain('Logged in');
     // No revive/add claim when persistence outcome is unknown.
     expect(msg).not.toContain('Re-connected');
     expect(msg).not.toContain('Added');
+    // The null case is a persistence FAILURE — must not tell the user to copy a string.
+    expect(msg).not.toContain('Copy the session');
   });
 
   it('omits the label gracefully when none is provided', () => {
