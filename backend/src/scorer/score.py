@@ -2,7 +2,7 @@
 
 `compute_viral_score(ScoreInputs)` is the single source of the score:
 
-    viral_score = SCORE_SCALE · ( velocity·VELOCITY_WEIGHT
+    viral_score = SCORE_SCALE · ( temporal·VELOCITY_WEIGHT
                                 + engagement·ENGAGEMENT_WEIGHT
                                 + cross_channel·CROSS_CHANNEL_WEIGHT )   ∈ [0, 100]
 
@@ -10,7 +10,11 @@ with every component normalized to [0, 1]:
 
     engagement    = min(log1p(views + forwards·F + reactions·R) / LOG_ENGAGEMENT_SCALE, 1)
     cross_channel = unique_channels_count / watched_channels_count          (reach)
-    velocity      = min( log1p(max(Δchannel_count - 1, 0)) / max(Δhours, 1h) / BURST_SCALE, 1 )
+    temporal      = clamp( ACCEL_WEIGHT·norm_accel + BREADTH_WEIGHT·norm_breadth , 0, 1 )
+
+The third (temporal) term is carried in the `velocity` field/column for schema/API
+backwards-compatibility (TASK-124) — the NAME `velocity` is unchanged, the SEMANTICS
+are now a bounded temporal signal instead of the old degenerate burst.
 
 v2 rationale (real-data eval, eval_offline/): on a 52k-post crypto-RU corpus the
 old velocity-dominant weights (0.4/0.35/0.25) ranked eventual virality at ROC-AUC
@@ -18,16 +22,29 @@ old velocity-dominant weights (0.4/0.35/0.25) ranked eventual virality at ROC-AU
 and bounding every term to [0, 1] reaches 0.91-0.93 and makes the 0-100 score
 threshold-able (the old unbounded engagement reached ~13071, so the pack threshold
 of 70 was meaningless). Engagement carries the signal (AUC 0.91/0.94; 0.83 even for
-single-channel early movers); reach is corroboration; spread is the weakest term.
+single-channel early movers); reach is corroboration; the temporal term is the
+weakest, so it keeps the smallest weight.
+
+TASK-124 (S3): the old `velocity` sub-term was degenerate (`log1p(max(Δch-1,0)) /
+max(Δhours,1h) / BURST_SCALE` → AUC≈0.07 on raw data; ≈0 on the 34/35 single-channel
+judged clusters — a dead temporal slot). It is replaced by a bounded `temporal` term
+= a convex combination of the positive-part EWMA acceleration (Cheng 2014: temporal
+features dominate early virality) and the cross-channel breadth velocity (the spread
+moat), REUSING the unit-tested pure features from `eval.science_features` (no
+reimplementation — AC4). When a cluster carries no per-post event stream (offline /
+eval / fallback consumers), the term degrades gracefully to the breadth half computed
+from the aggregates (accel undefined → 0).
 
 The function is platform-independent: it consumes already-normalized aggregates,
 performs no I/O, queries no DB, and imports nothing from `collector`/Telethon (AC2).
 All weights/coefficients are NAMED constants. Guards keep the formula total over
-degenerate inputs (Δhours→0, watched==0) instead of raising.
+degenerate inputs (Δhours→0, watched==0, empty events) instead of raising.
 """
 
 import math
 from dataclasses import dataclass
+
+from eval.science_features import TimedEvent, breadth_velocity, ewma_acceleration
 
 # Formula weights (sum to 1.0). Named, never magic literals.
 #
@@ -64,10 +81,49 @@ SCORE_SCALE = 100.0
 # that large channels are no longer size-normalized (intentional).
 LOG_ENGAGEMENT_SCALE = 14.0
 
-# Spread "burst": breadth-per-hour, floored at 1 HOUR (not the old 1-minute clamp that
-# let a lone instant post saturate) and divided by BURST_SCALE into [0, 1].
+# --- Temporal term (TASK-124, S3): bounded EWMA-accel(+) + breadth velocity. ------
+#
+# The third score term ("velocity" slot, temporal semantics). It is a convex
+# combination of two unit-normalized, REUSED science features (eval.science_features,
+# unit-tested under TASK-113) and is clamped to [0, 1] so `temporal·0.15` can never
+# dominate the engagement-led v2 formula.
+#
+# `EWMA_HALF_LIFE_SECONDS` — the EWMA half-life passed to `ewma_acceleration` for
+#   signature symmetry with the EWMA family; 1 hour mirrors the burst window so the
+#   "recent activity weighted more" horizon matches the score's recency horizon.
+# `ACCEL_SCALE` — saturation point (events/hour) of the positive-part acceleration:
+#   a window whose second half adds ≥ ACCEL_SCALE more events/hour than its first is
+#   maximally "accelerating" → norm_accel = 1.
+# `BREADTH_SCALE` — saturation point (distinct channels/hour) of the breadth velocity:
+#   a story reaching ≥ BREADTH_SCALE distinct channels/hour is maximally broad. Chosen
+#   well above the realistic cross-channel-spread rate so the term stays discriminative
+#   (monotone, non-saturating) across the observed range.
+# `ACCEL_WEIGHT` / `BREADTH_WEIGHT` — the temporal term's INTERNAL convex weights
+#   (sum to 1.0): acceleration ("is it speeding up?", Cheng 2014) and breadth ("is it
+#   spreading across channels?", the moat) contribute equally.
+EWMA_HALF_LIFE_SECONDS = 3600.0
+ACCEL_SCALE = 10.0
+BREADTH_SCALE = 30.0
+ACCEL_WEIGHT = 0.5
+BREADTH_WEIGHT = 0.5
+
+# Reused as the fallback denominator floor (events-empty path): a sub-1h window is
+# floored to 1 HOUR so a near-zero window can't manufacture a spurious breadth rate
+# (this is the v2 burst floor, kept; the old 1-minute clamp let a lone instant post
+# saturate). The unit weight per ScoreEvent maps a post to one science TimedEvent.
 BURST_FLOOR_HOURS = 1.0
-BURST_SCALE = 3.0
+_EVENT_WEIGHT = 1.0
+
+# Breadth is a CROSS-channel signal: cross-channel spread is undefined for a single
+# channel, so the breadth half contributes 0 unless the cluster spans ≥ 2 distinct
+# channels (TASK-124 DEBUG fix). Without this gate a single-channel cluster's breadth
+# velocity = 1 distinct channel / (sub-minute span floor) → ≈ 60 ch/hr → saturates
+# BREADTH_SCALE → 0.5·1.0 temporal, re-introducing the very degeneracy the temporal
+# term was meant to remove (77% of live clusters are single-post, ALL single-channel).
+# This mirrors the old velocity intent `log1p(max(Δchannels-1, 0))`, which is 0 for
+# one channel. The acceleration half is naturally ≈ 0 on such collapsed windows, so the
+# whole temporal term correctly collapses to ≈ 0 for single-channel clusters.
+MIN_BREADTH_CHANNELS = 2
 
 # Lower/upper bounds for the cross-channel ratio (unique ≤ watched by definition;
 # clamp dirty data into the unit interval — invariant cross_channel ∈ [0, 1]).
@@ -76,11 +132,31 @@ _CROSS_CHANNEL_MAX = 1.0
 
 
 @dataclass(frozen=True)
+class ScoreEvent:
+    """One per-post event projected into the temporal term: WHEN it ran + WHICH channel.
+
+    Built upstream (scorer/tasks.py) from a cluster's recent posts
+    (`epoch = posted_at.timestamp()`, `channel_id`). It is the minimal projection the
+    reused science features (`eval.science_features`) need — no raw text, metrics-only
+    (compliance). Optional: when absent, the temporal term falls back to the aggregates.
+    """
+
+    epoch: float
+    channel_id: int
+
+
+@dataclass(frozen=True)
 class ScoreInputs:
     """Normalized, platform-independent aggregates a cluster's score is computed from.
 
     These are derived upstream (scorer/tasks.py) from a cluster's recent posts —
     the scorer itself never touches the DB or a platform SDK.
+
+    `events` (TASK-124) is the OPTIONAL per-post event stream feeding the temporal
+    term. It defaults to `()` so every existing consumer that builds `ScoreInputs` from
+    aggregates alone (offline replay, eval gate, the formula-fallback model, scenarios)
+    keeps working unchanged — the temporal term then degrades to its breadth half
+    computed from the aggregates. New field added LAST → keyword/positional safe.
     """
 
     views: int
@@ -91,26 +167,72 @@ class ScoreInputs:
     delta_hours: float
     unique_channels_count: int
     watched_channels_count: int
+    events: tuple[ScoreEvent, ...] = ()
 
 
-def _velocity(*, delta_channel_count: int, delta_hours: float) -> float:
-    """Bounded cross-channel BURST: log1p(Δch - 1) / max(Δhours, 1h) / BURST_SCALE ∈ [0, 1].
+def _temporal(
+    *,
+    events: tuple[ScoreEvent, ...],
+    delta_channel_count: int,
+    delta_hours: float,
+) -> float:
+    """Bounded temporal term ∈ [0, 1] (TASK-124): convex combo of EWMA-accel(+) + breadth.
 
-    "Viral" means a story SPREADING ACROSS channels (overview §4, product principle).
-    A single-channel cluster has *no* cross-channel spread, so its burst is 0 —
-    `log1p(max(Δch - 1, 0))` makes one channel → 0, two → log1p(1), rising monotonically
-    with the breadth of spread (T15 — kept).
+        temporal = clamp( ACCEL_WEIGHT·norm_accel + BREADTH_WEIGHT·norm_breadth , 0, 1 )
 
-    v2 changes vs T15: (1) the window is floored at 1 HOUR, not 1 minute, so a near-zero
-    window can no longer inflate the rate; (2) the rate is divided by BURST_SCALE and
-    clamped to [0, 1] so this term cannot dominate the weighted sum. On the real-data
-    eval the spread term was the WEAKEST predictor (AUC ≈ 0.82 vs engagement's 0.91), so
-    it is both down-weighted and bounded — the inverse of the old velocity-dominant design.
+    where each sub-feature is unit-normalized by a named scale and clamped:
+
+    - `norm_accel = min(max(ewma_acceleration(events), 0) / ACCEL_SCALE, 1)` — the
+      POSITIVE PART of the early-window acceleration (an accelerating cascade is the
+      early-virality signal; a decaying one is not penalised below the breadth half, so
+      the term stays ≥ 0). Needs ≥ 2 events spanning a non-zero duration, else 0.
+    - `norm_breadth = min(breadth_velocity(events) / BREADTH_SCALE, 1)` — distinct
+      channels/hour (cross-channel spread speed, the product's moat signal). GATED to 0
+      when the cluster spans < `MIN_BREADTH_CHANNELS` distinct channels: cross-channel
+      spread is a cross-CHANNEL signal, so a single channel contributes ZERO breadth
+      (else a lone post over the sub-minute span floor saturates the term — TASK-124).
+
+    Both are computed by the REUSED pure functions from `eval.science_features` (mapping
+    each `ScoreEvent` to a `TimedEvent(epoch, source_id=channel_id, weight=1)`) — the
+    formula is never reimplemented here (AC4).
+
+    Graceful fallback (AC3): when `events` is empty (offline / eval / formula-fallback
+    consumers carry only aggregates), the acceleration half is undefined → 0 and the
+    breadth half is computed from the aggregates instead:
+    `breadth = delta_channel_count / max(delta_hours, BURST_FLOOR_HOURS)`, same
+    normalization. This is what the S0 eval-gate exercises on B1 snapshots (the
+    accel half is validated by unit tests + measured live on prod scores).
+
+    Replaces the old degenerate `_velocity` (TASK-086/124): a single-channel cluster no
+    longer scores ≈ max — its breadth half is GATED to 0 (cross-channel spread needs
+    ≥ `MIN_BREADTH_CHANNELS` channels) and its acceleration is ≈ 0 on a collapsed window,
+    so temporal collapses to ≈ 0.
     """
-    hours = max(delta_hours, BURST_FLOOR_HOURS)
-    extra_channels = max(delta_channel_count - 1, 0)
-    rate = math.log1p(extra_channels) / hours
-    return min(rate / BURST_SCALE, 1.0)
+    if events:
+        timed = [
+            TimedEvent(epoch=event.epoch, source_id=event.channel_id, weight=_EVENT_WEIGHT)
+            for event in events
+        ]
+        accel = ewma_acceleration(timed, half_life_seconds=EWMA_HALF_LIFE_SECONDS)
+        norm_accel = min(max(accel, 0.0) / ACCEL_SCALE, 1.0)
+        # Breadth is cross-channel: a single channel contributes ZERO breadth.
+        distinct_channels = len({event.channel_id for event in events})
+        if distinct_channels >= MIN_BREADTH_CHANNELS:
+            norm_breadth = min(breadth_velocity(timed) / BREADTH_SCALE, 1.0)
+        else:
+            norm_breadth = 0.0
+    else:
+        # Fallback: no event stream → acceleration undefined (0); breadth from aggregates.
+        norm_accel = 0.0
+        # Same cross-channel gate as the events path: < MIN_BREADTH_CHANNELS distinct
+        # channels (here the aggregate delta_channel_count) → zero breadth.
+        if delta_channel_count >= MIN_BREADTH_CHANNELS:
+            breadth_rate = delta_channel_count / max(delta_hours, BURST_FLOOR_HOURS)
+            norm_breadth = min(breadth_rate / BREADTH_SCALE, 1.0)
+        else:
+            norm_breadth = 0.0
+    temporal = ACCEL_WEIGHT * norm_accel + BREADTH_WEIGHT * norm_breadth
+    return min(max(temporal, 0.0), 1.0)
 
 
 def engagement_numerator(*, views: int, forwards: int, reactions: int) -> float:
@@ -157,6 +279,10 @@ class ScoreComponents:
     Returned by `compute_components` so callers (scorer/tasks.py) can persist the
     breakdown to a `Score` row without recomputing — `viral_score` is the value
     `compute_viral_score` returns.
+
+    `velocity` carries the bounded TEMPORAL term (TASK-124) — the field/column name is
+    kept for schema/API backwards-compatibility (`scores.velocity`, `live_velocity`),
+    but its value is `_temporal`, not the old degenerate burst.
     """
 
     velocity: float
@@ -167,7 +293,10 @@ class ScoreComponents:
 
 def compute_components(inputs: ScoreInputs) -> ScoreComponents:
     """Compute the three components and their weighted sum in one deterministic pass."""
-    velocity = _velocity(
+    # The bounded temporal term occupies the `velocity` slot (name kept for the
+    # `scores.velocity` column / `live_velocity` API contract — TASK-124).
+    velocity = _temporal(
+        events=inputs.events,
         delta_channel_count=inputs.delta_channel_count,
         delta_hours=inputs.delta_hours,
     )

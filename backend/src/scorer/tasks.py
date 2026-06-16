@@ -57,7 +57,13 @@ from billing.plans import Plan
 from config import get_settings
 from observability.logging import log_event
 from scorer.feature_snapshots import build_snapshot_metrics, windows_due
-from scorer.score import FORWARD_FACTOR, REACTION_FACTOR, ScoreInputs, compute_components
+from scorer.score import (
+    FORWARD_FACTOR,
+    REACTION_FACTOR,
+    ScoreEvent,
+    ScoreInputs,
+    compute_components,
+)
 from storage.database import get_session
 from storage.models.alerts import Alert
 from storage.models.base import utcnow
@@ -277,6 +283,15 @@ def _build_score_inputs(
     latest = max(p.posted_at for p in posts)
     delta_hours = (latest - earliest).total_seconds() / _SECONDS_PER_HOUR
 
+    # Per-post event stream for the temporal score term (TASK-124): built from the
+    # ALREADY-loaded in-window posts (no extra query / migration). epoch = posted_at
+    # as a UNIX timestamp; channel_id is the spread source. These are the same
+    # leak-free, in-window posts the aggregates are derived from, so the temporal term
+    # carries no post-T_obs signal.
+    events = tuple(
+        ScoreEvent(epoch=p.posted_at.timestamp(), channel_id=p.channel_id) for p in posts
+    )
+
     # Historical channel_avg: use the channel of the first post as the reference
     # (per-cluster scoring; a cluster spans one or more channels — use the primary
     # channel, i.e. the first post's channel, for the baseline query).
@@ -310,6 +325,7 @@ def _build_score_inputs(
         delta_hours=delta_hours,
         unique_channels_count=len(unique_channels),
         watched_channels_count=watched_channels_count,
+        events=events,
     )
 
 
