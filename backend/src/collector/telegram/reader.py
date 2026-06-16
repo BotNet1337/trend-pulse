@@ -11,16 +11,21 @@ must not crash collection).
 """
 
 import asyncio
+import json
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
+
+from redis.exceptions import RedisError
 
 from collector.base import RawPost, SourceKind, SourceRef
 from collector.constants import (
     FLOOD_WAIT_INLINE_CAP_SECONDS,
     INTER_REQUEST_SLEEP_SECONDS,
     MAX_MESSAGES_PER_TICK,
+    POOL_REVIVE_SIGNAL_REDIS_KEY,
+    SESSION_FINGERPRINT_LEN,
 )
 from collector.errors import (
     AllAccountsFloodWaitError,
@@ -37,8 +42,19 @@ if TYPE_CHECKING:
     from redis import Redis
 
     from config import Settings
+    from storage.pool_session_store import StoredSession
 
 logger = logging.getLogger(__name__)
+
+
+def _is_valid_fingerprint(value: str) -> bool:
+    """A well-formed fingerprint: exactly SESSION_FINGERPRINT_LEN lowercase hex chars.
+
+    Mirrors `account_pool._is_valid_fingerprint` — a poisoned revive-signal member
+    that isn't a real fingerprint is rejected before it can reach `revive_slot`.
+    """
+    return len(value) == SESSION_FINGERPRINT_LEN and all(c in "0123456789abcdef" for c in value)
+
 
 # Telethon error types are resolved lazily (the SDK is imported only when present)
 # so this module imports cleanly in pure-unit contexts. We match on a `seconds`
@@ -142,6 +158,102 @@ class TelegramCollector:
                 extra={"exc_type": type(exc).__name__},
             )
 
+    async def _apply_revive_best_effort(self) -> None:
+        """Apply a pending single-slot revive-signal at a tick boundary (TASK-119).
+
+        Reads the NON-SECRET revive-signal from Redis (`pool:revive:signal` — only the
+        affected slot's `tg_user_id`/`fingerprint`, NEVER the session string). If it
+        targets a live slot, loads the NEW session for that account from the encrypted
+        DB store (the secret comes from the DB, never from Redis), and calls
+        `pool.revive_slot(...)` which disconnects the old client before connecting the
+        new one — touching ONLY that slot. Clears the signal afterward so it applies
+        once. NEVER raises: a missing signal, a malformed payload, a Redis/DB error, or
+        a slot-not-found self-heals (the next full pool build unions the DB store), and
+        must not crash the collect tick (Invariant — mirrors `_emit_health_best_effort`).
+        """
+        if self._redis is None:
+            return
+        try:
+            signal = self._read_revive_signal()
+            if signal is None:
+                return
+            tg_user_id, fingerprint = signal
+            slot_index = self._pool.find_slot_index(tg_user_id=tg_user_id, fingerprint=fingerprint)
+            if slot_index is None:
+                # Brand-new account (not in the live pool) — appears on the next full
+                # pool build; clear the signal so we don't re-check it every tick.
+                self._clear_revive_signal()
+                return
+            stored = self._load_stored_session(tg_user_id)
+            if stored is None:
+                self._clear_revive_signal()
+                return
+            await self._pool.revive_slot(
+                slot_index=slot_index,
+                tg_user_id=tg_user_id,
+                session_string=stored.session_string,
+            )
+            self._clear_revive_signal()
+            logger.info("applied pool revive for slot", extra={"slot_index": slot_index})
+        except Exception as exc:
+            # Self-observation/remediation must NEVER crash the tick (Invariant). Log the
+            # class name only (never a secret) and move on; the next build self-heals.
+            logger.warning(
+                "pool revive application failed (ignored)",
+                extra={"exc_type": type(exc).__name__},
+            )
+
+    def _read_revive_signal(self) -> tuple[int, str] | None:
+        """Parse the NON-SECRET revive-signal JSON; None if absent/malformed.
+
+        Returns `(tg_user_id, fingerprint)`. Validates the fingerprint shape so a
+        poisoned payload can never reach `revive_slot`. The signal NEVER carries a
+        session string — only the non-secret slot identity (defense-in-depth check)."""
+        if self._redis is None:
+            return None
+        try:
+            raw = cast("bytes | str | None", self._redis.get(POOL_REVIVE_SIGNAL_REDIS_KEY))
+        except RedisError:
+            return None
+        if raw is None:
+            return None
+        text = raw if isinstance(raw, str) else raw.decode("utf-8")
+        try:
+            payload = json.loads(text)
+        except (ValueError, TypeError):
+            return None
+        if not isinstance(payload, dict):
+            return None
+        tg_user_id = payload.get("tg_user_id")
+        fingerprint = payload.get("fingerprint", "")
+        if not isinstance(tg_user_id, int) or not isinstance(fingerprint, str):
+            return None
+        if fingerprint and not _is_valid_fingerprint(fingerprint):
+            return None
+        return tg_user_id, fingerprint
+
+    def _clear_revive_signal(self) -> None:
+        """Delete the revive-signal so it applies once; best-effort, never raises."""
+        if self._redis is None:
+            return
+        try:
+            self._redis.delete(POOL_REVIVE_SIGNAL_REDIS_KEY)
+        except RedisError:
+            logger.warning("could not clear pool revive signal (Redis); ignoring")
+
+    def _load_stored_session(self, tg_user_id: int) -> "StoredSession | None":
+        """Load the NEW session for `tg_user_id` from the encrypted DB store (TASK-119).
+
+        The secret is read from the DB (Fernet-decrypted at ORM read) inside the worker
+        — it never travels through Redis. Opens a short-lived session via the storage
+        unit-of-work. Returns None if no active row exists (revoked between signal+tick).
+        """
+        from storage.database import get_session
+        from storage.pool_session_store import find_active_by_tg_user_id
+
+        with get_session() as db:
+            return find_active_by_tg_user_id(db, tg_user_id)
+
     def _quarantine_dead_account(self, exc: BaseException) -> None:
         """Evict the current account on a PERMANENT auth failure and alert ops ONCE.
 
@@ -203,6 +315,10 @@ class TelegramCollector:
         invocation — after all channels have been processed (TASK-035: periodic
         svodka, no new Beat schedule — uses existing read loop).
         """
+        # Apply any pending single-slot revive at the TICK BOUNDARY (before reading any
+        # channel, never mid-`iter_messages`) — best-effort, never crashes the tick
+        # (TASK-119). Disconnect-old → connect-new for the ONE affected slot only.
+        await self._apply_revive_best_effort()
         for ref in unique_refs(refs):
             async for post in self._read_one(ref, since):
                 yield post

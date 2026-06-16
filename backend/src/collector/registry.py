@@ -9,10 +9,17 @@ registry never requires telethon/httpx or real credentials, and so there is no
 import cycle with the platform subpackages.
 """
 
+import logging
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from collector.base import SourceCollector, SourceKind
 from collector.errors import PoolConfigError
+
+if TYPE_CHECKING:
+    from storage.pool_session_store import StoredSession
+
+logger = logging.getLogger(__name__)
 
 # Factories build a collector on demand; lazy so import is side-effect free.
 _FACTORIES: dict[SourceKind, Callable[[], SourceCollector]] = {}
@@ -49,8 +56,15 @@ def cached_collectors() -> list[SourceCollector]:
 
 
 def _build_telegram_collector() -> SourceCollector:
-    """Build the production Telegram collector from env settings (lazy)."""
-    from collector.telegram.account_pool import AccountPool
+    """Build the production Telegram collector from (DB store + env) sessions (lazy).
+
+    The session list is the UNION of env `TELEGRAM_POOL_SESSIONS` (the bootstrap floor /
+    disaster-recovery path) and the active rows of the dynamic `pool_sessions` store
+    (TASK-119), de-duped by fingerprint (the DB row wins on a conflict so its identity
+    is carried). A DB read failure FAILS OPEN to env-only (logged) so a DB outage
+    degrades to today's static behaviour instead of crashing pool boot.
+    """
+    from collector.telegram.account_pool import AccountPool, session_fingerprint
     from collector.telegram.client import build_telethon_client
     from collector.telegram.reader import TelegramCollector
     from config import get_settings, telegram_pool_sessions
@@ -63,12 +77,67 @@ def _build_telegram_collector() -> SourceCollector:
         api_id=settings.telegram_api_id, api_hash=settings.telegram_api_hash
     )
     # One Redis client, shared by the pool (persistent quarantine, TASK-102) and the
-    # collector (pool-health self-observation, TASK-035).
+    # collector (pool-health self-observation, TASK-035; revive-signal, TASK-119).
     redis = get_redis_client()
+
+    sessions, tg_user_ids = _union_pool_sessions(
+        env_sessions=telegram_pool_sessions(settings),
+        fingerprint=session_fingerprint,
+    )
     pool = AccountPool.from_sessions(
-        sessions=telegram_pool_sessions(settings), factory=factory, redis=redis
+        sessions=sessions, factory=factory, redis=redis, tg_user_ids=tg_user_ids
     )
     return TelegramCollector(pool, settings=settings, redis=redis)
+
+
+def _union_pool_sessions(
+    *,
+    env_sessions: list[str],
+    fingerprint: Callable[[str], str],
+) -> tuple[list[str], list[int | None]]:
+    """Union env sessions with the active DB-store sessions, de-duped by fingerprint.
+
+    The DB store WINS on a fingerprint conflict (its identity `tg_user_id` is carried).
+    Returns positional `(sessions, tg_user_ids)` for `AccountPool.from_sessions`. Reads
+    the store via a short-lived session; FAILS OPEN to env-only on ANY error (the worker
+    must boot even if the DB is briefly unreachable — disaster-recovery floor).
+    """
+    sessions: list[str] = []
+    tg_user_ids: list[int | None] = []
+    seen: set[str] = set()
+
+    db_sessions = _load_db_store_sessions()
+    for stored in db_sessions:
+        fp = stored.fingerprint or fingerprint(stored.session_string)
+        if fp in seen:
+            continue
+        seen.add(fp)
+        sessions.append(stored.session_string)
+        tg_user_ids.append(stored.tg_user_id)
+
+    for raw in env_sessions:
+        fp = fingerprint(raw)
+        if fp in seen:
+            continue
+        seen.add(fp)
+        sessions.append(raw)
+        tg_user_ids.append(None)
+
+    return sessions, tg_user_ids
+
+
+def _load_db_store_sessions() -> list["StoredSession"]:
+    """Read active dynamic-store sessions; fail-open to [] on any error (TASK-119)."""
+    try:
+        from storage.database import get_session
+        from storage.pool_session_store import active_sessions
+
+        with get_session() as db:
+            return active_sessions(db)
+    except Exception:
+        # FAIL OPEN: a DB outage must degrade to env-only, never crash pool boot.
+        logger.warning("could not load dynamic pool sessions from DB; env-only pool")
+        return []
 
 
 def _build_twitter_collector() -> SourceCollector:

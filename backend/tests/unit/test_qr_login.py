@@ -21,6 +21,7 @@ from collector.errors import (
     QRLoginNotConfiguredError,
 )
 from collector.telegram.qr_login import (
+    QRLoginIdentity,
     QRLoginService,
     QRLoginStatus,
 )
@@ -81,10 +82,18 @@ class _FakeClient:
         qr: _FakeQRLogin,
         authorized: bool = True,
         session_string: str = "SECRET-SESSION-STRING",
+        identity: "QRLoginIdentity | None" = None,
+        get_me_raises: Exception | None = None,
     ) -> None:
         self._qr = qr
         self._authorized = authorized
         self._session_string = session_string
+        self._identity = (
+            identity
+            if identity is not None
+            else QRLoginIdentity(tg_user_id=777_001, display_label="@alice")
+        )
+        self._get_me_raises = get_me_raises
         self.connect_calls = 0
         self.disconnect_calls = 0
         self.connected = False
@@ -105,6 +114,11 @@ class _FakeClient:
 
     def save_session(self) -> str:
         return self._session_string
+
+    async def get_me(self) -> "QRLoginIdentity":
+        if self._get_me_raises is not None:
+            raise self._get_me_raises
+        return self._identity
 
 
 def _service(
@@ -460,3 +474,64 @@ async def test_start_raises_capacity_error_when_registry_full() -> None:
     fresh = await svc.start()
     assert fresh.token
     assert len(started)  # original tokens were minted; cap is now relieved
+
+
+# --- TASK-119: identity from get_me() on the success path -------------------
+
+
+async def test_poll_success_carries_identity() -> None:
+    """SUCCESS surfaces the NON-SECRET tg_user_id + display_label from get_me()."""
+    clock = _Clock()
+    qr = _FakeQRLogin(wait_result=True)
+    client = _FakeClient(
+        qr=qr,
+        authorized=True,
+        session_string="THE-NEW-SESSION",
+        identity=QRLoginIdentity(tg_user_id=555_123, display_label="@bob"),
+    )
+    svc = _service(client=client, clock=clock)
+
+    started = await svc.start()
+    poll = await svc.poll(started.token)
+
+    assert poll.status is QRLoginStatus.SUCCESS
+    assert poll.tg_user_id == 555_123
+    assert poll.display_label == "@bob"
+    assert poll.session_string == "THE-NEW-SESSION"
+
+
+async def test_poll_session_string_never_in_repr() -> None:
+    """The minted session is a secret — it must not appear in the poll's repr."""
+    clock = _Clock()
+    qr = _FakeQRLogin(wait_result=True)
+    secret = "1AbC-TOP-SECRET-SESSION-STRING"
+    client = _FakeClient(qr=qr, authorized=True, session_string=secret)
+    svc = _service(client=client, clock=clock)
+
+    started = await svc.start()
+    poll = await svc.poll(started.token)
+    assert poll.status is QRLoginStatus.SUCCESS
+    assert secret not in repr(poll)
+    assert secret == poll.session_string  # still accessible to the caller
+
+
+async def test_poll_get_me_failure_is_error_status() -> None:
+    """If get_me() fails after auth we must NOT hand back an unidentifiable session."""
+    clock = _Clock()
+    qr = _FakeQRLogin(wait_result=True)
+    client = _FakeClient(
+        qr=qr,
+        authorized=True,
+        session_string="UNIDENTIFIABLE",
+        get_me_raises=_FakeTelethonError("contains UNIDENTIFIABLE secret in message"),
+    )
+    svc = _service(client=client, clock=clock)
+
+    started = await svc.start()
+    poll = await svc.poll(started.token)
+
+    assert poll.status is QRLoginStatus.ERROR
+    assert poll.reason == "_FakeTelethonError"  # class name only, never the message
+    assert poll.session_string is None
+    assert "UNIDENTIFIABLE" not in (poll.reason or "")
+    assert client.disconnect_calls == 1  # evicted

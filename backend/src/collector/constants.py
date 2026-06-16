@@ -203,6 +203,27 @@ INGEST_STALENESS_REDIS_KEY: Final = "ingest:staleness:latest"
 _INGEST_STALENESS_TTL_MINUTES: Final = 15
 INGEST_STALENESS_TTL_SECONDS: Final = _INGEST_STALENESS_TTL_MINUTES * 60  # 900
 
+# --- dynamic pool session store + safe single-slot revive (TASK-119) -----------
+# A QR-minted session is persisted in the `pool_sessions` DB table (encrypted at
+# rest, ADR-008), keyed by the Telegram account identity (`tg_user_id`). On a revive
+# the API writes a NON-SECRET signal to this Redis key carrying ONLY the affected
+# slot's identity (fingerprint + tg_user_id) — never the session string. The worker
+# reads it at a tick boundary and performs a single-slot disconnect-then-connect,
+# loading the NEW session string from the encrypted DB store (the secret NEVER
+# travels through Redis). The signal is a small JSON object with a short TTL: a
+# missed signal self-heals on the next full pool build (which already unions the DB).
+POOL_REVIVE_SIGNAL_REDIS_KEY: Final = "pool:revive:signal"
+_POOL_REVIVE_SIGNAL_TTL_MINUTES: Final = 10
+POOL_REVIVE_SIGNAL_TTL_SECONDS: Final = _POOL_REVIVE_SIGNAL_TTL_MINUTES * 60  # 600
+
+# Column widths for the `pool_sessions` table (named constants, no magic literals).
+# `session_string` holds a Fernet-encrypted Telethon StringSession: a StringSession
+# is ~350 chars; Fernet adds ~89 bytes overhead + base64 expansion → a generous cap
+# that mirrors ADR-008/0019's enlarged ciphertext columns. `display_label` holds a
+# NON-SECRET masked id / `@username` for the UI (never the session).
+POOL_SESSION_STRING_MAX: Final = 1024
+POOL_SESSION_DISPLAY_LABEL_MAX: Final = 64
+
 # --- collect-tick (beat ingest task) — import-cycle-free contract constants. ---
 # Celery task name for the collect tick. Lives here (not in collector.tasks,
 # which imports celery_app) so `scheduler` can reference it without a circular

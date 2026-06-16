@@ -57,6 +57,7 @@ def test_all_models_share_base_metadata() -> None:
         "referral_rewards",  # TASK-046: referral program reward rows
         "business_metrics_daily",  # TASK-050: daily funnel aggregate
         "cluster_feature_snapshots",  # TASK-109: forward early-window feature capture (B1)
+        "pool_sessions",  # TASK-119: dynamic encrypted pool session store + revive
     }
 
 

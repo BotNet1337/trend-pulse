@@ -94,6 +94,10 @@ class _Account:
     last_read_ok_at: float | None = None
     consecutive_read_failures: int = 0
     first_read_failure_at: float | None = None
+    # The dynamic-store account identity (TASK-119): the `tg_user_id` from `get_me()`
+    # for a slot loaded from the DB store, so a revive-signal can target THIS slot by
+    # identity (None for an env-only bootstrap slot). NEVER a secret.
+    tg_user_id: int | None = None
 
 
 # Account lifecycle state exposed in the health snapshot (TASK-115; `failing` TASK-118).
@@ -134,6 +138,10 @@ class AccountPool:
     _now: Callable[[], float] = time.monotonic
     # Optional Redis for PERSISTENT quarantine (TASK-102); None = in-memory only.
     _redis: "Redis | None" = None
+    # The client factory the pool was built from (TASK-119): retained so a single-slot
+    # revive can build a fresh client over a NEW session string. None only for legacy
+    # constructions that never revive (the dataclass default keeps back-compat).
+    _factory: TelegramClientFactory | None = None
 
     @classmethod
     def from_sessions(
@@ -142,6 +150,7 @@ class AccountPool:
         sessions: list[str],
         factory: TelegramClientFactory,
         redis: "Redis | None" = None,
+        tg_user_ids: list[int | None] | None = None,
     ) -> "AccountPool":
         """Build a pool from pool session strings; validates size POOL_MIN..POOL_MAX.
 
@@ -150,6 +159,11 @@ class AccountPool:
         dead session stays quarantined across worker restarts/recycling (not re-tried, and
         the boot-time `healthy` count is accurate). Fail-open: a Redis error logs a warning
         and builds the pool in-memory-only (construction must never crash on a Redis blip).
+
+        `tg_user_ids` (TASK-119, optional) is the per-session Telegram account identity
+        (positional with `sessions`); a DB-store slot carries its `tg_user_id` so a
+        revive-signal can target it by identity. Env bootstrap slots pass None. The
+        `factory` is retained so a revive can build a fresh client for the swapped slot.
         """
         size = len(sessions)
         if size < POOL_MIN or size > POOL_MAX:
@@ -157,15 +171,22 @@ class AccountPool:
                 f"telegram pool must have between {POOL_MIN} and {POOL_MAX} "
                 f"technical accounts, got {size}"
             )
+        ids: list[int | None] = tg_user_ids if tg_user_ids is not None else [None] * size
+        if len(ids) != size:
+            raise PoolConfigError(f"tg_user_ids length ({len(ids)}) must match sessions ({size})")
         accounts = [
-            _Account(client=factory(session), fingerprint=session_fingerprint(session))
-            for session in sessions
+            _Account(
+                client=factory(session),
+                fingerprint=session_fingerprint(session),
+                tg_user_id=tg_user_id,
+            )
+            for session, tg_user_id in zip(sessions, ids, strict=True)
         ]
         persisted = cls._load_quarantined_fingerprints(redis)
         for account in accounts:
             if account.fingerprint in persisted:
                 account.quarantined = True
-        return cls(_accounts=accounts, _redis=redis)
+        return cls(_accounts=accounts, _redis=redis, _factory=factory)
 
     @staticmethod
     def _load_quarantined_fingerprints(redis: "Redis | None") -> frozenset[str]:
@@ -405,6 +426,83 @@ class AccountPool:
         if ready:
             return 0.0
         return min(remaining)
+
+    def find_slot_index(self, *, tg_user_id: int | None, fingerprint: str) -> int | None:
+        """Locate the slot for a revive by identity (TASK-119); None if not present.
+
+        Prefers the `tg_user_id` match (the stable account identity); falls back to the
+        OLD `fingerprint` (the dead session's sha256[:16]) so a slot loaded before it had
+        an identity, or matched only by its prior session, is still found. Pure lookup —
+        no mutation. Returns the first matching slot index, or None when no slot matches
+        (a brand-new account that will appear on the next full pool build instead).
+        """
+        if tg_user_id is not None:
+            for idx, account in enumerate(self._accounts):
+                if account.tg_user_id == tg_user_id:
+                    return idx
+        if fingerprint:
+            for idx, account in enumerate(self._accounts):
+                if account.fingerprint == fingerprint:
+                    return idx
+        return None
+
+    async def revive_slot(
+        self,
+        *,
+        slot_index: int,
+        tg_user_id: int,
+        session_string: str,
+    ) -> None:
+        """SAFELY swap ONE slot's client to a NEW session (disconnect-then-connect).
+
+        The crux of the ADR's safety case (TASK-119). For the SINGLE slot `slot_index`:
+          1. `await old_client.disconnect()` FIRST — the dead/old session's client is
+             fully torn down before anything new connects (best-effort: a disconnect
+             failure on a dead socket is logged, not raised — the point is to never
+             DOUBLE-connect, which a failed disconnect on a dead socket does not).
+          2. build a fresh client over the NEW `session_string` via the retained factory
+             and `connect()` it.
+          3. swap `account.client` in place and reset THIS slot's transient state
+             (`quarantined`/cooldown/strikes/read-outcome/`last_error_reason`) and update
+             its `fingerprint`/`tg_user_id` to the new session — so the revived slot
+             leaves `failing`/`quarantined` and starts clean.
+
+        INVARIANT: a session is never connected by two clients at once — the old client
+        is disconnected before the new client connects, and ONLY this slot is touched
+        (no other `_Account.client` is reconnected). The session string is a secret and
+        is NEVER logged. Raises `PoolConfigError` if the slot index is out of range or
+        no factory is available (a misconstructed pool that cannot revive).
+        """
+        if self._factory is None:
+            raise PoolConfigError("pool has no client factory; cannot revive a slot")
+        if slot_index < 0 or slot_index >= len(self._accounts):
+            raise PoolConfigError(f"revive slot index {slot_index} out of range")
+
+        account = self._accounts[slot_index]
+        old_client = account.client
+        # 1. Disconnect the OLD client FIRST — best-effort (the old socket is dead).
+        try:
+            await old_client.disconnect()
+        except Exception:
+            # Log, never raise: a failed disconnect on a dead socket does NOT leave the
+            # session double-connected, and must not block the revive (Invariant).
+            logger.warning("old client disconnect failed during revive (proceeding)")
+
+        # 2. Build + connect the NEW client (only after the old one is down).
+        new_client = self._factory(session_string)
+        await new_client.connect()
+
+        # 3. Swap in place + reset THIS slot's state (single-slot only).
+        account.client = new_client
+        account.tg_user_id = tg_user_id
+        account.fingerprint = session_fingerprint(session_string)
+        account.quarantined = False
+        account.cooldown_until = 0.0
+        account.flood_strikes = 0
+        account.consecutive_read_failures = 0
+        account.first_read_failure_at = None
+        account.last_read_ok_at = None
+        account.last_error_reason = ""
 
     async def aclose(self) -> None:
         """Disconnect every pool client (worker shutdown / collector teardown).

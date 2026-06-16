@@ -206,13 +206,13 @@ Redis `pool:quarantined_fingerprints` (TASK-102), loaded in `from_sessions` and 
   error does not crash the tick.
 
 ## Checkpoints
-current_step: 3
+current_step: 4
 baseline_commit: 98bd84c834fb58f266e4837a54783d508f129070
-branch: ""
+branch: "feat/pool-health-revive"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
+- [x] 3 do (TDD: failing test → minimal code)
 - [ ] 4 verify (G2 — full suite + migration round-trip + ruff + mypy strict green)
 - [ ] 5 review (code-reviewer)
 - [ ] 5.5 security (MANDATORY — encrypted-at-rest secret + revive concurrency; security-reviewer)
@@ -230,3 +230,50 @@ DB except into the worker's own process memory at ORM-read time; Redis only ever
 non-secret revive-signal (fingerprint/tg_user_id), exactly like the existing non-secret quarantine
 fingerprints (TASK-102). Security checkpoint is MANDATORY here (encrypted secret column + a new
 runtime mutation path).
+
+## Details (do — step 3, 2026-06-16)
+
+**Files (declared scope, all green):**
+- NEW `backend/src/storage/models/pool_sessions.py` — `PoolSession` ORM model:
+  `tg_user_id BIGINT UNIQUE` (upsert key), `session_string EncryptedString(1024)` (Fernet at rest,
+  ADR-008), `session_fingerprint VARCHAR(16)` (TASK-102), `display_label VARCHAR(64)` (non-secret),
+  `created_at`/`updated_at`/`revoked_at` (soft-revoke). Registered in `models/__init__.py`.
+- NEW `backend/migrations/versions/0024_pool_sessions.py` — create table + unique
+  (`uq_pool_sessions_tg_user_id`) + indexes; downgrade drops it. Round-trip verified up/down/re-up
+  on `pgvector/pgvector:pg16`.
+- NEW `backend/src/storage/pool_session_store.py` — typed store: `ReviveOutcome` enum,
+  `StoredSession`/`UpsertResult` DTOs (secret `repr=False`), `upsert_revive_or_add(...)` (REVIVE vs
+  ADD by `tg_user_id`, `POOL_MAX` cap on ADD only), `active_sessions()`, `find_active_by_tg_user_id()`,
+  `revoke()`, `clear_quarantine_for()`.
+- `collector/telegram/qr_login.py` — `QRLoginIdentity` + `get_me()` on the client protocol/adapter;
+  `_mask_label` (non-secret `@user`/`id:***NNNN`); success `poll()` calls `get_me()` (failure → ERROR,
+  class name only) and threads `tg_user_id`/`display_label` into `QRLoginPoll`.
+- `collector/telegram/account_pool.py` — `_Account.tg_user_id`; `from_sessions(... tg_user_ids=, )`
+  retains the `_factory`; `find_slot_index(tg_user_id|fingerprint)` + `revive_slot(...)` (disconnect-old
+  → connect-new → swap one client → reset that slot's quarantine/cooldown/read-outcome/identity).
+- `collector/telegram/reader.py` — `_apply_revive_best_effort()` at the START of `read()` (tick
+  boundary): parse the non-secret Redis signal, load the NEW session from the encrypted store, call
+  `revive_slot`, clear the signal — never crashes the tick.
+- `collector/registry.py` — `_union_pool_sessions` merges env + active DB store (de-dup by fingerprint,
+  DB wins, fail-open to env-only on DB error); passes `tg_user_ids` + factory to `from_sessions`.
+- `collector/constants.py` — `POOL_REVIVE_SIGNAL_REDIS_KEY` + TTL, `POOL_SESSION_STRING_MAX`,
+  `POOL_SESSION_DISPLAY_LABEL_MAX`. `collector/errors.py` — `PoolSessionStoreError`,
+  `PoolCapacityExceededError`.
+
+**Tests:** `tests/unit/storage/test_pool_session_store.py` (11), `tests/unit/collector/test_pool_revive.py`
+(7), `tests/unit/collector/test_reader_revive.py` (7), `tests/unit/test_qr_login.py` (+3 identity),
+`tests/integration/test_pool_session_store.py` (3, real-pg encrypted-at-rest + union loader),
+`tests/integration/test_migrations.py` (+1 round-trip). `test_models.py` expected-set updated.
+
+**Gate evidence (G2):** `make fmt` (7 reformatted) → `make lint` All checks passed → `make typecheck`
+Success: no issues found in 189 source files (mypy strict, no Any / no `# type: ignore`) → `make test`
+**1144 passed**, 302 deselected. Integration on throwaway `pgvector/pgvector:pg16` (port 55432):
+migrations 4 passed (incl. 0024 up/down/re-up), pool_session_store 3 passed, at_rest_encryption +
+repositories 12 passed (no regressions). Container torn down.
+
+**Safety invariants asserted:** (1) `test_revive_disconnects_old_before_connecting_new` — global
+call-order log proves OLD `disconnect` precedes NEW `connect`; (2) `test_revive_touches_only_target_slot`
+— sibling client never connect/disconnect'd; (3) encrypted-at-rest — raw DB column is a `gAA…` Fernet
+token != plaintext (unit sqlite + real pg); (4) the session string never enters Redis (signal carries
+only `tg_user_id`/`fingerprint`) and is `repr=False` on both DTO + poll. TASK-118 read-outcome
+semantics consumed, not changed; rotation/cooldown/quarantine untouched (revive only CLEARS one slot).
