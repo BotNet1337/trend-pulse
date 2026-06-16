@@ -16,7 +16,7 @@
 
 task-080: clustering is per-batch (`cluster.run` sees only this batch), so the same
 recurring topic used to spawn a NEW cluster every tick. The persist step now reuses
-an existing cluster when centroids are similar (cosine >= `cluster_cosine_threshold`)
+an existing cluster when centroids are similar (cosine >= `cluster_merge_cosine_threshold`)
 and it is recent (`updated_at` within `cluster_merge_window_seconds`), updating that
 cluster's centroid as a running mean over members. Merges happen under the per-user
 batch lock (`max_instances=1`), so no two batches race the same user.
@@ -111,7 +111,7 @@ def _find_mergeable_cluster(
 
     Cross-batch continuity fix (TASK-080): instead of always creating a new `Cluster`
     row for each batch candidate, attach it to an EXISTING cluster of the same user
-    whose centroid is close enough (cosine-similarity >= `cluster_cosine_threshold`),
+    whose centroid is close enough (cosine-similarity >= `cluster_merge_cosine_threshold`),
     that is recent (`updated_at >= now - cluster_merge_window_seconds`), AND that has
     not exceeded its max lifetime (`first_seen >= now - cluster_max_span_seconds`).
 
@@ -124,9 +124,17 @@ def _find_mergeable_cluster(
     = ``1 - cosine_similarity``. So "similarity >= threshold" is equivalent to
     "distance <= 1 - threshold". The query is bounded by user + freshness + span,
     filtered by that max distance, and ordered nearest-first with LIMIT 1 (the NN lookup).
+
+    TASK-123: this merge site uses the LOOSER `cluster_merge_cosine_threshold` (0.65),
+    NOT the tight `cluster_cosine_threshold` (0.75) that intra-batch grouping/dedup
+    (`pipeline/steps/cluster.py`) uses. Different channels paraphrase one story, so their
+    centroids sit below the tight dedup cutoff; the loose tier lets "the same story across
+    channels" collapse into ONE cluster (`channels_count > 1` — cross-channel breadth)
+    without loosening intra-batch dedup. The config invariant guarantees the merge
+    threshold never exceeds the tight one.
     """
     settings = get_settings()
-    max_distance = 1.0 - settings.cluster_cosine_threshold
+    max_distance = 1.0 - settings.cluster_merge_cosine_threshold
     now = utcnow()
     window_start = now - timedelta(seconds=settings.cluster_merge_window_seconds)
     span_start = now - timedelta(seconds=settings.cluster_max_span_seconds)
