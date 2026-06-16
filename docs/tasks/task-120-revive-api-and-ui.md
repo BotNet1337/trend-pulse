@@ -150,16 +150,16 @@ and returns identity+outcome, and adds per-account identity to the health snapsh
 - FE dialog test: success state shows identity + REVIVE/ADD; button relabel.
 
 ## Checkpoints
-current_step: 4
+current_step: 6
 baseline_commit: 98bd84c834fb58f266e4837a54783d508f129070
 branch: "feat/pool-health-revive"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [x] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — full suite + ruff + mypy strict + FE typecheck/vitest + OpenAPI regen green)
-- [ ] 5 review (code-reviewer)
-- [ ] 5.5 security (MANDATORY — confirm only the one-shot session copy-field is secret; identity
+- [x] 4 verify (1152 unit + 25 integration + 315 FE) (G2 — full suite + ruff + mypy strict + FE typecheck/vitest + OpenAPI regen green)
+- [x] 5 review (opus: HIGH rollback fixed) (code-reviewer)
+- [x] 5.5 security (opus PASS clean) (MANDATORY — confirm only the one-shot session copy-field is secret; identity
       non-secret; persistence side effect idempotent)
 - [ ] 6 ship (PR)
 - [ ] 7 learnings (auto)
