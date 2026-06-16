@@ -99,3 +99,32 @@ class TestBeatHeartbeatTtlValidator:
         for bad in (300, 60, 0):
             with pytest.raises(ValidationError):
                 Settings(beat_heartbeat_ttl_seconds=bad)
+
+
+class TestActiveEnvPoolSessions:
+    """Store-only by default: the env pool floor is opt-in (TASK store-only)."""
+
+    def test_env_sessions_ignored_by_default(self) -> None:
+        from config import Settings, active_env_pool_sessions
+
+        s = Settings(telegram_pool_sessions="sessA,sessB")
+        # Default (telegram_pool_use_env_sessions=False) → env fully ignored.
+        assert s.telegram_pool_use_env_sessions is False
+        assert active_env_pool_sessions(s) == []
+
+    def test_env_sessions_used_when_floor_enabled(self) -> None:
+        from config import Settings, active_env_pool_sessions, telegram_pool_sessions
+
+        s = Settings(
+            telegram_pool_sessions="sessA, sessB",
+            telegram_pool_use_env_sessions=True,
+        )
+        assert active_env_pool_sessions(s) == ["sessA", "sessB"]
+        # The raw parser is unchanged regardless of the floor flag.
+        assert telegram_pool_sessions(s) == ["sessA", "sessB"]
+
+    def test_empty_env_stays_empty_when_enabled(self) -> None:
+        from config import Settings, active_env_pool_sessions
+
+        s = Settings(telegram_pool_use_env_sessions=True)
+        assert active_env_pool_sessions(s) == []
