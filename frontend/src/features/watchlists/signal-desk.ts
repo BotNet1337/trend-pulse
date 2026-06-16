@@ -130,6 +130,58 @@ export function formatVelocityBadge(velocity: number | null | undefined): string
   return `×${velocity.toFixed(1)} baseline`;
 }
 
+// ── viral_score badge (TASK-121) ───────────────────────────────────────────────
+
+/**
+ * viral_score tiers over the scorer's 0-100 `live_score`, reusing the same CSS
+ * classes `.vel-badge.{hot,warm,calm}` as the velocity badge (one visual
+ * language, no new CSS). Tier is colour only — the numeric truth is the value
+ * rendered in the badge. `null`/non-finite score → `calm` (neutral, no-data).
+ * Fixed named thresholds keep the diff minimal and the tier logic per-row
+ * threshold-independent (see TASK-121 ## Discussion).
+ */
+export const SCORE_HOT_THRESHOLD = 40;
+export const SCORE_WARM_THRESHOLD = 20;
+
+export function scoreTier(score: number | null | undefined): VelocityTier {
+  if (score == null || !Number.isFinite(score)) return 'calm';
+  if (score >= SCORE_HOT_THRESHOLD) return 'hot';
+  if (score >= SCORE_WARM_THRESHOLD) return 'warm';
+  return 'calm';
+}
+
+/**
+ * Human label for the primary live-signal badge: the viral_score as a rounded
+ * integer 0-100 (tabular-nums, e.g. `47`). Returns `null` when there is no
+ * score → the row shows its no-signal placeholder (INV2: never fabricate `0`
+ * out of `null`; a real `0` still renders as `0`).
+ */
+export function formatScoreBadge(score: number | null | undefined): string | null {
+  if (score == null || !Number.isFinite(score)) return null;
+  // Clamp to the advertised 0-100 range (matches thresholdBarPercent) so a
+  // future out-of-range scorer value never renders a badge that contradicts
+  // the `/100` tooltip semantics.
+  const bounded = Math.max(0, Math.min(100, score));
+  return `${Math.round(bounded)}`;
+}
+
+/**
+ * Tooltip for the primary score badge. Demotes velocity to secondary info
+ * (TASK-121) while keeping it visible: `Live signal {score}/100 · velocity
+ * ×{v.v} baseline`. The velocity clause is omitted when there is no velocity.
+ * When there is no score at all, returns the no-signal label.
+ */
+export function formatSignalTooltip(
+  score: number | null | undefined,
+  velocity: number | null | undefined,
+): string {
+  const scoreLabel = formatScoreBadge(score);
+  if (scoreLabel === null) return 'No live signal yet';
+  const velocityLabel = formatVelocityBadge(velocity);
+  const base = `Live signal ${scoreLabel}/100`;
+  return velocityLabel === null ? base : `${base} · velocity ${velocityLabel}`;
+}
+
 /** A sparkline column has a real series only when it carries ≥1 finite point. */
 export function hasSparkline(series: readonly number[] | null | undefined): boolean {
   return Array.isArray(series) && series.some((v) => Number.isFinite(v));

@@ -2,10 +2,12 @@
  * WatchlistRow — one row of the Signal Desk table (`/watchlists`).
  *
  * Renders a watchlist with the SAME edit/delete handlers the previous card used,
- * plus the live `signal` (TASK-096): a real 24h sparkline, the live ×baseline
- * velocity badge (hot/warm/calm tiers) and the last-alert time. Every signal
- * field is graceful — when the backend has no data the column falls back to its
- * neutral placeholder; no fabricated values, no pause action (no pause endpoint).
+ * plus the live `signal` (TASK-096): a real 24h sparkline and the live-signal
+ * badge. The PRIMARY badge is the viral_score (`live_score`, 0-100) with a
+ * hot/warm/calm tier colour (TASK-121); velocity is demoted to the badge tooltip
+ * (kept for the API contract, not removed). Every signal field is graceful —
+ * when the backend has no data the column falls back to its neutral placeholder;
+ * no fabricated values, no pause action (no pause endpoint).
  */
 
 import React from 'react';
@@ -14,8 +16,9 @@ import {
   sourcesCount,
   thresholdBarPercent,
   rowSignal,
-  velocityTier,
-  formatVelocityBadge,
+  scoreTier,
+  formatScoreBadge,
+  formatSignalTooltip,
   hasSparkline,
   sparklinePoints,
   formatLastAlert,
@@ -70,10 +73,13 @@ export const WatchlistRow: React.FC<WatchlistRowProps> = ({
   const sources = sourcesCount(watchlist);
 
   // Live signal (TASK-096) — every field graceful-empty when there is no data.
+  // Primary badge = viral_score (TASK-121); velocity is kept for the tooltip.
   const signal = rowSignal(watchlist);
+  const score = signal.live_score;
   const velocity = signal.live_velocity;
-  const tier = velocityTier(velocity);
-  const velocityLabel = formatVelocityBadge(velocity);
+  const tier = scoreTier(score);
+  const scoreLabel = formatScoreBadge(score);
+  const signalTooltip = formatSignalTooltip(score, velocity);
   const sparklineSeries = signal.sparkline_24h ?? [];
   const sparklineOn = hasSparkline(sparklineSeries);
   const sparkPoints = sparklinePoints(
@@ -98,7 +104,7 @@ export const WatchlistRow: React.FC<WatchlistRowProps> = ({
           </span>
         </div>
       </td>
-      {/* Live signal: real 24h sparkline + ×baseline velocity, graceful placeholder when empty. */}
+      {/* Live signal: real 24h sparkline + viral_score badge (velocity in tooltip), graceful placeholder when empty. */}
       <td>
         <div className="spark">
           <svg
@@ -127,13 +133,13 @@ export const WatchlistRow: React.FC<WatchlistRowProps> = ({
               />
             )}
           </svg>
-          {velocityLabel !== null ? (
-            <span className={`vel-badge ${tier}`} title={`Live velocity: ${velocityLabel}`}>
-              {velocityLabel}
+          {scoreLabel !== null ? (
+            <span className={`vel-badge ${tier}`} title={signalTooltip}>
+              {scoreLabel}
             </span>
           ) : (
-            <span className="vel-badge vel-badge--empty" title="No live velocity data yet">
-              no data
+            <span className="vel-badge vel-badge--empty" title={signalTooltip}>
+              no signal
             </span>
           )}
         </div>
