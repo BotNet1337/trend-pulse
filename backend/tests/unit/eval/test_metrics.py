@@ -11,6 +11,7 @@ import pytest
 from eval.metrics import (
     MetricInputError,
     average_precision,
+    brier_score,
     confusion_at_threshold,
     precision_at_k,
     roc_auc,
@@ -209,3 +210,45 @@ def test_confusion_no_alerts_precision_zero() -> None:
     assert c.alerts == 0
     assert c.precision == 0.0
     assert c.recall == 0.0
+
+
+@pytest.mark.unit
+def test_brier_score_perfect_is_zero() -> None:
+    # probabilities exactly match the labels → mean squared error = 0
+    assert brier_score([1.0, 0.0, 1.0, 0.0], [1, 0, 1, 0]) == pytest.approx(0.0)
+
+
+@pytest.mark.unit
+def test_brier_score_coin_flip_is_quarter() -> None:
+    # p = 0.5 for every item → (0.5 - y)^2 = 0.25 for each → mean = 0.25
+    assert brier_score([0.5, 0.5, 0.5, 0.5], [1, 1, 0, 0]) == pytest.approx(0.25)
+
+
+@pytest.mark.unit
+def test_brier_score_known_value() -> None:
+    # (0.8-1)^2=0.04 ; (0.3-0)^2=0.09 ; (0.6-1)^2=0.16 → mean = 0.29/3
+    assert brier_score([0.8, 0.3, 0.6], [1, 0, 1]) == pytest.approx(0.29 / 3.0)
+
+
+@pytest.mark.unit
+def test_brier_score_worst_is_one() -> None:
+    # confidently wrong on every item → (1-0)^2 and (0-1)^2 → mean = 1.0
+    assert brier_score([0.0, 1.0], [1, 0]) == pytest.approx(1.0)
+
+
+@pytest.mark.unit
+def test_brier_score_length_mismatch_raises() -> None:
+    with pytest.raises(MetricInputError):
+        brier_score([0.1, 0.2], [1])
+
+
+@pytest.mark.unit
+def test_brier_score_empty_raises() -> None:
+    with pytest.raises(MetricInputError):
+        brier_score([], [])
+
+
+@pytest.mark.unit
+def test_brier_score_rejects_non_binary_label() -> None:
+    with pytest.raises(MetricInputError):
+        brier_score([0.1, 0.2, 0.3], [0, 1, 2])
