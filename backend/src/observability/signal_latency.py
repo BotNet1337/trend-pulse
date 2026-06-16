@@ -27,12 +27,15 @@ Design notes:
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import TYPE_CHECKING, cast
 
+from redis.exceptions import RedisError
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from collector.constants import INGEST_STALENESS_REDIS_KEY, INGEST_STALENESS_TTL_SECONDS
 from observability.logging import log_event
 from storage.models.alerts import DELIVERY_STATUS_DELIVERED
 
@@ -294,6 +297,27 @@ def emit_ingest_staleness(session: Session, settings: Settings) -> dict[str, obj
     stale: bool = age_s is not None and age_s >= threshold_s
     log_event("ingest_staleness", age_s=age_s, stale=stale, threshold_s=threshold_s)
     return {"age_s": age_s, "stale": stale, "threshold_s": threshold_s}
+
+
+def publish_ingest_staleness(redis: Redis, staleness: dict[str, object]) -> None:
+    """Bridge the latest ingest-staleness result to a small Redis key (TASK-118).
+
+    The pool-health snapshot (written by the collector worker) reads this key to derive
+    the "all-healthy-but-ingest-stale" contradiction WITHOUT adding a Postgres query to
+    the hot collect-tick path — the staleness is computed here (beat task, against
+    Postgres) and published cross-process. Writes only `{stale, age_s}` (both non-secret
+    aggregates) with a TTL so a stalled beat task fails OPEN (an expired key → no
+    contradiction). Best-effort: any Redis error logs a warning and is swallowed so the
+    metric tick never breaks on the bridge write (Invariant).
+    """
+    payload = {"stale": bool(staleness.get("stale", False)), "age_s": staleness.get("age_s")}
+    try:
+        redis.set(INGEST_STALENESS_REDIS_KEY, json.dumps(payload), ex=INGEST_STALENESS_TTL_SECONDS)
+    except (RedisError, TypeError, ValueError) as exc:
+        logger.warning(
+            "ingest staleness bridge Redis write failed — skipping",
+            extra={"exc_type": type(exc).__name__},
+        )
 
 
 def emit_alert_precision(

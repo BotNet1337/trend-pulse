@@ -35,7 +35,7 @@ across ticks.
 import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from celery.exceptions import SoftTimeLimitExceeded
 from celery.signals import worker_process_shutdown
@@ -68,6 +68,20 @@ if TYPE_CHECKING:
     from redis import Redis
 
 logger = logging.getLogger(__name__)
+
+
+@runtime_checkable
+class _SupportsPendingRevive(Protocol):
+    """A collector that applies a pending single-slot revive ONCE per tick (TASK-119).
+
+    Only the Telegram collector implements this; the tick calls it ONCE before the
+    per-ref `read()` loop so the revive-signal Redis GET fires a single time per tick
+    (not once per ref). A duck-typed `runtime_checkable` Protocol keeps the generic
+    `SourceCollector` port untouched (Twitter/Reddit do not have a pool to revive).
+    """
+
+    async def apply_pending_revive(self) -> None: ...
+
 
 # Storage `Channel.source_kind` and collector `SourceKind` are distinct StrEnums
 # (different layers); map by value — same seam as `pipeline.batch_processor`.
@@ -181,7 +195,14 @@ async def _collect_refs(
     inside the async generator would abort every remaining ref — per-ref calls
     give the skip-and-continue semantics the tick needs. Cross-ref handle dedup
     already happened in the DISTINCT SQL; the reader normalizes per call.
+
+    A pending single-slot revive-signal is applied ONCE here, before the per-ref
+    loop (TASK-119) — so the revive Redis GET is a single read per tick, not one
+    per ref. Best-effort: `apply_pending_revive` never raises (the collector keeps
+    the tick-boundary disconnect-before-connect single-slot revive invariant).
     """
+    if isinstance(collector, _SupportsPendingRevive):
+        await collector.apply_pending_revive()
     written = 0
     for ref in refs:
         try:

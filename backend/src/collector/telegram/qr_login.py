@@ -52,11 +52,24 @@ class QRLoginProtocol(Protocol):
     def wait(self) -> Coroutine[object, object, bool]: ...
 
 
+@dataclass(frozen=True)
+class QRLoginIdentity:
+    """The NON-SECRET Telegram account identity from `get_me()` (TASK-119).
+
+    `tg_user_id` is the account's stable Telegram id (the revive/add upsert key);
+    `display_label` is a non-secret masked id / `@username` for the UI. Neither is a
+    secret — the session string is the only secret and lives elsewhere."""
+
+    tg_user_id: int
+    display_label: str
+
+
 class QRLoginClientProtocol(Protocol):
     """The minimal Telethon client surface for QR login (no network in tests).
 
     A fresh client over an EMPTY StringSession: connect, drive `qr_login()`, then on
-    success `save_session()` returns the NEW authorized StringSession.save()."""
+    success `save_session()` returns the NEW authorized StringSession.save() and
+    `get_me()` yields the NON-SECRET account identity (TASK-119)."""
 
     async def connect(self) -> None: ...
 
@@ -67,6 +80,8 @@ class QRLoginClientProtocol(Protocol):
     async def is_user_authorized(self) -> bool: ...
 
     def save_session(self) -> str: ...
+
+    async def get_me(self) -> QRLoginIdentity: ...
 
 
 # A factory builds a fresh, disconnected QR-login client (empty session). No args:
@@ -107,6 +122,11 @@ class QRLoginPoll:
     # log line / traceback frame dump while preserving equality + normal access.
     session_string: str | None = field(default=None, repr=False)
     reason: str | None = None
+    # NON-SECRET account identity from `get_me()`, set only on SUCCESS (TASK-119):
+    # `tg_user_id` is the revive/add upsert key and `display_label` is a masked id /
+    # `@username` for the UI. Both are safe to log/return; the secret is the session.
+    tg_user_id: int | None = None
+    display_label: str | None = None
 
 
 @dataclass
@@ -150,11 +170,22 @@ class _RawSession(Protocol):
     def save(self) -> str: ...
 
 
+class _RawTelethonUser(Protocol):
+    """The minimal telethon `User` surface from `get_me()` (no stubs ship).
+
+    `id` is the account's Telegram id (the non-secret upsert key); `username` is the
+    optional `@handle`. Neither is a secret — the session string is."""
+
+    id: int
+    username: str | None
+
+
 class _RawTelethonClient(Protocol):
     """Structural view of the real telethon client (no stubs ship) for QR login.
 
     `.session.save()` returns the authorized StringSession string after a successful
-    `qr_login()`/`wait()` — that is the NEW session we export (never the pool's)."""
+    `qr_login()`/`wait()` — that is the NEW session we export (never the pool's).
+    `get_me()` yields the authorized account's `User` (its non-secret identity)."""
 
     session: _RawSession
 
@@ -165,6 +196,8 @@ class _RawTelethonClient(Protocol):
     async def qr_login(self) -> QRLoginProtocol: ...
 
     async def is_user_authorized(self) -> bool: ...
+
+    async def get_me(self) -> _RawTelethonUser: ...
 
 
 class _RealClientAdapter:
@@ -191,6 +224,22 @@ class _RealClientAdapter:
 
     def save_session(self) -> str:
         return self._client.session.save()
+
+    async def get_me(self) -> QRLoginIdentity:
+        me = await self._client.get_me()
+        return QRLoginIdentity(tg_user_id=me.id, display_label=_mask_label(me.id, me.username))
+
+
+def _mask_label(tg_user_id: int, username: str | None) -> str:
+    """Build a NON-SECRET display label from the account identity (TASK-119).
+
+    Prefers `@username` when present (already public); otherwise a masked id that
+    shows only the last 4 digits (`id:•••1234`) so the UI can disambiguate accounts
+    without exposing the full id. Never includes the session string."""
+    if username:
+        return f"@{username}"
+    tail = str(tg_user_id)[-4:]
+    return f"id:***{tail}"
 
 
 class QRLoginService:
@@ -329,12 +378,28 @@ class QRLoginService:
             # pending until expiry; don't evict.
             return QRLoginPoll(status=QRLoginStatus.PENDING, expires_at=pending.expires_at)
 
+        # Learn the NON-SECRET account identity BEFORE evicting (the client is still
+        # live + authorized). `get_me()` keys the revive/add upsert (TASK-119); if it
+        # fails we must NOT hand back a session we cannot identity-key, so surface an
+        # ERROR (class name only — never the exception message, which can echo a
+        # secret). The session string is read only after a successful identity.
+        try:
+            identity = await pending.client.get_me()
+        except Exception as exc:
+            await self._evict(token, pending)
+            return QRLoginPoll(
+                status=QRLoginStatus.ERROR,
+                expires_at=pending.expires_at,
+                reason=type(exc).__name__,
+            )
         session_string = pending.client.save_session()
         await self._evict(token, pending)
         return QRLoginPoll(
             status=QRLoginStatus.SUCCESS,
             expires_at=pending.expires_at,
             session_string=session_string,
+            tg_user_id=identity.tg_user_id,
+            display_label=identity.display_label,
         )
 
     async def _resolve_error(

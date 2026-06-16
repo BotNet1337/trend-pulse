@@ -29,6 +29,7 @@ _EXPECTED_TABLES = {
     "subscriptions",
     "billing_payments",
     "cluster_feature_snapshots",  # TASK-109 (0023): forward feature-snapshot capture
+    "pool_sessions",  # TASK-119 (0024): dynamic encrypted pool session store
 }
 
 
@@ -138,6 +139,39 @@ def test_cluster_feature_snapshots_migration_up_down() -> None:
         assert "uq_cluster_feature_snapshots_user_cluster_window" in uniques
 
         command.downgrade(_alembic_config(), "0022")
+        assert not _has_table(engine)
+
+        command.upgrade(_alembic_config(), "head")
+        assert _has_table(engine)
+    finally:
+        engine.dispose()
+
+
+def test_pool_sessions_migration_up_down() -> None:
+    """0024 (TASK-119): upgrade creates `pool_sessions` with the tg_user_id unique
+    constraint, downgrade drops it cleanly, and re-upgrade restores it."""
+    from alembic import command
+
+    def _has_table(engine_: object) -> bool:
+        return "pool_sessions" in inspect(engine_).get_table_names()
+
+    engine = create_engine(get_settings().database_url)
+    try:
+        with engine.begin() as conn:
+            tables = (
+                conn.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'"))
+                .scalars()
+                .all()
+            )
+            for table in tables:
+                conn.execute(text(f'DROP TABLE IF EXISTS "{table}" CASCADE'))
+
+        command.upgrade(_alembic_config(), "head")
+        assert _has_table(engine)
+        uniques = {u["name"] for u in inspect(engine).get_unique_constraints("pool_sessions")}
+        assert "uq_pool_sessions_tg_user_id" in uniques
+
+        command.downgrade(_alembic_config(), "0023")
         assert not _has_table(engine)
 
         command.upgrade(_alembic_config(), "head")

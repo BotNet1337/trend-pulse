@@ -33,12 +33,16 @@ import json
 import logging
 from dataclasses import asdict
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import httpx
 from redis.exceptions import RedisError
 
-from collector.constants import POOL_HEALTH_REDIS_KEY, POOL_HEALTH_SNAPSHOT_TTL_SECONDS
+from collector.constants import (
+    INGEST_STALENESS_REDIS_KEY,
+    POOL_HEALTH_REDIS_KEY,
+    POOL_HEALTH_SNAPSHOT_TTL_SECONDS,
+)
 from observability.logging import log_event
 
 if TYPE_CHECKING:
@@ -125,15 +129,17 @@ def _publish_snapshot(
     """Write the full pool-health snapshot as JSON to Redis (TASK-115; best-effort).
 
     The snapshot is ``aggregates`` plus an ``accounts`` list (per-account statuses as
-    plain dicts) and an ``as_of`` UTC-ISO timestamp for staleness computation. A
-    serialization or Redis failure is logged and swallowed — the collect-tick must
-    never break on self-observation (Invariant). No secrets: index-only identity.
+    plain dicts), an ``as_of`` UTC-ISO timestamp for staleness computation, and the
+    derived ``ingest_contradiction`` flag (TASK-118). A serialization or Redis failure
+    is logged and swallowed — the collect-tick must never break on self-observation
+    (Invariant). No secrets: index-only identity.
     """
     try:
         snapshot: dict[str, object] = {
             **aggregates,
             "as_of": datetime.now(UTC).isoformat(),
             "accounts": [asdict(status) for status in pool.account_statuses()],
+            "ingest_contradiction": _ingest_contradiction(aggregates, redis),
         }
         redis.set(
             POOL_HEALTH_REDIS_KEY,
@@ -145,6 +151,41 @@ def _publish_snapshot(
             "pool health snapshot Redis write failed — skipping",
             extra={"exc_type": type(exc).__name__},
         )
+
+
+def _ingest_contradiction(aggregates: dict[str, object], redis: Redis) -> bool:
+    """Derive the all-healthy-but-ingest-stale contradiction (TASK-118; fail-open).
+
+    True iff every account is healthy (``healthy == size`` with ``size > 0``) yet the
+    cross-process ingest-staleness key (published by the beat task, TASK-100) says ingest
+    is stale — the single most operator-meaningful "all green but 0 posts" signal. The
+    flag is OBSERVATIONAL: it never changes rotation. A missing/expired/malformed key or
+    any Redis error fails OPEN to ``False`` (never alarm on absence), and reading is
+    best-effort so it can never break the snapshot write.
+    """
+    size = aggregates.get("size")
+    healthy = aggregates.get("healthy")
+    if not (isinstance(size, int) and isinstance(healthy, int) and size > 0 and healthy == size):
+        return False
+    try:
+        # redis-py stubs type `.get()` as `Awaitable[Any] | Any`; the sync client used
+        # here returns `bytes | None` (decode_responses defaults False). Pin the concrete
+        # union so mypy reasons without `Any` leaking past this boundary (mirrors the
+        # `cast` seams in account_pool / pool_admin).
+        raw = cast("bytes | str | None", redis.get(INGEST_STALENESS_REDIS_KEY))
+    except RedisError as exc:
+        logger.warning(
+            "ingest staleness read failed — treating as no contradiction",
+            extra={"exc_type": type(exc).__name__},
+        )
+        return False
+    if raw is None:
+        return False
+    try:
+        parsed: object = json.loads(raw)
+    except (TypeError, ValueError):
+        return False
+    return isinstance(parsed, dict) and parsed.get("stale") is True
 
 
 def notify_ops(

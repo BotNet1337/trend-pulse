@@ -11,16 +11,21 @@ must not crash collection).
 """
 
 import asyncio
+import json
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
+
+from redis.exceptions import RedisError
 
 from collector.base import RawPost, SourceKind, SourceRef
 from collector.constants import (
     FLOOD_WAIT_INLINE_CAP_SECONDS,
     INTER_REQUEST_SLEEP_SECONDS,
     MAX_MESSAGES_PER_TICK,
+    POOL_REVIVE_SIGNAL_REDIS_KEY,
+    SESSION_FINGERPRINT_LEN,
 )
 from collector.errors import (
     AllAccountsFloodWaitError,
@@ -37,8 +42,19 @@ if TYPE_CHECKING:
     from redis import Redis
 
     from config import Settings
+    from storage.pool_session_store import StoredSession
 
 logger = logging.getLogger(__name__)
+
+
+def _is_valid_fingerprint(value: str) -> bool:
+    """A well-formed fingerprint: exactly SESSION_FINGERPRINT_LEN lowercase hex chars.
+
+    Mirrors `account_pool._is_valid_fingerprint` — a poisoned revive-signal member
+    that isn't a real fingerprint is rejected before it can reach `revive_slot`.
+    """
+    return len(value) == SESSION_FINGERPRINT_LEN and all(c in "0123456789abcdef" for c in value)
+
 
 # Telethon error types are resolved lazily (the SDK is imported only when present)
 # so this module imports cleanly in pure-unit contexts. We match on a `seconds`
@@ -91,8 +107,17 @@ class TelegramCollector:
         *,
         notify_reason: str | None = None,
         notify_text: str | None = None,
+        emit_metric: bool = True,
     ) -> None:
         """Emit pool health metric + optionally send an ops self-alert (best-effort).
+
+        `emit_metric` (TASK-118) controls the once-per-tick semantics of the
+        `pool_health` METRIC + Redis snapshot write: the periodic summary at the end of
+        `read()` keeps `emit_metric=True` (the single emit per collect cycle), while the
+        notify-only degradation sites (auth_error / all_flood / pool_exhausted /
+        auth_dead) call with `emit_metric=False` so they ONLY throttle-notify and do NOT
+        re-emit the metric per-channel/per-acquire (prod was seeing ~1 emit/sec). The
+        ops self-alert keeps its own Redis throttle in all cases.
 
         NEVER raises — swallows all exceptions with a warn log so self-observation
         cannot crash the collector (Invariant).  When settings/redis are None (unit
@@ -104,8 +129,11 @@ class TelegramCollector:
             from observability.pool_health import emit_pool_health, notify_ops
 
             # Pass redis so the full snapshot is bridged to `pool:health:latest`
-            # for the API to read cross-process (TASK-115); best-effort write.
-            result = emit_pool_health(self._pool, self._settings, self._redis)
+            # for the API to read cross-process (TASK-115); best-effort write. Only the
+            # once-per-tick caller emits the metric/snapshot (TASK-118 cadence fix).
+            result = (
+                emit_pool_health(self._pool, self._settings, self._redis) if emit_metric else None
+            )
             if notify_reason is not None and notify_text is not None:
                 notify_ops(
                     reason=notify_reason,
@@ -113,7 +141,7 @@ class TelegramCollector:
                     settings=self._settings,
                     redis=self._redis,
                 )
-            elif result["degraded"] and notify_reason is None:
+            elif result is not None and result["degraded"] and notify_reason is None:
                 # Periodic tick: degraded → self-alert without an explicit reason.
                 notify_ops(
                     reason="pool_below_target",
@@ -129,6 +157,115 @@ class TelegramCollector:
                 "pool health observation failed",
                 extra={"exc_type": type(exc).__name__},
             )
+
+    async def apply_pending_revive(self) -> None:
+        """Apply a pending single-slot revive-signal ONCE per collect cycle (TASK-119).
+
+        The collect tick (`collector.tasks`) calls this exactly ONCE at the start of a
+        cycle, before its per-ref `read()` loop, so the revive-signal Redis GET fires a
+        SINGLE time per tick (not once per ref — there are ~108 refs/tick). Public so the
+        tick wrapper can drive it; the disconnect-before-connect single-slot revive
+        invariant is unchanged (it still applies at a tick boundary, never mid-read).
+        NEVER raises (best-effort — mirrors `_emit_health_best_effort`).
+        """
+        await self._apply_revive_best_effort()
+
+    async def _apply_revive_best_effort(self) -> None:
+        """Apply a pending single-slot revive-signal at a tick boundary (TASK-119).
+
+        Reads the NON-SECRET revive-signal from Redis (`pool:revive:signal` — only the
+        affected slot's `tg_user_id`/`fingerprint`, NEVER the session string). If it
+        targets a live slot, loads the NEW session for that account from the encrypted
+        DB store (the secret comes from the DB, never from Redis), and calls
+        `pool.revive_slot(...)` which disconnects the old client before connecting the
+        new one — touching ONLY that slot. Clears the signal afterward so it applies
+        once. NEVER raises: a missing signal, a malformed payload, a Redis/DB error, or
+        a slot-not-found self-heals (the next full pool build unions the DB store), and
+        must not crash the collect tick (Invariant — mirrors `_emit_health_best_effort`).
+        """
+        if self._redis is None:
+            return
+        try:
+            signal = self._read_revive_signal()
+            if signal is None:
+                return
+            tg_user_id, fingerprint = signal
+            slot_index = self._pool.find_slot_index(tg_user_id=tg_user_id, fingerprint=fingerprint)
+            if slot_index is None:
+                # Brand-new account (not in the live pool) — appears on the next full
+                # pool build; clear the signal so we don't re-check it every tick.
+                self._clear_revive_signal()
+                return
+            stored = self._load_stored_session(tg_user_id)
+            if stored is None:
+                self._clear_revive_signal()
+                return
+            await self._pool.revive_slot(
+                slot_index=slot_index,
+                tg_user_id=tg_user_id,
+                session_string=stored.session_string,
+                display_label=stored.display_label or None,
+            )
+            self._clear_revive_signal()
+            logger.info("applied pool revive for slot", extra={"slot_index": slot_index})
+        except Exception as exc:
+            # Self-observation/remediation must NEVER crash the tick (Invariant). Log the
+            # class name only (never a secret) and move on; the next build self-heals.
+            logger.warning(
+                "pool revive application failed (ignored)",
+                extra={"exc_type": type(exc).__name__},
+            )
+
+    def _read_revive_signal(self) -> tuple[int, str] | None:
+        """Parse the NON-SECRET revive-signal JSON; None if absent/malformed.
+
+        Returns `(tg_user_id, fingerprint)`. Validates the fingerprint shape so a
+        poisoned payload can never reach `revive_slot`. The signal NEVER carries a
+        session string — only the non-secret slot identity (defense-in-depth check)."""
+        if self._redis is None:
+            return None
+        try:
+            raw = cast("bytes | str | None", self._redis.get(POOL_REVIVE_SIGNAL_REDIS_KEY))
+        except RedisError:
+            return None
+        if raw is None:
+            return None
+        text = raw if isinstance(raw, str) else raw.decode("utf-8")
+        try:
+            payload = json.loads(text)
+        except (ValueError, TypeError):
+            return None
+        if not isinstance(payload, dict):
+            return None
+        tg_user_id = payload.get("tg_user_id")
+        fingerprint = payload.get("fingerprint", "")
+        if not isinstance(tg_user_id, int) or not isinstance(fingerprint, str):
+            return None
+        if fingerprint and not _is_valid_fingerprint(fingerprint):
+            return None
+        return tg_user_id, fingerprint
+
+    def _clear_revive_signal(self) -> None:
+        """Delete the revive-signal so it applies once; best-effort, never raises."""
+        if self._redis is None:
+            return
+        try:
+            self._redis.delete(POOL_REVIVE_SIGNAL_REDIS_KEY)
+        except RedisError:
+            logger.warning("could not clear pool revive signal (Redis); ignoring")
+
+    def _load_stored_session(self, tg_user_id: int) -> "StoredSession | None":
+        """Load the NEW session for `tg_user_id` from the encrypted DB store (TASK-119).
+
+        The secret is read from the DB (Fernet-decrypted at ORM read) inside the worker
+        — it never travels through Redis. Opens a short-lived session via the storage
+        unit-of-work. Returns None if no active row exists (revoked between signal+tick).
+        """
+        from storage.database import get_session
+        from storage.pool_session_store import find_active_by_tg_user_id
+
+        with get_session() as db:
+            return find_active_by_tg_user_id(db, tg_user_id)
 
     def _quarantine_dead_account(self, exc: BaseException) -> None:
         """Evict the current account on a PERMANENT auth failure and alert ops ONCE.
@@ -151,6 +288,7 @@ class TelegramCollector:
                 f"TG pool: сессия #{fingerprint} мертва ({type(exc).__name__}) — "
                 "аккаунт выселен из пула, перевыпусти сессию."
             ),
+            emit_metric=False,
         )
 
     async def aclose(self) -> None:
@@ -189,6 +327,11 @@ class TelegramCollector:
         Emits a single pool health metric + degraded self-alert once per read()
         invocation — after all channels have been processed (TASK-035: periodic
         svodka, no new Beat schedule — uses existing read loop).
+
+        NOTE (TASK-119): the single-slot revive-signal check is NOT applied here — the
+        collect tick calls `apply_pending_revive()` ONCE per cycle before its per-ref
+        `read()` loop, so the revive GET is a single Redis read per tick (not per ref).
+        The disconnect-before-connect single-slot revive invariant is unchanged.
         """
         for ref in unique_refs(refs):
             async for post in self._read_one(ref, since):
@@ -233,11 +376,17 @@ class TelegramCollector:
                 raise SourceUnavailableError(
                     f"telegram account quarantined (permanent auth error) reading {ref.handle}"
                 ) from exc
-            # Non-flood TRANSIENT error on entity resolve (network/private) — notify
-            # ops (throttled), keep the account (it may recover next tick).
+            # Non-flood TRANSIENT error on entity resolve (network/private, or the
+            # swallowed "wrong session ID" class) — record a READ FAILURE on the current
+            # account (TASK-118) so a persistently-failing-but-connected account is
+            # surfaced as `failing` instead of staying `healthy` forever. The reason is
+            # the error CLASS NAME, never a session string. Then notify ops (throttled)
+            # and keep the account (it may recover next tick) — rotation UNCHANGED.
+            self._pool.note_read_failure(type(exc).__name__)
             self._emit_health_best_effort(
                 notify_reason="auth_error",
                 notify_text=(f"TG pool: account error on entity resolve ({type(exc).__name__})"),
+                emit_metric=False,
             )
             raise SourceUnavailableError(f"cannot resolve telegram ref {ref.handle}") from exc
 
@@ -274,6 +423,10 @@ class TelegramCollector:
                     break
                 yield map_entity(message, ref)
             self._pool.report_success()
+            # Record a CLEAN read outcome on the current account (TASK-118): resets the
+            # consecutive-failure counter + stamps last_read_ok_at so a recovered account
+            # leaves `failing`. Annotation only — no rotation/cooldown change.
+            self._pool.note_read_success()
         except Exception as exc:
             if (wait := _flood_wait_seconds(exc)) is not None:
                 # Record the reason on the CURRENT account before report_flood_wait
@@ -292,6 +445,10 @@ class TelegramCollector:
                 raise SourceUnavailableError(
                     f"telegram account quarantined (permanent auth error) reading {ref.handle}"
                 ) from exc
+            # Non-flood TRANSIENT error mid-iteration (the swallowed "wrong session ID"
+            # class can surface here too) — record a READ FAILURE on the current account
+            # (TASK-118), class name only, then skip the ref. Rotation UNCHANGED.
+            self._pool.note_read_failure(type(exc).__name__)
             raise SourceUnavailableError(f"failed reading telegram ref {ref.handle}") from exc
 
     async def _acquire_ready_client(self) -> TelegramClientProtocol:
@@ -318,6 +475,7 @@ class TelegramCollector:
                         "TG pool fully exhausted - all sessions dead/quarantined; "
                         "ingest is stopped. Re-mint Telegram sessions."
                     ),
+                    emit_metric=False,
                 )
                 raise
             except AllAccountsFloodWaitError:
@@ -326,6 +484,7 @@ class TelegramCollector:
                 self._emit_health_best_effort(
                     notify_reason="all_flood",
                     notify_text=(f"TG pool: all accounts flooded. cooldown_remaining={int(wait)}s"),
+                    emit_metric=False,
                 )
                 if wait > FLOOD_WAIT_INLINE_CAP_SECONDS:
                     raise

@@ -11,6 +11,7 @@
 import React from 'react';
 import type { PoolHealthResponse } from '../api';
 import {
+  accountLabel,
   accountStateBadgeVariant,
   accountStateLabel,
   asAccountState,
@@ -36,10 +37,18 @@ export const PoolHealthTable: React.FC<PoolHealthTableProps> = ({ health }) => {
       </div>
 
       <p className="fs-muted">
-        {health.healthy}/{health.target} healthy · {health.cooling} cooling ·{' '}
+        {health.healthy} of {health.target} target healthy · {health.cooling} cooling ·{' '}
         {health.quarantined} quarantined · {health.size} total
         {health.as_of && <> · as of {new Date(health.as_of).toLocaleString()}</>}
       </p>
+
+      {health.ingest_contradiction && (
+        <p role="alert" className="fs-error" data-testid="pool-ingest-contradiction-banner">
+          All accounts report healthy, but no posts are being ingested — the pool looks
+          green yet ingest is stale. An account may be connected but failing every read
+          (see the per-account state below).
+        </p>
+      )}
 
       {health.stale && (
         <p role="status" className="fs-error" data-testid="pool-stale-banner">
@@ -58,6 +67,7 @@ export const PoolHealthTable: React.FC<PoolHealthTableProps> = ({ health }) => {
               <thead>
                 <tr>
                   <th scope="col">#</th>
+                  <th scope="col">Account</th>
                   <th scope="col">State</th>
                   <th scope="col">Cooldown</th>
                   <th scope="col">Last error</th>
@@ -70,6 +80,9 @@ export const PoolHealthTable: React.FC<PoolHealthTableProps> = ({ health }) => {
                   return (
                     <tr key={account.index}>
                       <td>{account.index}</td>
+                      <td className="font-mono" data-testid="pool-account-label">
+                        {accountLabel(account.display_label, account.index)}
+                      </td>
                       <td>
                         <span
                           className={`fs-badge fs-badge--${accountStateBadgeVariant(state)}`}
@@ -79,7 +92,8 @@ export const PoolHealthTable: React.FC<PoolHealthTableProps> = ({ health }) => {
                       </td>
                       <td>{state === 'cooling' && cooldown ? cooldown : '—'}</td>
                       <td>
-                        {state === 'quarantined' && account.last_error_reason
+                        {(state === 'quarantined' || state === 'failing') &&
+                        account.last_error_reason
                           ? account.last_error_reason
                           : '—'}
                       </td>

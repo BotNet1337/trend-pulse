@@ -9,12 +9,22 @@
  *   is reached (refetchInterval returns false).
  */
 
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, type QueryClient } from '@tanstack/react-query';
 import { getPoolHealth, pollQrLogin, startQrLogin } from './api';
 import { asQrLoginStatus, isTerminalQrStatus } from './lib';
 
 /** Stable query key for the pool-health snapshot. */
 export const POOL_HEALTH_QUERY_KEY = ['admin', 'pool-health'] as const;
+
+/**
+ * Invalidate the pool-health snapshot so the table refetches after a successful QR
+ * login (TASK-120). The worker applies the revive/add on its next tick, so the freshest
+ * snapshot reflects the row flipping to Connected within ~one cycle — an HONEST refetch,
+ * never a fake optimistic flip. Idempotent: a repeated SUCCESS poll just re-invalidates.
+ */
+export function invalidatePoolHealth(queryClient: QueryClient): Promise<void> {
+  return queryClient.invalidateQueries({ queryKey: POOL_HEALTH_QUERY_KEY });
+}
 
 /** Stable query key factory for a single QR-login poll (keyed by token). */
 export const qrLoginPollQueryKey = (token: string) =>

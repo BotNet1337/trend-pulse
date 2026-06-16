@@ -31,6 +31,7 @@ from observability.signal_latency import (
     emit_redis_memory,
     emit_signal_latency,
     is_redis_memory_critical,
+    publish_ingest_staleness,
 )
 from storage.database import get_session
 from storage.redis_client import get_redis_client
@@ -105,6 +106,10 @@ def emit_signal_latency_task() -> None:
     try:
         with get_session() as session:
             ingest = emit_ingest_staleness(session, settings)
+        # Bridge the latest {stale, age_s} to Redis so the collector's pool-health
+        # snapshot can derive the ingest-contradiction flag cross-process (TASK-118),
+        # without a Postgres query on the hot collect-tick path. Best-effort.
+        publish_ingest_staleness(get_redis_client(), ingest)
         if ingest.get("stale"):
             age_s = ingest.get("age_s")
             age_min = int(float(age_s) // 60) if isinstance(age_s, (int, float)) else "?"

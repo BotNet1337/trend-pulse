@@ -586,11 +586,19 @@ export interface paths {
         };
         /**
          * Poll a QR login (superuser only)
-         * @description Poll an in-progress login.
+         * @description Poll an in-progress login; on SUCCESS persist + classify (TASK-119/120).
          *
          *     Reflects `service.poll()`: unknown/expired tokens return status `expired`
          *     (200, never 404/500 — the UI polls in a loop). On SUCCESS the body carries the
-         *     minted `session_string` (secret, never logged).
+         *     minted `session_string` (secret, never logged) AND, when the poll yields an
+         *     account identity, the route PERSISTS the session via the dynamic store
+         *     (`upsert_revive_or_add`, idempotent by `tg_user_id`), writes the NON-SECRET
+         *     revive-signal on a REVIVE so the worker swaps the live slot, and returns the
+         *     non-secret identity + outcome ("revive"/"add").
+         *
+         *     A persistence/DB failure does NOT drop the minted `session_string`: it is still
+         *     returned as the disaster-recovery floor (the admin can paste it into the vault),
+         *     and the failure surfaces as a clear envelope only when the pool is over capacity.
          */
         get: operations["poll_qr_login_v1_pool_admin_qr_login__token__get"];
         put?: never;
@@ -1210,11 +1218,17 @@ export interface components {
         Plan: "free" | "pro" | "team";
         /**
          * PoolHealthAccount
-         * @description One pool account's health (per-account identity is the integer index only).
+         * @description One pool account's health, with optional NON-SECRET identity (TASK-120).
+         *
+         *     `index` is the stable per-slot identifier; `display_label`/`tg_user_id` are the
+         *     NON-SECRET store identity (masked id / `@username` / numeric id) when the slot was
+         *     loaded from the dynamic store, else null (an env-only slot). NEVER a session string.
          */
         PoolHealthAccount: {
             /** Cooldown Remaining Seconds */
             cooldown_remaining_seconds?: number | null;
+            /** Display Label */
+            display_label?: string | null;
             /** Index */
             index: number;
             /**
@@ -1224,6 +1238,8 @@ export interface components {
             last_error_reason: string;
             /** State */
             state: string;
+            /** Tg User Id */
+            tg_user_id?: number | null;
         };
         /**
          * PoolHealthResponse
@@ -1254,6 +1270,11 @@ export interface components {
              */
             healthy: number;
             /**
+             * Ingest Contradiction
+             * @default false
+             */
+            ingest_contradiction: boolean;
+            /**
              * Quarantined
              * @default 0
              */
@@ -1283,14 +1304,20 @@ export interface components {
          *     served only to a superuser over HTTPS.
          */
         QRLoginPollResponse: {
+            /** Display Label */
+            display_label?: string | null;
             /** Expires At */
             expires_at: number;
+            /** Outcome */
+            outcome?: string | null;
             /** Reason */
             reason?: string | null;
             /** Session String */
             session_string?: string | null;
             /** Status */
             status: string;
+            /** Tg User Id */
+            tg_user_id?: number | null;
         };
         /**
          * QRLoginStartResponse

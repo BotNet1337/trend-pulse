@@ -26,18 +26,30 @@ import fakeredis
 import pytest
 from fastapi.testclient import TestClient
 from redis.exceptions import RedisError
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Session
 
 from api.main import app
-from api.routes.pool_admin import get_pool_health_redis, get_qr_login_service
-from collector.constants import POOL_HEALTH_REDIS_KEY
+from api.routes.pool_admin import (
+    get_pool_admin_db,
+    get_pool_health_redis,
+    get_pool_revive_redis,
+    get_qr_login_service,
+)
+from collector.constants import (
+    POOL_HEALTH_REDIS_KEY,
+    POOL_REVIVE_SIGNAL_REDIS_KEY,
+    QUARANTINE_REDIS_KEY,
+)
 from collector.errors import QRLoginCapacityError, QRLoginNotConfiguredError
+from collector.telegram.account_pool import session_fingerprint
 from collector.telegram.qr_login import QRLoginPoll, QRLoginStarted, QRLoginStatus
 from config import get_settings
 from storage.database import get_async_session
+from storage.models.pool_sessions import PoolSession
 from storage.models.users import User
+from storage.pool_session_store import upsert_revive_or_add
 
 pytestmark = pytest.mark.integration
 
@@ -135,6 +147,8 @@ def client(db_engine: Any) -> Iterator[TestClient]:
         app.dependency_overrides.pop(get_async_session, None)
         app.dependency_overrides.pop(get_qr_login_service, None)
         app.dependency_overrides.pop(get_pool_health_redis, None)
+        app.dependency_overrides.pop(get_pool_admin_db, None)
+        app.dependency_overrides.pop(get_pool_revive_redis, None)
 
 
 def _register(client: TestClient, email: str) -> dict[str, Any]:
@@ -163,6 +177,26 @@ def _override_qr_service(service: _FakeQRService) -> None:
     app.dependency_overrides[get_qr_login_service] = lambda: service
 
 
+def _override_persist_deps(db_session: Session) -> fakeredis.FakeRedis:
+    """Wire the persist-on-success deps to the test schema + a fresh fakeredis (TASK-120).
+
+    The pool-admin DB dep yields the SAME caller-owned `db_session` (so the test can read
+    the persisted `pool_sessions` rows it committed), and the revive-redis dep returns a
+    fresh fakeredis the test can inspect for the revive-signal / quarantine SREM.
+    """
+    revive_redis = fakeredis.FakeRedis(decode_responses=True)
+
+    def _db_override() -> Iterator[Session]:
+        # The route commits on success; commit through the shared test session so the
+        # rows are visible to the test's subsequent reads (the conftest fixture wipes).
+        yield db_session
+        db_session.commit()
+
+    app.dependency_overrides[get_pool_admin_db] = _db_override
+    app.dependency_overrides[get_pool_revive_redis] = lambda: revive_redis
+    return revive_redis
+
+
 def _seed_pool_health(snapshot: dict[str, Any]) -> fakeredis.FakeRedis:
     """Return a fakeredis pre-seeded with a pool-health snapshot, wired as the dep."""
     redis = fakeredis.FakeRedis(decode_responses=True)
@@ -187,6 +221,8 @@ def _fresh_snapshot() -> dict[str, Any]:
                 "state": "healthy",
                 "cooldown_remaining_seconds": None,
                 "last_error_reason": "",
+                "display_label": "@alice",
+                "tg_user_id": 900_100,
             },
             {
                 "index": 1,
@@ -364,6 +400,53 @@ class TestPoolHealth:
         assert cooling["cooldown_remaining_seconds"] == 42.0
         assert cooling["last_error_reason"] == "FLOOD_WAIT"
 
+    def test_fresh_snapshot_surfaces_per_account_identity(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        """Each account carries the NON-SECRET identity (TASK-120): a DB-loaded slot
+        shows `display_label`/`tg_user_id`; an env-only slot is null. Never a secret."""
+        _seed_pool_health(_fresh_snapshot())
+        _login_as_superuser(client, db_session, "pa-health-identity@example.com")
+
+        body = client.get(_POOL_HEALTH_PATH).json()
+        healthy = next(a for a in body["accounts"] if a["index"] == 0)
+        assert healthy["display_label"] == "@alice"
+        assert healthy["tg_user_id"] == 900_100
+        # The env-only cooling slot has no store identity → null (graceful).
+        cooling = next(a for a in body["accounts"] if a["index"] == 1)
+        assert cooling["display_label"] is None
+        assert cooling["tg_user_id"] is None
+        # No session string anywhere in the response.
+        assert "session" not in json.dumps(body).lower() or "session_string" not in body
+
+    def test_fresh_snapshot_defaults_ingest_contradiction_false(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        """A legacy snapshot WITHOUT `ingest_contradiction` validates (extra=ignore) and
+        the response defaults the flag to false (TASK-118 additive, backward-compatible)."""
+        _seed_pool_health(_fresh_snapshot())
+        _login_as_superuser(client, db_session, "pa-health-contra-default@example.com")
+
+        body = client.get(_POOL_HEALTH_PATH).json()
+        assert body["ingest_contradiction"] is False
+
+    def test_snapshot_passes_through_ingest_contradiction_and_failing(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        """The API passes through the collector-derived `ingest_contradiction` flag and a
+        `failing` per-account state (TASK-118)."""
+        snapshot = _fresh_snapshot()
+        snapshot["ingest_contradiction"] = True
+        snapshot["accounts"][0]["state"] = "failing"
+        snapshot["accounts"][0]["last_error_reason"] = "WrongSessionIdError"
+        _seed_pool_health(snapshot)
+        _login_as_superuser(client, db_session, "pa-health-contra@example.com")
+
+        body = client.get(_POOL_HEALTH_PATH).json()
+        assert body["ingest_contradiction"] is True
+        failing = next(a for a in body["accounts"] if a["state"] == "failing")
+        assert failing["last_error_reason"] == "WrongSessionIdError"
+
     def test_missing_snapshot_is_stale(self, client: TestClient, db_session: Session) -> None:
         # Empty fakeredis (no key) wired as the dependency.
         redis = fakeredis.FakeRedis(decode_responses=True)
@@ -425,6 +508,236 @@ class TestPoolHealth:
         body = resp.json()
         assert body["stale"] is True
         assert body["accounts"] == []
+
+
+class TestQRLoginPersistOnSuccess:
+    """TASK-120: a SUCCESS poll persists the session via the store + classifies/signals."""
+
+    _SESSION_NEW = "1AbCnew-account-session-string"
+    _SESSION_REMINT = "1AbCexisting-account-REMINTED-session"
+    _TG_USER_ID_NEW = 900_201
+    _TG_USER_ID_EXISTING = 900_202
+
+    def _success_poll(
+        self, *, session_string: str, tg_user_id: int, display_label: str
+    ) -> QRLoginPoll:
+        return QRLoginPoll(
+            status=QRLoginStatus.SUCCESS,
+            expires_at=1_700_000_000.0,
+            session_string=session_string,
+            tg_user_id=tg_user_id,
+            display_label=display_label,
+        )
+
+    def test_new_account_add_persists_and_returns_outcome(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        poll = self._success_poll(
+            session_string=self._SESSION_NEW,
+            tg_user_id=self._TG_USER_ID_NEW,
+            display_label="@newbie",
+        )
+        _override_qr_service(_FakeQRService(poll_result=poll))
+        revive_redis = _override_persist_deps(db_session)
+        _login_as_superuser(client, db_session, "pa-persist-add@example.com")
+
+        body = client.get(_qr_poll_path("tok-add")).json()
+        # Identity + outcome surfaced; the session_string copy-field is the DR floor.
+        assert body["status"] == "success"
+        assert body["outcome"] == "add"
+        assert body["tg_user_id"] == self._TG_USER_ID_NEW
+        assert body["display_label"] == "@newbie"
+        assert body["session_string"] == self._SESSION_NEW
+
+        # A row was persisted, keyed by tg_user_id (idempotent).
+        row = db_session.scalars(
+            select(PoolSession).where(PoolSession.tg_user_id == self._TG_USER_ID_NEW)
+        ).one()
+        assert row.display_label == "@newbie"
+        # An ADD writes NO revive-signal (no live slot to swap).
+        assert revive_redis.get(POOL_REVIVE_SIGNAL_REDIS_KEY) is None
+
+    def test_existing_account_revive_writes_signal_and_clears_quarantine(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        # Seed an existing account with a KNOWN old fingerprint and quarantine it.
+        old_fp = session_fingerprint("1AbCexisting-account-OLD-session")
+        upsert_revive_or_add(
+            db_session,
+            tg_user_id=self._TG_USER_ID_EXISTING,
+            session_string="1AbCexisting-account-OLD-session",
+            display_label="@veteran-old",
+            pool_max=10,
+        )
+        db_session.commit()
+
+        poll = self._success_poll(
+            session_string=self._SESSION_REMINT,
+            tg_user_id=self._TG_USER_ID_EXISTING,
+            display_label="@veteran",
+        )
+        _override_qr_service(_FakeQRService(poll_result=poll))
+        revive_redis = _override_persist_deps(db_session)
+        # Pre-seed the OLD fingerprint into the persisted quarantine set.
+        revive_redis.sadd(QUARANTINE_REDIS_KEY, old_fp)
+        _login_as_superuser(client, db_session, "pa-persist-revive@example.com")
+
+        body = client.get(_qr_poll_path("tok-revive")).json()
+        assert body["status"] == "success"
+        assert body["outcome"] == "revive"
+        assert body["tg_user_id"] == self._TG_USER_ID_EXISTING
+        assert body["session_string"] == self._SESSION_REMINT
+
+        # No duplicate row — the same tg_user_id row was updated in place.
+        rows = db_session.scalars(
+            select(PoolSession).where(PoolSession.tg_user_id == self._TG_USER_ID_EXISTING)
+        ).all()
+        assert len(rows) == 1
+        assert rows[0].display_label == "@veteran"
+
+        # The revive-signal was written for the worker (non-secret payload, no session).
+        signal = revive_redis.get(POOL_REVIVE_SIGNAL_REDIS_KEY)
+        assert signal is not None
+        parsed = json.loads(signal)
+        assert parsed["tg_user_id"] == self._TG_USER_ID_EXISTING
+        assert self._SESSION_REMINT not in signal
+        # The OLD fingerprint's persisted quarantine was cleared.
+        assert not revive_redis.sismember(QUARANTINE_REDIS_KEY, old_fp)
+
+    def test_over_capacity_add_returns_409_but_keeps_session_copy_field(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        # Fill the pool to POOL_MAX so the next ADD trips the cap.
+        for i in range(10):
+            upsert_revive_or_add(
+                db_session,
+                tg_user_id=910_000 + i,
+                session_string=f"1AbCfull-pool-session-{i}",
+                display_label=f"@full{i}",
+                pool_max=10,
+            )
+        db_session.commit()
+
+        poll = self._success_poll(
+            session_string="1AbCoverflow-session",
+            tg_user_id=910_999,
+            display_label="@overflow",
+        )
+        _override_qr_service(_FakeQRService(poll_result=poll))
+        _override_persist_deps(db_session)
+        _login_as_superuser(client, db_session, "pa-persist-overcap@example.com")
+
+        resp = client.get(_qr_poll_path("tok-overflow"))
+        assert resp.status_code == 409, resp.text
+        body = resp.json()
+        # No secret leaked in the error message.
+        assert "1AbCoverflow-session" not in json.dumps(body)
+
+    def test_persist_db_error_rolls_back_and_keeps_session_dr_floor(
+        self,
+        client: TestClient,
+        db_session: Session,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A flush-level DB error on the persist path must NOT 500-and-lose the session.
+
+        The store FLUSHES, so a flush failure leaves the Session in a failed-transaction
+        state. Without a rollback in the degrade-gracefully branch, `get_session`'s
+        teardown commit() raises PendingRollbackError → a 500 that LOSES the minted
+        session_string (the DR floor this branch exists to protect). We inject a real
+        failed-flush via a fake `upsert_revive_or_add` that adds an INVALID row and
+        flushes (raising IntegrityError), then assert: 200 (not 500), the body still
+        carries `session_string`, `outcome` is null, and no secret leaks into logs.
+        """
+        session_secret = "1AbCdr-floor-must-survive-session"
+
+        def _flush_then_raise(
+            session: Session,
+            *,
+            tg_user_id: int,
+            session_string: str,
+            display_label: str,
+            pool_max: int,
+            env_floor_size: int = 0,
+        ) -> object:
+            # Force a genuine flush-level DB error so the Session enters a
+            # failed-transaction state (NOT a NULL fingerprint, which the model would
+            # reject pre-flush): two rows with the SAME unique tg_user_id in one flush.
+            now = datetime.now(UTC)
+            session.add(
+                PoolSession(
+                    tg_user_id=tg_user_id,
+                    session_string="1AbCdup-a",
+                    session_fingerprint="a" * 16,
+                    display_label="dup-a",
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            session.add(
+                PoolSession(
+                    tg_user_id=tg_user_id,
+                    session_string="1AbCdup-b",
+                    session_fingerprint="b" * 16,
+                    display_label="dup-b",
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            session.flush()  # raises IntegrityError (duplicate unique tg_user_id)
+            raise AssertionError("unreachable: flush above must raise")  # pragma: no cover
+
+        monkeypatch.setattr("api.routes.pool_admin.upsert_revive_or_add", _flush_then_raise)
+
+        poll = self._success_poll(
+            session_string=session_secret,
+            tg_user_id=930_001,
+            display_label="@dr-floor",
+        )
+        _override_qr_service(_FakeQRService(poll_result=poll))
+        _override_persist_deps(db_session)
+        _login_as_superuser(client, db_session, "pa-persist-dberr@example.com")
+
+        with caplog.at_level("WARNING"):
+            resp = client.get(_qr_poll_path("tok-dberr"))
+
+        # (a) HTTP 200, NOT 500 — the failed transaction was rolled back before teardown.
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        # (b) The DR floor survived: the minted session_string is still returned.
+        assert body["session_string"] == session_secret
+        # (c) No outcome — persistence did not classify (it failed).
+        assert body["outcome"] is None
+        # (d) No secret in logs: the session string never appears in any log record.
+        assert all(session_secret not in record.getMessage() for record in caplog.records)
+        assert session_secret not in caplog.text
+        # The rolled-back transaction persisted NOTHING for this identity.
+        assert (
+            db_session.scalars(select(PoolSession).where(PoolSession.tg_user_id == 930_001)).all()
+            == []
+        )
+
+    def test_success_poll_is_idempotent(self, client: TestClient, db_session: Session) -> None:
+        """Polling is a loop — a repeated SUCCESS poll must not create a duplicate."""
+        poll = self._success_poll(
+            session_string=self._SESSION_NEW,
+            tg_user_id=920_001,
+            display_label="@idem",
+        )
+        _override_qr_service(_FakeQRService(poll_result=poll))
+        _override_persist_deps(db_session)
+        _login_as_superuser(client, db_session, "pa-persist-idem@example.com")
+
+        first = client.get(_qr_poll_path("tok")).json()
+        second = client.get(_qr_poll_path("tok")).json()
+        assert first["outcome"] == "add"
+        # Second poll for the SAME identity → revive of the just-added row (no duplicate).
+        assert second["outcome"] in ("add", "revive")
+        rows = db_session.scalars(
+            select(PoolSession).where(PoolSession.tg_user_id == 920_001)
+        ).all()
+        assert len(rows) == 1
 
 
 class TestQRServiceSingleton:

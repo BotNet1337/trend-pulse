@@ -9,8 +9,22 @@
  * QR flow state machine and the pool-health badges).
  */
 
-/** Per-account pool state (backend `PoolHealthAccount.state`). */
-export type AccountState = 'healthy' | 'cooling' | 'quarantined';
+/**
+ * Per-account pool state (backend `PoolHealthAccount.state`).
+ *
+ * `failing` (TASK-118) means the account is CONNECTED but its reads persistently fail
+ * (the swallowed "wrong session ID" class) — distinct from `quarantined` (a dead
+ * session, permanently evicted) and observational only on the backend.
+ */
+export type AccountState = 'healthy' | 'cooling' | 'quarantined' | 'failing';
+
+/**
+ * Persistence outcome after a successful QR login (backend
+ * `QRLoginPollResponse.outcome`): `revive` re-connected an EXISTING account (the same
+ * row flips back to Connected within ~one collect cycle), `add` registered a NEW
+ * account. The store decides by `tg_user_id`; the UI only surfaces it (TASK-120).
+ */
+export type ReviveOutcome = 'revive' | 'add';
 
 /** QR-login poll status (backend `QRLoginPollResponse.status`). */
 export type QrLoginStatus =
@@ -53,6 +67,7 @@ export function asAccountState(raw: string): AccountState {
     case 'healthy':
     case 'cooling':
     case 'quarantined':
+    case 'failing':
       return raw;
     default:
       return 'quarantined';
@@ -68,6 +83,8 @@ export function accountStateLabel(state: AccountState): string {
       return 'Cooling';
     case 'quarantined':
       return 'Quarantined';
+    case 'failing':
+      return 'Failing';
   }
 }
 
@@ -79,6 +96,10 @@ export function accountStateBadgeVariant(
     case 'healthy':
       return 'success';
     case 'cooling':
+      return 'warning';
+    // `failing` is a soft alert (connected-but-not-reading) — `warning`, distinct from
+    // the `danger` of a dead `quarantined` session (TASK-118).
+    case 'failing':
       return 'warning';
     case 'quarantined':
       return 'danger';
@@ -107,6 +128,52 @@ export function qrStatusMessage(status: QrLoginStatus, reason: string | null): s
       return reason
         ? `Login failed: ${reason}. Regenerate the QR code to try again.`
         : 'Login failed. Regenerate the QR code to try again.';
+  }
+}
+
+/**
+ * Narrow the backend `string` outcome to the known union, or null when absent /
+ * unknown (the field is present only on a SUCCESS that was persisted). An unknown
+ * value collapses to null so the UI shows the neutral success copy, not a wrong claim.
+ */
+export function asReviveOutcome(raw: string | null | undefined): ReviveOutcome | null {
+  return raw === 'revive' || raw === 'add' ? raw : null;
+}
+
+/**
+ * Non-secret display label for an account (the masked id / `@username` from the store).
+ * Falls back to `account #<index>` when the backend has no identity for the slot (an
+ * env-only / pre-identity account) so every row is still nameable (TASK-120).
+ */
+export function accountLabel(
+  displayLabel: string | null | undefined,
+  index: number,
+): string {
+  const trimmed = displayLabel?.trim();
+  return trimmed ? trimmed : `account #${index}`;
+}
+
+/**
+ * Human, non-secret success line for the QR dialog after persistence (TASK-120).
+ *
+ * Makes "тот же аккаунт имеет другой статус" obvious: a `revive` says the SAME account
+ * was re-connected and its row will flip back to Connected within ~one collect cycle; an
+ * `add` says a NEW account was registered. A null outcome (persistence not reached, e.g.
+ * a store error with the copy-field preserved) yields a neutral success line.
+ */
+export function reviveSuccessMessage(
+  outcome: ReviveOutcome | null,
+  displayLabel: string | null | undefined,
+): string {
+  const label = displayLabel?.trim();
+  const named = label ? ` ${label}` : '';
+  switch (outcome) {
+    case 'revive':
+      return `Re-connected${named} — the same account is back. The pool will show it Connected within ~one collect cycle.`;
+    case 'add':
+      return `Added${named} as a new pool account. It will appear in the table within ~one collect cycle.`;
+    case null:
+      return 'Logged in. Copy the session string below as a backup.';
   }
 }
 

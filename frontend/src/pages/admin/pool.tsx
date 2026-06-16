@@ -65,7 +65,7 @@ export const AdminPoolPage: React.FC = () => {
               {isFetching ? 'Refreshing…' : 'Refresh'}
             </Button>
             <Button type="button" onClick={() => setDialogOpen(true)} disabled={!isSuperuser}>
-              Add account
+              Add / re-connect account
             </Button>
           </div>
         </div>

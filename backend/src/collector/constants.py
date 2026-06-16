@@ -172,6 +172,58 @@ POOL_HEALTH_REDIS_KEY: Final = "pool:health:latest"
 _POOL_HEALTH_SNAPSHOT_TTL_MINUTES: Final = 5
 POOL_HEALTH_SNAPSHOT_TTL_SECONDS: Final = _POOL_HEALTH_SNAPSHOT_TTL_MINUTES * 60  # 300
 
+# --- pool-health honesty: per-account read-outcome → "failing" state (TASK-118) ---
+# An account can CONNECT (acquire/get_entity succeed) yet have every READ raise a
+# NON-permanent transient error (e.g. the "wrong session ID" class — not in
+# `auth_errors._PERMANENT_AUTH_ERROR_NAMES`, so it is never quarantined and
+# `report_success()` is never reached). Such an account stays `healthy` forever even
+# though it ingests nothing. The reader now records a read OUTCOME per account; an
+# account that is live (not quarantined/cooling) but persistently failing its reads is
+# surfaced as `failing` — OBSERVATIONAL ONLY (it never changes what `acquire()` returns
+# this story; TASK-119 revive is the remediation). Thresholds are named (no magic
+# literals) and owner-tunable.
+#
+# `POOL_FAILING_THRESHOLD` consecutive read failures classify an account `failing`
+# (covers the steady "wrong session ID" read loop). A FLOOD_WAIT is NOT a read failure
+# (it is cooling) and never increments the counter.
+POOL_FAILING_THRESHOLD: Final = 5
+# Window with NO successful read (seconds) after which a live account that HAS errored
+# but never once read OK is also classified `failing` — covers an account that connects
+# but never ingests within the window. Tracked from the account's FIRST recorded read
+# failure (a monotonic stamp), so it never fires on a freshly-booted, never-read pool.
+_POOL_FAILING_NO_READ_WINDOW_MINUTES: Final = 30
+POOL_FAILING_NO_READ_WINDOW_SECONDS: Final = _POOL_FAILING_NO_READ_WINDOW_MINUTES * 60  # 1800
+
+# Cross-process bridge for the ingest-staleness signal (TASK-100 → TASK-118). The
+# ingest-staleness metric is computed in the API/beat process against Postgres; the
+# collector publishes the latest `{stale, age_s}` here so the pool-health snapshot can
+# derive the "all-healthy-but-ingest-stale" contradiction WITHOUT a DB query on the hot
+# collect-tick path. Best-effort, fail-open: a missing/expired key → no contradiction.
+INGEST_STALENESS_REDIS_KEY: Final = "ingest:staleness:latest"
+_INGEST_STALENESS_TTL_MINUTES: Final = 15
+INGEST_STALENESS_TTL_SECONDS: Final = _INGEST_STALENESS_TTL_MINUTES * 60  # 900
+
+# --- dynamic pool session store + safe single-slot revive (TASK-119) -----------
+# A QR-minted session is persisted in the `pool_sessions` DB table (encrypted at
+# rest, ADR-008), keyed by the Telegram account identity (`tg_user_id`). On a revive
+# the API writes a NON-SECRET signal to this Redis key carrying ONLY the affected
+# slot's identity (fingerprint + tg_user_id) — never the session string. The worker
+# reads it at a tick boundary and performs a single-slot disconnect-then-connect,
+# loading the NEW session string from the encrypted DB store (the secret NEVER
+# travels through Redis). The signal is a small JSON object with a short TTL: a
+# missed signal self-heals on the next full pool build (which already unions the DB).
+POOL_REVIVE_SIGNAL_REDIS_KEY: Final = "pool:revive:signal"
+_POOL_REVIVE_SIGNAL_TTL_MINUTES: Final = 10
+POOL_REVIVE_SIGNAL_TTL_SECONDS: Final = _POOL_REVIVE_SIGNAL_TTL_MINUTES * 60  # 600
+
+# Column widths for the `pool_sessions` table (named constants, no magic literals).
+# `session_string` holds a Fernet-encrypted Telethon StringSession: a StringSession
+# is ~350 chars; Fernet adds ~89 bytes overhead + base64 expansion → a generous cap
+# that mirrors ADR-008/0019's enlarged ciphertext columns. `display_label` holds a
+# NON-SECRET masked id / `@username` for the UI (never the session).
+POOL_SESSION_STRING_MAX: Final = 1024
+POOL_SESSION_DISPLAY_LABEL_MAX: Final = 64
+
 # --- collect-tick (beat ingest task) — import-cycle-free contract constants. ---
 # Celery task name for the collect tick. Lives here (not in collector.tasks,
 # which imports celery_app) so `scheduler` can reference it without a circular

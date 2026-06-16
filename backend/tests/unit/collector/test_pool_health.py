@@ -656,9 +656,18 @@ def test_emit_pool_health_writes_snapshot_to_redis_with_ttl() -> None:
     assert states == {"healthy", "cooling"}
     cooling = next(a for a in snapshot["accounts"] if a["state"] == "cooling")
     assert cooling["cooldown_remaining_seconds"] is not None
-    assert {"index", "state", "cooldown_remaining_seconds", "last_error_reason"} == set(
-        cooling.keys()
-    )
+    # TASK-120 additively carries the non-secret per-account identity (null here — no
+    # store identity for an in-memory test pool).
+    assert {
+        "index",
+        "state",
+        "cooldown_remaining_seconds",
+        "last_error_reason",
+        "display_label",
+        "tg_user_id",
+    } == set(cooling.keys())
+    assert cooling["display_label"] is None
+    assert cooling["tg_user_id"] is None
 
 
 def test_emit_pool_health_snapshot_has_no_secrets() -> None:
@@ -690,6 +699,85 @@ def test_emit_pool_health_no_redis_does_not_write() -> None:
     # No redis arg → no write, no raise; return shape preserved.
     result = emit_pool_health(pool, settings)
     assert result["size"] == 2
+
+
+def test_snapshot_ingest_contradiction_true_when_all_healthy_and_stale() -> None:
+    """When all accounts are healthy (healthy == size) AND the ingest-staleness key says
+    stale, the snapshot's `ingest_contradiction` is True (TASK-118)."""
+    import json
+
+    from collector.constants import INGEST_STALENESS_REDIS_KEY
+
+    pool = make_pool([FakeClient(), FakeClient(), FakeClient()])
+    settings = _make_settings(pool_min_healthy=3)
+
+    mock_redis = MagicMock()
+    mock_redis.get.return_value = json.dumps({"stale": True, "age_s": 1800})
+
+    from observability.pool_health import emit_pool_health
+
+    emit_pool_health(pool, settings, mock_redis)
+    snapshot = json.loads(mock_redis.set.call_args[0][1])
+    assert snapshot["ingest_contradiction"] is True
+    mock_redis.get.assert_called_once_with(INGEST_STALENESS_REDIS_KEY)
+
+
+def test_snapshot_no_contradiction_when_key_absent() -> None:
+    """Missing/expired ingest-staleness key → fail-open: no contradiction (TASK-118)."""
+    import json
+
+    pool = make_pool([FakeClient(), FakeClient()])
+    settings = _make_settings(pool_min_healthy=2)
+
+    mock_redis = MagicMock()
+    mock_redis.get.return_value = None
+
+    from observability.pool_health import emit_pool_health
+
+    emit_pool_health(pool, settings, mock_redis)
+    snapshot = json.loads(mock_redis.set.call_args[0][1])
+    assert snapshot["ingest_contradiction"] is False
+
+
+def test_snapshot_no_contradiction_when_not_all_healthy() -> None:
+    """Stale ingest but a cooling account (healthy < size) → no contradiction: the
+    degraded pool already explains the staleness (TASK-118)."""
+    import json
+
+    clock = _Clock()
+    pool = _pool_with_clock(3, clock)
+    pool.acquire()
+    pool.report_flood_wait(retry_after_seconds=60)  # 1 cooling → healthy != size
+    settings = _make_settings(pool_min_healthy=3)
+
+    mock_redis = MagicMock()
+    mock_redis.get.return_value = json.dumps({"stale": True, "age_s": 1800})
+
+    from observability.pool_health import emit_pool_health
+
+    emit_pool_health(pool, settings, mock_redis)
+    snapshot = json.loads(mock_redis.set.call_args[0][1])
+    assert snapshot["ingest_contradiction"] is False
+
+
+def test_snapshot_contradiction_read_failure_is_fail_open() -> None:
+    """A Redis error reading the ingest-staleness key fails open (no contradiction) and
+    never breaks the snapshot write (TASK-118)."""
+    import json
+
+    from redis.exceptions import RedisError
+
+    pool = make_pool([FakeClient(), FakeClient()])
+    settings = _make_settings(pool_min_healthy=2)
+
+    mock_redis = MagicMock()
+    mock_redis.get.side_effect = RedisError("redis down")
+
+    from observability.pool_health import emit_pool_health
+
+    emit_pool_health(pool, settings, mock_redis)  # must not raise
+    snapshot = json.loads(mock_redis.set.call_args[0][1])
+    assert snapshot["ingest_contradiction"] is False
 
 
 def test_emit_pool_health_redis_write_failure_is_swallowed(

@@ -841,7 +841,7 @@
       },
       "PoolHealthAccount": {
         "additionalProperties": false,
-        "description": "One pool account's health (per-account identity is the integer index only).",
+        "description": "One pool account's health, with optional NON-SECRET identity (TASK-120).\n\n`index` is the stable per-slot identifier; `display_label`/`tg_user_id` are the\nNON-SECRET store identity (masked id / `@username` / numeric id) when the slot was\nloaded from the dynamic store, else null (an env-only slot). NEVER a session string.",
         "properties": {
           "cooldown_remaining_seconds": {
             "anyOf": [
@@ -853,6 +853,17 @@
               }
             ],
             "title": "Cooldown Remaining Seconds"
+          },
+          "display_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Label"
           },
           "index": {
             "title": "Index",
@@ -866,6 +877,17 @@
           "state": {
             "title": "State",
             "type": "string"
+          },
+          "tg_user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tg User Id"
           }
         },
         "required": [
@@ -912,6 +934,11 @@
             "title": "Healthy",
             "type": "integer"
           },
+          "ingest_contradiction": {
+            "default": false,
+            "title": "Ingest Contradiction",
+            "type": "boolean"
+          },
           "quarantined": {
             "default": 0,
             "title": "Quarantined",
@@ -940,9 +967,31 @@
         "additionalProperties": false,
         "description": "`GET /pool-admin/qr-login/{token}` body — the current login state.\n\n`session_string` is the NEWLY minted StringSession, present ONLY on SUCCESS.\nIt is a SECRET (the admin copies it to the vault); it is never logged and is\nserved only to a superuser over HTTPS.",
         "properties": {
+          "display_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Label"
+          },
           "expires_at": {
             "title": "Expires At",
             "type": "number"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
           },
           "reason": {
             "anyOf": [
@@ -969,6 +1018,17 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "tg_user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tg User Id"
           }
         },
         "required": [
@@ -2856,7 +2916,7 @@
     },
     "/v1/pool-admin/qr-login/{token}": {
       "get": {
-        "description": "Poll an in-progress login.\n\nReflects `service.poll()`: unknown/expired tokens return status `expired`\n(200, never 404/500 — the UI polls in a loop). On SUCCESS the body carries the\nminted `session_string` (secret, never logged).",
+        "description": "Poll an in-progress login; on SUCCESS persist + classify (TASK-119/120).\n\nReflects `service.poll()`: unknown/expired tokens return status `expired`\n(200, never 404/500 — the UI polls in a loop). On SUCCESS the body carries the\nminted `session_string` (secret, never logged) AND, when the poll yields an\naccount identity, the route PERSISTS the session via the dynamic store\n(`upsert_revive_or_add`, idempotent by `tg_user_id`), writes the NON-SECRET\nrevive-signal on a REVIVE so the worker swaps the live slot, and returns the\nnon-secret identity + outcome (\"revive\"/\"add\").\n\nA persistence/DB failure does NOT drop the minted `session_string`: it is still\nreturned as the disaster-recovery floor (the admin can paste it into the vault),\nand the failure surfaces as a clear envelope only when the pool is over capacity.",
         "operationId": "poll_qr_login_v1_pool_admin_qr_login__token__get",
         "parameters": [
           {

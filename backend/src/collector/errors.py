@@ -30,6 +30,20 @@ class BufferWriteError(CollectorError):
     """A raw post could not be written to the Redis buffer (not silently dropped)."""
 
 
+class PoolSessionStoreError(CollectorError):
+    """Base for the dynamic pool session store errors (TASK-119)."""
+
+
+class PoolCapacityExceededError(PoolSessionStoreError):
+    """Adding a NEW pool account would exceed `POOL_MAX` (TASK-119).
+
+    Raised by `upsert_revive_or_add` when no row exists for the `tg_user_id`
+    (an ADD, not a revive) and the active row count is already at `POOL_MAX`.
+    A revive of an EXISTING account never raises this (it replaces in place).
+    The API (TASK-120) maps it to a clear 4xx so the operator removes/revokes a
+    stale account before adding another."""
+
+
 class QRLoginError(CollectorError):
     """Base for QR-login service errors (TASK-114, EPIC-TG-QR-POOL).
 

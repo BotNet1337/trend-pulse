@@ -22,6 +22,8 @@ from redis.exceptions import RedisError
 from collector.constants import (
     BACKOFF_BASE_SECONDS,
     BACKOFF_CAP_SECONDS,
+    POOL_FAILING_NO_READ_WINDOW_SECONDS,
+    POOL_FAILING_THRESHOLD,
     POOL_MAX,
     POOL_MIN,
     QUARANTINE_PERSIST_TTL_SECONDS,
@@ -81,10 +83,29 @@ class _Account:
     # CLASS NAME (e.g. "AuthKeyDuplicatedError") or "FLOOD_WAIT", set by the reader at
     # the existing catch sites. Last-known only (not history); NEVER a session string.
     last_error_reason: str = ""
+    # Read-outcome bookkeeping (TASK-118), set by the reader's success / transient-error
+    # catch sites. Annotation-only — they NEVER change rotation/cooldown/quarantine.
+    #   * `last_read_ok_at` — monotonic stamp of the last CLEAN read (None until first OK).
+    #   * `consecutive_read_failures` — count of read failures since the last clean read
+    #     (reset to 0 on success). Drives the `failing` classification.
+    #   * `first_read_failure_at` — monotonic stamp of the FIRST read failure since the
+    #     last clean read; the no-read-window timer starts here so a never-read-but-erroring
+    #     account is eventually surfaced as failing without alarming a freshly booted pool.
+    last_read_ok_at: float | None = None
+    consecutive_read_failures: int = 0
+    first_read_failure_at: float | None = None
+    # The dynamic-store account identity (TASK-119): the `tg_user_id` from `get_me()`
+    # for a slot loaded from the DB store, so a revive-signal can target THIS slot by
+    # identity (None for an env-only bootstrap slot). NEVER a secret.
+    tg_user_id: int | None = None
+    # The NON-SECRET display label (TASK-120): a masked id / `@username` from the store,
+    # surfaced in the health snapshot so the UI labels each row by account (None for an
+    # env-only bootstrap slot with no store identity). NEVER a secret (not the session).
+    display_label: str | None = None
 
 
-# Account lifecycle state exposed in the health snapshot (TASK-115).
-AccountState = Literal["healthy", "cooling", "quarantined"]
+# Account lifecycle state exposed in the health snapshot (TASK-115; `failing` TASK-118).
+AccountState = Literal["healthy", "cooling", "quarantined", "failing"]
 
 
 @dataclass(frozen=True)
@@ -95,12 +116,18 @@ class AccountStatus:
     identifier), never the session string or fingerprint. `cooldown_remaining_seconds`
     is populated only for a cooling account (None otherwise). `last_error_reason` is the
     last-known reason (may persist after recovery — acceptable, last-known).
+
+    `display_label`/`tg_user_id` (TASK-120) are the NON-SECRET store identity for a
+    DB-loaded slot (masked id / `@username` / numeric id), None for an env-only slot —
+    so the UI labels rows by account, never by session string.
     """
 
     index: int
     state: AccountState
     cooldown_remaining_seconds: float | None
     last_error_reason: str
+    display_label: str | None = None
+    tg_user_id: int | None = None
 
 
 def _backoff_seconds(strikes: int) -> float:
@@ -121,6 +148,10 @@ class AccountPool:
     _now: Callable[[], float] = time.monotonic
     # Optional Redis for PERSISTENT quarantine (TASK-102); None = in-memory only.
     _redis: "Redis | None" = None
+    # The client factory the pool was built from (TASK-119): retained so a single-slot
+    # revive can build a fresh client over a NEW session string. None only for legacy
+    # constructions that never revive (the dataclass default keeps back-compat).
+    _factory: TelegramClientFactory | None = None
 
     @classmethod
     def from_sessions(
@@ -129,6 +160,8 @@ class AccountPool:
         sessions: list[str],
         factory: TelegramClientFactory,
         redis: "Redis | None" = None,
+        tg_user_ids: list[int | None] | None = None,
+        display_labels: list[str | None] | None = None,
     ) -> "AccountPool":
         """Build a pool from pool session strings; validates size POOL_MIN..POOL_MAX.
 
@@ -137,6 +170,15 @@ class AccountPool:
         dead session stays quarantined across worker restarts/recycling (not re-tried, and
         the boot-time `healthy` count is accurate). Fail-open: a Redis error logs a warning
         and builds the pool in-memory-only (construction must never crash on a Redis blip).
+
+        `tg_user_ids` (TASK-119, optional) is the per-session Telegram account identity
+        (positional with `sessions`); a DB-store slot carries its `tg_user_id` so a
+        revive-signal can target it by identity. Env bootstrap slots pass None. The
+        `factory` is retained so a revive can build a fresh client for the swapped slot.
+
+        `display_labels` (TASK-120, optional) is the per-session NON-SECRET display label
+        (positional with `sessions`); a DB-store slot carries its masked id / `@username`
+        so the health snapshot can label the row by account. Env slots pass None.
         """
         size = len(sessions)
         if size < POOL_MIN or size > POOL_MAX:
@@ -144,15 +186,28 @@ class AccountPool:
                 f"telegram pool must have between {POOL_MIN} and {POOL_MAX} "
                 f"technical accounts, got {size}"
             )
+        ids: list[int | None] = tg_user_ids if tg_user_ids is not None else [None] * size
+        if len(ids) != size:
+            raise PoolConfigError(f"tg_user_ids length ({len(ids)}) must match sessions ({size})")
+        labels: list[str | None] = display_labels if display_labels is not None else [None] * size
+        if len(labels) != size:
+            raise PoolConfigError(
+                f"display_labels length ({len(labels)}) must match sessions ({size})"
+            )
         accounts = [
-            _Account(client=factory(session), fingerprint=session_fingerprint(session))
-            for session in sessions
+            _Account(
+                client=factory(session),
+                fingerprint=session_fingerprint(session),
+                tg_user_id=tg_user_id,
+                display_label=display_label,
+            )
+            for session, tg_user_id, display_label in zip(sessions, ids, labels, strict=True)
         ]
         persisted = cls._load_quarantined_fingerprints(redis)
         for account in accounts:
             if account.fingerprint in persisted:
                 account.quarantined = True
-        return cls(_accounts=accounts, _redis=redis)
+        return cls(_accounts=accounts, _redis=redis, _factory=factory)
 
     @staticmethod
     def _load_quarantined_fingerprints(redis: "Redis | None") -> frozenset[str]:
@@ -213,6 +268,11 @@ class AccountPool:
             elif account.cooldown_until > now:
                 state = "cooling"
                 cooldown_remaining = account.cooldown_until - now
+            elif self._is_failing(account, now):
+                # Live (not quarantined/cooling) but its reads persistently fail —
+                # observational only (TASK-118); `acquire()` is UNAFFECTED.
+                state = "failing"
+                cooldown_remaining = None
             else:
                 state = "healthy"
                 cooldown_remaining = None
@@ -222,9 +282,61 @@ class AccountPool:
                     state=state,
                     cooldown_remaining_seconds=cooldown_remaining,
                     last_error_reason=account.last_error_reason,
+                    display_label=account.display_label,
+                    tg_user_id=account.tg_user_id,
                 )
             )
         return statuses
+
+    @staticmethod
+    def _is_failing(account: _Account, now: float) -> bool:
+        """Classify a LIVE account (not quarantined/cooling) as `failing` (TASK-118).
+
+        Failing iff its reads persistently fail: either `POOL_FAILING_THRESHOLD`
+        consecutive read failures, OR it has errored at least once, never once read OK,
+        and the no-read window has elapsed since its FIRST failure. Pure + side-effect
+        free; FLOOD_WAIT cooling is handled by the caller (precedence) and never reaches
+        here as a read failure (it does not increment the counter).
+        """
+        if account.consecutive_read_failures >= POOL_FAILING_THRESHOLD:
+            return True
+        return (
+            account.last_read_ok_at is None
+            and account.first_read_failure_at is not None
+            and now - account.first_read_failure_at >= POOL_FAILING_NO_READ_WINDOW_SECONDS
+        )
+
+    def note_read_success(self) -> None:
+        """Record a CLEAN read on the CURRENT account (TASK-118).
+
+        Stamps `last_read_ok_at` (monotonic) and resets the consecutive-failure counter
+        and the no-read window, so a recovered account leaves `failing` even if the last
+        error reason text lingers (last-known, consistent with TASK-115). Annotation only
+        — does NOT change rotation/cooldown/quarantine. Called by the reader alongside
+        `report_success()` after a clean iteration.
+        """
+        if self._accounts:
+            account = self._accounts[self._index]
+            account.last_read_ok_at = self._clock()
+            account.consecutive_read_failures = 0
+            account.first_read_failure_at = None
+
+    def note_read_failure(self, reason: str) -> None:
+        """Record a READ FAILURE on the CURRENT account (TASK-118).
+
+        Increments the consecutive-failure counter, stamps the no-read window start on
+        the FIRST failure since the last clean read, and records the non-fatal `reason`
+        (an error CLASS NAME, e.g. the "wrong session ID" Telethon error — NEVER a
+        session string). Called by the reader at the currently-silent transient catch
+        site. Annotation only — does NOT change rotation/cooldown/quarantine, and is
+        DISTINCT from FLOOD_WAIT (which is cooling, not a read failure).
+        """
+        if self._accounts:
+            account = self._accounts[self._index]
+            account.consecutive_read_failures += 1
+            if account.first_read_failure_at is None:
+                account.first_read_failure_at = self._clock()
+            account.last_error_reason = reason
 
     def note_current_error(self, reason: str) -> None:
         """Record the last-known error `reason` on the CURRENT account (TASK-115).
@@ -337,6 +449,112 @@ class AccountPool:
         if ready:
             return 0.0
         return min(remaining)
+
+    def find_slot_index(self, *, tg_user_id: int | None, fingerprint: str) -> int | None:
+        """Locate the slot for a revive by identity (TASK-119); None if not present.
+
+        Prefers the `tg_user_id` match (the stable account identity); falls back to the
+        OLD `fingerprint` (the dead session's sha256[:16]) so a slot loaded before it had
+        an identity, or matched only by its prior session, is still found. Pure lookup —
+        no mutation. Returns the first matching slot index, or None when no slot matches
+        (a brand-new account that will appear on the next full pool build instead).
+        """
+        if tg_user_id is not None:
+            for idx, account in enumerate(self._accounts):
+                if account.tg_user_id == tg_user_id:
+                    return idx
+        if fingerprint:
+            for idx, account in enumerate(self._accounts):
+                if account.fingerprint == fingerprint:
+                    return idx
+        return None
+
+    async def revive_slot(
+        self,
+        *,
+        slot_index: int,
+        tg_user_id: int,
+        session_string: str,
+        display_label: str | None = None,
+    ) -> None:
+        """SAFELY swap ONE slot's client to a NEW session (disconnect-then-connect).
+
+        The crux of the ADR's safety case (TASK-119). For the SINGLE slot `slot_index`:
+          1. `await old_client.disconnect()` FIRST — the dead/old session's client is
+             fully torn down before anything new connects (best-effort: a disconnect
+             failure on a dead socket is logged, not raised — the point is to never
+             DOUBLE-connect, which a failed disconnect on a dead socket does not).
+          2. build a fresh client over the NEW `session_string` via the retained factory
+             and `connect()` it.
+          3. swap `account.client` in place and reset THIS slot's transient state
+             (`quarantined`/cooldown/strikes/read-outcome/`last_error_reason`) and update
+             its `fingerprint`/`tg_user_id` to the new session — so the revived slot
+             leaves `failing`/`quarantined` and starts clean.
+
+        INVARIANT: a session is never connected by two clients at once — the old client
+        is disconnected before the new client connects, and ONLY this slot is touched
+        (no other `_Account.client` is reconnected). The session string is a secret and
+        is NEVER logged. Raises `PoolConfigError` if the slot index is out of range or
+        no factory is available (a misconstructed pool that cannot revive).
+
+        Belt-and-suspenders (TASK-119 fix): the swapped-out OLD fingerprint is SREM'd from
+        the persisted quarantine set so a worker recycle after this revive does not reload
+        the slot as dead — even if the producer's `clear_quarantine_for` was skipped/failed.
+        Fail-open: a Redis error is logged, never raised (mirrors `_persist_quarantine`).
+        """
+        if self._factory is None:
+            raise PoolConfigError("pool has no client factory; cannot revive a slot")
+        if slot_index < 0 or slot_index >= len(self._accounts):
+            raise PoolConfigError(f"revive slot index {slot_index} out of range")
+
+        account = self._accounts[slot_index]
+        old_client = account.client
+        old_fingerprint = account.fingerprint
+        # 1. Disconnect the OLD client FIRST — best-effort (the old socket is dead).
+        try:
+            await old_client.disconnect()
+        except Exception:
+            # Log, never raise: a failed disconnect on a dead socket does NOT leave the
+            # session double-connected, and must not block the revive (Invariant).
+            logger.warning("old client disconnect failed during revive (proceeding)")
+
+        # 2. Build + connect the NEW client (only after the old one is down).
+        new_client = self._factory(session_string)
+        await new_client.connect()
+
+        # 3. Swap in place + reset THIS slot's state (single-slot only).
+        account.client = new_client
+        account.tg_user_id = tg_user_id
+        # Refresh the non-secret display label for the revived slot (TASK-120); keep the
+        # prior label when the caller does not supply one (env-only revive path).
+        if display_label is not None:
+            account.display_label = display_label
+        account.fingerprint = session_fingerprint(session_string)
+        account.quarantined = False
+        account.cooldown_until = 0.0
+        account.flood_strikes = 0
+        account.consecutive_read_failures = 0
+        account.first_read_failure_at = None
+        account.last_read_ok_at = None
+        account.last_error_reason = ""
+
+        # 4. Belt-and-suspenders: drop the OLD fingerprint from the persisted quarantine
+        # set so a worker recycle after this revive does not reload the slot as dead.
+        self._clear_persisted_quarantine(old_fingerprint)
+
+    def _clear_persisted_quarantine(self, fingerprint: str) -> None:
+        """SREM a revived slot's OLD fingerprint from the persisted quarantine set.
+
+        Best-effort, fail-open (TASK-119): `redis=None`, an empty/malformed fingerprint,
+        or a Redis error is a no-op/logged-and-swallowed — never raised (mirrors
+        `_persist_quarantine` + `pool_session_store.clear_quarantine_for`). NEVER a secret.
+        """
+        if self._redis is None or not _is_valid_fingerprint(fingerprint):
+            return
+        try:
+            self._redis.srem(QUARANTINE_REDIS_KEY, fingerprint)
+        except RedisError:
+            logger.warning("could not clear quarantine on revive (Redis); ignoring")
 
     async def aclose(self) -> None:
         """Disconnect every pool client (worker shutdown / collector teardown).
