@@ -120,6 +120,17 @@ _DEFAULT_SCORER_RECENT_WINDOW_SECONDS = 3600
 # Override via env SCORE_WINDOW_SECONDS (e.g. 172800 for a 48h window).
 _DEFAULT_SCORE_WINDOW_SECONDS: int = 86_400  # 24 hours
 
+# ML serving — GBDT p(grow) + formula-fallback (TASK-125, S4). Named, non-secret
+# defaults — never magic literals (CONVENTIONS). The single Higgs-trained artifact is
+# trained on public cascades, NOT on TG, so serving is DORMANT by default: with the flag
+# OFF the scorer never loads a model and `viral_score` is byte-identical to the v2
+# formula (zero-risk). Enabling it is an owner-gated step AFTER TG validation. The path
+# points at the LightGBM text artifact (e.g. `eval_offline/models/*.txt`), which is
+# deployed separately from the lean backend image; an empty path also means "no model".
+# Override via env SCORER_MODEL_ENABLED / SCORER_MODEL_PATH.
+_DEFAULT_SCORER_MODEL_ENABLED: bool = False
+_DEFAULT_SCORER_MODEL_PATH: str = ""
+
 # Alert delivery (task-009). Named, non-secret defaults — never magic literals.
 # The Telegram Bot API base; `<token>` is appended per-request and NEVER logged.
 # HTTP timeout bounds a hung Telegram/webhook call (seconds). The retry policy:
@@ -467,6 +478,12 @@ class Settings(BaseSettings):
     # `_build_score_inputs` aggregates a cluster's posts ONLY within this look-back so
     # the score reflects a recent burst, not the cluster's whole lifetime. Default 24h.
     score_window_seconds: int = _DEFAULT_SCORE_WINDOW_SECONDS
+    # --- ML serving — GBDT p(grow) + formula-fallback (TASK-125, S4). Non-secret,
+    # settable; defaults above. OFF by default (Higgs ≠ TG) → the scorer never loads a
+    # model and `viral_score` stays byte-identical to the v2 formula. `scorer_model_path`
+    # points at the LightGBM text artifact (deployed separately); empty = no model. ---
+    scorer_model_enabled: bool = _DEFAULT_SCORER_MODEL_ENABLED
+    scorer_model_path: str = _DEFAULT_SCORER_MODEL_PATH
 
     # --- Compliance & ops (task-011). Non-secret, settable; defaults above. ---
     raw_content_retention_seconds: int = _DEFAULT_RAW_CONTENT_RETENTION_SECONDS

@@ -41,6 +41,10 @@ def _make_settings(delay: int = _DELAY) -> MagicMock:
     s.pending_resweep_grace_seconds = 300
     s.pending_resweep_max_batch = 500
     s.scorer_recent_window_seconds = 3600
+    # ML serving OFF (TASK-125) so `_load_viral_model` returns None without attempting a
+    # load — these delivery tests exercise the formula-only scorer path.
+    s.scorer_model_enabled = False
+    s.scorer_model_path = ""
     return s
 
 
@@ -107,7 +111,11 @@ class TestAC1ScorerDeliver:
 
         # _fake_score_user returns tuples (alert_id, countdown) matching new signature.
         def _fake_score_user(
-            sess: object, *, user_id: int, window_start: datetime
+            sess: object,
+            *,
+            user_id: int,
+            window_start: datetime,
+            gbdt: object | None = None,
         ) -> list[tuple[int, int | None]]:
             da = now_fixed + timedelta(seconds=_DELAY)
             _fake_create(
@@ -167,7 +175,11 @@ class TestAC1ScorerDeliver:
         monkeypatch.setattr(scorer_tasks, "_enqueue_delivery", _fake_enqueue)
 
         def _fake_score_user(
-            sess: object, *, user_id: int, window_start: datetime
+            sess: object,
+            *,
+            user_id: int,
+            window_start: datetime,
+            gbdt: object | None = None,
         ) -> list[tuple[int, int | None]]:
             _fake_create(
                 sess,
@@ -622,7 +634,11 @@ class TestAC4ExpiredPlanFree:
         monkeypatch.setattr(scorer_tasks, "_enqueue_delivery", _fake_enqueue)
 
         def _fake_score_user(
-            sess: object, *, user_id: int, window_start: datetime
+            sess: object,
+            *,
+            user_id: int,
+            window_start: datetime,
+            gbdt: object | None = None,
         ) -> list[tuple[int, int | None]]:
             # Simulate what scorer._score_user must do: effective_plan → FREE → delay.
             plan = scorer_tasks.effective_plan(sess, MagicMock(id=user_id, plan="pro"))
