@@ -665,9 +665,34 @@ def test_emit_pool_health_writes_snapshot_to_redis_with_ttl() -> None:
         "last_error_reason",
         "display_label",
         "tg_user_id",
+        "read_failure_count",
     } == set(cooling.keys())
     assert cooling["display_label"] is None
     assert cooling["tg_user_id"] is None
+    assert cooling["read_failure_count"] == 0
+
+
+def test_snapshot_carries_read_failure_count() -> None:
+    """The snapshot per-account dict carries the cumulative `read_failure_count` so the
+    pool-admin UI can show error frequency (e.g. "xN")."""
+    import json
+
+    clock = _Clock()
+    pool = _pool_with_clock(2, clock)
+    pool.acquire()
+    pool.note_read_failure("SecurityError")
+    pool.note_read_failure("SecurityError")
+
+    settings = _make_settings(pool_min_healthy=2)
+    mock_redis = MagicMock()
+
+    from observability.pool_health import emit_pool_health
+
+    emit_pool_health(pool, settings, mock_redis)
+    snapshot = json.loads(mock_redis.set.call_args[0][1])
+    failed = snapshot["accounts"][0]
+    assert failed["read_failure_count"] == 2
+    assert failed["last_error_reason"] == "SecurityError"
 
 
 def test_emit_pool_health_snapshot_has_no_secrets() -> None:

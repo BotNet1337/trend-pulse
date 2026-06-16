@@ -50,6 +50,7 @@ from collector.constants import (
     COLLECT_LAST_TICK_KEY,
     COLLECT_TICK_HARD_LIMIT_GRACE_SECONDS,
     COLLECT_TICK_TASK,
+    POOL_RELOAD_SIGNAL_REDIS_KEY,
     RAW_POST_TTL_SECONDS,
 )
 from collector.errors import (
@@ -226,6 +227,47 @@ async def _collect_refs(
     return written
 
 
+def _consume_pool_reload_signal(redis: "Redis") -> bool:
+    """Read-and-clear the NON-SECRET pool-reload flag ONCE per tick; True iff it was set.
+
+    Mirrors the revive-signal's once-per-tick GET (`apply_pending_revive`): the flag is a
+    timestamp written by the API on EVERY successful QR scan (add AND revive). When set,
+    the caller invalidates the cached Telegram collector so the NEXT `registry.get` rebuilds
+    the pool fresh from the DB store (picking up the new/revived session). Cleared here so it
+    fires exactly once. Best-effort/fail-open: a Redis error → False (no reload this tick; the
+    flag, if it survives, applies next tick — and a full restart self-heals regardless).
+    """
+    try:
+        raw = redis.get(POOL_RELOAD_SIGNAL_REDIS_KEY)
+        if raw is None:
+            return False
+        redis.delete(POOL_RELOAD_SIGNAL_REDIS_KEY)
+        return True
+    except Exception as exc:
+        logger.warning(
+            "collect_tick: pool reload signal check failed (ignored)",
+            extra={"exc_type": type(exc).__name__},
+        )
+        return False
+
+
+def _apply_pool_reload(redis: "Redis") -> None:
+    """If the pool-reload flag is set, invalidate the cached Telegram collector (TASK live-pickup).
+
+    Runs ONCE per tick BEFORE the per-kind `registry.get` loop (mirrors the revive hook
+    placement). `ainvalidate` disconnects the OLD collector (aclose) THEN pops it from the
+    cache, so the next `registry.get(TELEGRAM)` rebuilds the pool from DB + env — with the
+    old clients already disconnected, no session is ever connected twice (AuthKeyDuplicated
+    invariant). Only TELEGRAM owns a live session pool that benefits; Twitter/Reddit hold no
+    revivable sessions, so a reload would only force a needless rebuild. Best-effort.
+    """
+    if not _consume_pool_reload_signal(redis):
+        return
+    loop = _ensure_event_loop()
+    loop.run_until_complete(registry.ainvalidate(SourceKind.TELEGRAM))
+    logger.info("collect_tick: pool reload applied (collector cache invalidated)")
+
+
 def _warn_unconfigured_once(kind: SourceKind, reason: str) -> None:
     """Warn ONCE per process per kind that its collector cannot run."""
     if kind in _WARNED_UNCONFIGURED_KINDS:
@@ -259,6 +301,11 @@ def collect_watched_sources(redis: "Redis", *, now: datetime | None = None) -> i
     refs_by_kind: dict[SourceKind, list[SourceRef]] = {}
     for ref in refs:
         refs_by_kind.setdefault(ref.kind, []).append(ref)
+
+    # Live pickup (TASK live-pickup): once per tick, BEFORE any `registry.get` rebuild,
+    # apply a pending pool-reload signal (set by the API on every successful QR scan) so a
+    # session added/revived after the pool was built goes live without a worker restart.
+    _apply_pool_reload(redis)
 
     written = 0
     attempted_any = False

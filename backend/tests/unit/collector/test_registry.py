@@ -122,3 +122,91 @@ def test_get_telegram_returns_telegram_collector() -> None:
     finally:
         # Restore the production factory so other tests/modules see the default.
         registry.register(SourceKind.TELEGRAM, registry._build_telegram_collector)
+
+
+def test_invalidate_pops_and_next_get_rebuilds_fresh() -> None:
+    """fix/pool-live-pickup: `invalidate` drops the cache so the NEXT `get` rebuilds.
+
+    This is the live-pickup path — a session QR-added after the pool was built sits in the
+    store, unused, until the cache is invalidated and the next tick rebuilds from DB + env.
+    """
+    from .conftest import FakeClient, make_pool
+
+    built: list[TelegramCollector] = []
+
+    def build() -> TelegramCollector:
+        collector = TelegramCollector(make_pool([FakeClient()]))
+        built.append(collector)
+        return collector
+
+    registry.register(SourceKind.TELEGRAM, build)
+    try:
+        first = registry.get(SourceKind.TELEGRAM)
+        popped = registry.invalidate(SourceKind.TELEGRAM)
+        assert popped is first  # the cached instance is returned for the caller to aclose
+        second = registry.get(SourceKind.TELEGRAM)
+        assert second is not first  # rebuilt fresh from the (store-backed) factory
+        assert len(built) == 2
+    finally:
+        registry.register(SourceKind.TELEGRAM, registry._build_telegram_collector)
+
+
+def test_invalidate_on_empty_cache_is_a_noop() -> None:
+    """`invalidate` returns None when nothing was cached (no build happened yet)."""
+    from .conftest import FakeClient, make_pool
+
+    registry.register(SourceKind.TELEGRAM, lambda: TelegramCollector(make_pool([FakeClient()])))
+    try:
+        # No get() yet → nothing cached.
+        assert registry.invalidate(SourceKind.TELEGRAM) is None
+    finally:
+        registry.register(SourceKind.TELEGRAM, registry._build_telegram_collector)
+
+
+@pytest.mark.asyncio
+async def test_ainvalidate_acloses_old_before_pop_and_rebuild() -> None:
+    """AuthKeyDuplicated invariant: `ainvalidate` DISCONNECTS the old collector (aclose)
+    BEFORE the cache is empty for a rebuild — so a session is never connected on two clients
+    at once. Asserts the old pool's clients were disconnected and the next get rebuilds."""
+    from .conftest import FakeClient, make_pool
+
+    old_clients = [FakeClient(), FakeClient()]
+    built: list[TelegramCollector] = []
+
+    def build() -> TelegramCollector:
+        # First build uses the tracked clients; later builds use fresh ones.
+        clients = old_clients if not built else [FakeClient()]
+        collector = TelegramCollector(make_pool(clients))
+        built.append(collector)
+        return collector
+
+    registry.register(SourceKind.TELEGRAM, build)
+    try:
+        first = registry.get(SourceKind.TELEGRAM)
+        # Connect the pool clients so aclose has something to disconnect.
+        for c in old_clients:
+            await c.connect()
+        assert all(c.is_connected() for c in old_clients)
+
+        await registry.ainvalidate(SourceKind.TELEGRAM)
+
+        # aclose-before-rebuild: every OLD client is disconnected (the invariant).
+        assert all(c.disconnect_calls >= 1 for c in old_clients)
+        assert not any(c.is_connected() for c in old_clients)
+        # The cache is empty → the next get rebuilds a DIFFERENT collector.
+        second = registry.get(SourceKind.TELEGRAM)
+        assert second is not first
+    finally:
+        registry.register(SourceKind.TELEGRAM, registry._build_telegram_collector)
+
+
+@pytest.mark.asyncio
+async def test_ainvalidate_on_empty_cache_is_a_noop() -> None:
+    """`ainvalidate` is safe with nothing cached (no aclose, no raise)."""
+    from .conftest import FakeClient, make_pool
+
+    registry.register(SourceKind.TELEGRAM, lambda: TelegramCollector(make_pool([FakeClient()])))
+    try:
+        await registry.ainvalidate(SourceKind.TELEGRAM)  # must not raise
+    finally:
+        registry.register(SourceKind.TELEGRAM, registry._build_telegram_collector)

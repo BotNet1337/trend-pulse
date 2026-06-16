@@ -301,6 +301,63 @@ def test_corrupt_marker_falls_back_to_lookback() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Live pool pickup: once-per-tick reload signal (fix/pool-live-pickup)
+# ---------------------------------------------------------------------------
+
+
+def test_reload_signal_invalidates_telegram_and_clears_flag() -> None:
+    """A set pool-reload flag → the cached Telegram collector is invalidated ONCE per tick
+    (so the next `registry.get` rebuilds from the store) and the flag is cleared."""
+    from collector.constants import POOL_RELOAD_SIGNAL_REDIS_KEY
+
+    redis = fakeredis.FakeRedis()
+    redis.set(POOL_RELOAD_SIGNAL_REDIS_KEY, _NOW.isoformat())
+    refs = [SourceRef(kind=SourceKind.TELEGRAM, handle="@alpha")]
+    collector = FakeCollector(posts_by_handle={"@alpha": [_make_post("@alpha", "1")]})
+
+    invalidated: list[SourceKind] = []
+
+    async def _record(kind: SourceKind) -> None:
+        invalidated.append(kind)
+
+    with (
+        _registered(lambda: collector),
+        patch.object(tasks, "get_session", _fake_session),
+        patch.object(tasks.registry, "ainvalidate", _record),
+        _patch_refs(refs),
+    ):
+        tasks.collect_watched_sources(redis, now=_NOW)
+
+    assert invalidated == [SourceKind.TELEGRAM]  # invalidated exactly once, for TELEGRAM
+    assert redis.get(POOL_RELOAD_SIGNAL_REDIS_KEY) is None  # flag consumed (fires once)
+
+
+def test_no_reload_signal_does_not_invalidate() -> None:
+    """No reload flag → no invalidation (the steady-state tick path is untouched)."""
+    from collector.constants import POOL_RELOAD_SIGNAL_REDIS_KEY
+
+    redis = fakeredis.FakeRedis()
+    assert redis.get(POOL_RELOAD_SIGNAL_REDIS_KEY) is None
+    refs = [SourceRef(kind=SourceKind.TELEGRAM, handle="@alpha")]
+    collector = FakeCollector()
+
+    invalidated: list[SourceKind] = []
+
+    async def _record(kind: SourceKind) -> None:
+        invalidated.append(kind)
+
+    with (
+        _registered(lambda: collector),
+        patch.object(tasks, "get_session", _fake_session),
+        patch.object(tasks.registry, "ainvalidate", _record),
+        _patch_refs(refs),
+    ):
+        tasks.collect_watched_sources(redis, now=_NOW)
+
+    assert invalidated == []
+
+
+# ---------------------------------------------------------------------------
 # Error handling: flood / unavailable source / unconfigured pool
 # ---------------------------------------------------------------------------
 

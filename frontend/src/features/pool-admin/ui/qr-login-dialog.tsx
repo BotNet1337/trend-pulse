@@ -2,15 +2,19 @@
  * QrLoginDialog (TASK-117) — the "Add account" QR-login flow.
  *
  * Flow: open → POST start → render the `qr_url` as a scannable QR (QRCodeSVG) →
- * poll every ~2s → on success reveal the NEW session string in a copy-to-
- * clipboard field with the "add to TELEGRAM_POOL_SESSIONS in the vault and
- * redeploy" note. On timeout/password_needed/error the SPECIFIC reason is shown
- * (never a generic error) with a "Regenerate QR" action.
+ * poll every ~2s → on success LEAD with "added / re-connected — picked up
+ * automatically within ~one minute" (the account is persisted server-side and the
+ * worker rebuilds the pool on its next tick — no manual copy, no restart). The
+ * one-time session string is kept ONLY as an optional disaster-recovery backup,
+ * tucked behind a collapsed `<details>` (never the headline). On
+ * timeout/password_needed/error the SPECIFIC reason is shown (never a generic
+ * error) with a "Regenerate QR" action.
  *
  * SECURITY (invariant): `session_string` is a one-time secret. It is rendered
- * once, copied via the platform clipboard, and NEVER logged (no console.*), nor
- * persisted. React-Query's cache holds it only for the dialog's lifetime; the
- * poll query is removed on close so the secret does not linger.
+ * once (behind a collapsed backup section), copied via the platform clipboard, and
+ * NEVER logged (no console.*), nor persisted. React-Query's cache holds it only for
+ * the dialog's lifetime; the poll query is removed on close so the secret does not
+ * linger.
  */
 
 import React from 'react';
@@ -43,10 +47,12 @@ interface QrLoginDialogProps {
   onClose: () => void;
 }
 
+const BACKUP_SUMMARY = 'Резервная копия (необязательно)';
+
 const VAULT_NOTE =
-  'The account is already persisted and will appear in the pool automatically. ' +
-  'This session string is a one-time backup — optionally copy it to the vault ' +
-  '(TELEGRAM_POOL_SESSIONS) for disaster recovery. It is shown only once.';
+  'The account is already persisted server-side and is picked up automatically. ' +
+  'This one-time session string is an optional disaster-recovery backup — you may ' +
+  'copy it to the vault (TELEGRAM_POOL_SESSIONS). It is shown only once.';
 
 const COPY_FAILED_MESSAGE =
   'Copy failed — select the session string above and copy it manually.';
@@ -187,8 +193,9 @@ export const QrLoginDialog: React.FC<QrLoginDialogProps> = ({ open, onClose }) =
           </div>
         )}
 
-        {/* Success: reveal the one-time session string */}
-        {status === 'success' && sessionString && (
+        {/* Success: LEAD with the auto-pickup message; demote the session string to a
+            collapsed, optional disaster-recovery backup (no manual copy step in the face). */}
+        {status === 'success' && (
           <div className="flex flex-col gap-3" data-testid="qr-success">
             <p
               className="m-0 flex items-center gap-2 text-sm font-medium"
@@ -211,39 +218,51 @@ export const QrLoginDialog: React.FC<QrLoginDialogProps> = ({ open, onClose }) =
                     : ''}
               </p>
             )}
-            <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-              <code
-                data-testid="qr-session-string"
-                className="block min-w-0 select-all break-all rounded-md border border-border bg-secondary/40 px-3 py-2.5 font-mono text-xs"
-              >
-                {sessionString}
-              </code>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-11 min-w-24"
-                onClick={() => void handleCopy()}
-                data-testid="qr-copy"
-              >
-                {copied ? (
-                  <>
-                    <CheckCircle2 className="mr-1.5 h-4 w-4" />
-                    Copied
-                  </>
-                ) : (
-                  <>
-                    <Copy className="mr-1.5 h-4 w-4" />
-                    Copy
-                  </>
-                )}
-              </Button>
-            </div>
-            {copyError && (
-              <p role="alert" className="m-0 text-xs text-destructive">
-                {copyError}
-              </p>
+            {sessionString && (
+              <details className="rounded-md border border-border bg-secondary/20 px-3 py-2">
+                <summary
+                  className="cursor-pointer select-none text-xs text-muted-foreground"
+                  data-testid="qr-backup-toggle"
+                >
+                  {BACKUP_SUMMARY}
+                </summary>
+                <div className="mt-3 flex flex-col gap-3">
+                  <div className="grid grid-cols-[1fr_auto] items-center gap-2">
+                    <code
+                      data-testid="qr-session-string"
+                      className="block min-w-0 select-all break-all rounded-md border border-border bg-secondary/40 px-3 py-2.5 font-mono text-xs"
+                    >
+                      {sessionString}
+                    </code>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-11 min-w-24"
+                      onClick={() => void handleCopy()}
+                      data-testid="qr-copy"
+                    >
+                      {copied ? (
+                        <>
+                          <CheckCircle2 className="mr-1.5 h-4 w-4" />
+                          Copied
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="mr-1.5 h-4 w-4" />
+                          Copy
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  {copyError && (
+                    <p role="alert" className="m-0 text-xs text-destructive">
+                      {copyError}
+                    </p>
+                  )}
+                  <p className="m-0 text-xs text-muted-foreground">{VAULT_NOTE}</p>
+                </div>
+              </details>
             )}
-            <p className="m-0 text-xs text-muted-foreground">{VAULT_NOTE}</p>
           </div>
         )}
 
@@ -262,7 +281,7 @@ export const QrLoginDialog: React.FC<QrLoginDialogProps> = ({ open, onClose }) =
             </Button>
           ) : null}
           <Button type="button" onClick={() => handleOpenChange(false)}>
-            {status === 'success' ? "I've copied the session" : 'Close'}
+            {status === 'success' ? 'Done' : 'Close'}
           </Button>
         </div>
       </div>

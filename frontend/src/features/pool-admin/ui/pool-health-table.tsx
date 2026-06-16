@@ -1,9 +1,13 @@
 /**
  * PoolHealthTable (TASK-117) — per-account pool connection-status table.
  *
- * One row per account: index, a state badge (Connected/Cooling/Quarantined),
- * a cooldown for cooling accounts, and the last-error reason for quarantined
- * ones. A "stale" banner shows when the collector snapshot is missing/old.
+ * One row per account, identified by its @username (`display_label`, falling back to
+ * `#<index>` for env/legacy slots) with the numeric index as a muted secondary detail; a
+ * state badge (Connected/Cooling/Quarantined/Failing); a cooldown for cooling accounts;
+ * and the last-error reason — shown for EVERY account that has one (not only quarantined),
+ * with a human RU explanation + the cumulative failure count, so the owner can react to
+ * recurring session errors (e.g. the "wrong session ID" conflict). A "stale" banner shows
+ * when the collector snapshot is missing/old.
  *
  * Styling mirrors the admin-metrics dashboard (`fs-*` / `fs-table` classes).
  */
@@ -11,6 +15,7 @@
 import React from 'react';
 import type { PoolHealthResponse } from '../api';
 import {
+  accountErrorExplanation,
   accountLabel,
   accountStateBadgeVariant,
   accountStateLabel,
@@ -66,7 +71,6 @@ export const PoolHealthTable: React.FC<PoolHealthTableProps> = ({ health }) => {
             <table className="fs-table fs-table--hover">
               <thead>
                 <tr>
-                  <th scope="col">#</th>
                   <th scope="col">Account</th>
                   <th scope="col">State</th>
                   <th scope="col">Cooldown</th>
@@ -77,11 +81,32 @@ export const PoolHealthTable: React.FC<PoolHealthTableProps> = ({ health }) => {
                 {accounts.map((account) => {
                   const state = asAccountState(account.state);
                   const cooldown = formatCooldown(account.cooldown_remaining_seconds);
+                  // Surface the recorded error for EVERY account that has one (not only
+                  // quarantined/failing) — a healthy-but-intermittently-erroring session
+                  // (the "wrong session ID" case) must still be visible to the owner.
+                  const errorReason = account.last_error_reason?.trim()
+                    ? account.last_error_reason.trim()
+                    : null;
+                  const explanation = accountErrorExplanation(errorReason);
+                  const failureCount = account.read_failure_count ?? 0;
+                  // Show the muted `#index` secondary detail only when the row already has a
+                  // @username headline — for an env/legacy slot the headline IS `#index`, so
+                  // repeating it would be redundant.
+                  const hasUsername = Boolean(account.display_label?.trim());
                   return (
                     <tr key={account.index}>
-                      <td>{account.index}</td>
-                      <td className="font-mono" data-testid="pool-account-label">
-                        {accountLabel(account.display_label, account.index)}
+                      <td>
+                        <span className="font-mono" data-testid="pool-account-label">
+                          {accountLabel(account.display_label, account.index)}
+                        </span>
+                        {hasUsername && (
+                          <>
+                            {' '}
+                            <span className="fs-muted" data-testid="pool-account-index">
+                              #{account.index}
+                            </span>
+                          </>
+                        )}
                       </td>
                       <td>
                         <span
@@ -92,10 +117,18 @@ export const PoolHealthTable: React.FC<PoolHealthTableProps> = ({ health }) => {
                       </td>
                       <td>{state === 'cooling' && cooldown ? cooldown : '—'}</td>
                       <td>
-                        {(state === 'quarantined' || state === 'failing') &&
-                        account.last_error_reason
-                          ? account.last_error_reason
-                          : '—'}
+                        {explanation ? (
+                          <span
+                            className="fs-badge fs-badge--warning"
+                            data-testid="pool-account-error"
+                            title={errorReason ?? undefined}
+                          >
+                            ⚠ {explanation}
+                            {failureCount > 0 ? ` ×${failureCount}` : ''}
+                          </span>
+                        ) : (
+                          '—'
+                        )}
                       </td>
                     </tr>
                   );

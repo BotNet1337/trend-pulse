@@ -4,16 +4,16 @@
  * @testing-library/react is NOT installed (vitest env: node) — following the project
  * convention we test the pure view-model helpers and the query wiring directly:
  *  - asReviveOutcome narrowing (revive/add, unknown/absent → null)
- *  - accountLabel fallback to `account #<index>`
  *  - reviveSuccessMessage: distinct re-connect vs add copy, names the label
  *  - invalidatePoolHealth invalidates exactly POOL_HEALTH_QUERY_KEY
+ *
+ * (accountLabel is covered authoritatively in lib.spec.ts — single source of truth.)
  */
 
 import { QueryClient } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
-  accountLabel,
   asReviveOutcome,
   reviveSuccessMessage,
 } from '../../../src/features/pool-admin/lib';
@@ -36,40 +36,33 @@ describe('asReviveOutcome', () => {
   });
 });
 
-describe('accountLabel', () => {
-  it('returns the trimmed store label when present', () => {
-    expect(accountLabel('@alice', 2)).toBe('@alice');
-    expect(accountLabel('  id:***1234  ', 0)).toBe('id:***1234');
-  });
-
-  it('falls back to `account #<index>` for an env-only / missing label', () => {
-    expect(accountLabel(null, 3)).toBe('account #3');
-    expect(accountLabel(undefined, 0)).toBe('account #0');
-    expect(accountLabel('   ', 1)).toBe('account #1');
-  });
-});
-
 describe('reviveSuccessMessage', () => {
-  it('says re-connected (same account) for a revive and names the label', () => {
+  it('says re-connected (same account) for a revive, names the label, leads with auto-pickup', () => {
     const msg = reviveSuccessMessage('revive', '@alice');
     expect(msg).toContain('Re-connected');
     expect(msg).toContain('@alice');
     expect(msg).toContain('same account');
+    // No manual copy step in the face: lead with automatic pickup (fix/pool-live-pickup).
+    expect(msg).toContain('automatically');
+    expect(msg).not.toContain('Copy the session');
   });
 
-  it('says added (new account) for an add and names the label', () => {
+  it('says added for an add, names the label, leads with auto-pickup (no copy step)', () => {
     const msg = reviveSuccessMessage('add', '@bob');
     expect(msg).toContain('Added');
     expect(msg).toContain('@bob');
-    expect(msg).toContain('new pool account');
+    expect(msg).toContain('automatically');
+    expect(msg).not.toContain('Copy the session');
   });
 
-  it('falls back to a neutral success line when the outcome is null', () => {
+  it('falls back to a neutral success line when the outcome is null (no copy headline)', () => {
     const msg = reviveSuccessMessage(null, '@x');
     expect(msg).toContain('Logged in');
     // No revive/add claim when persistence outcome is unknown.
     expect(msg).not.toContain('Re-connected');
     expect(msg).not.toContain('Added');
+    // The null case is a persistence FAILURE — must not tell the user to copy a string.
+    expect(msg).not.toContain('Copy the session');
   });
 
   it('omits the label gracefully when none is provided', () => {

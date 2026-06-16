@@ -94,6 +94,12 @@ class _Account:
     last_read_ok_at: float | None = None
     consecutive_read_failures: int = 0
     first_read_failure_at: float | None = None
+    # CUMULATIVE read-failure tally for this account (pool-admin UI): unlike
+    # `consecutive_read_failures` (reset on every clean read to drive the `failing`
+    # classification), this counter is NEVER reset by an intermittent success, so the UI
+    # can show how OFTEN a session has failed even when it occasionally succeeds (the
+    # "wrong session ID"/SecurityError case). Reset to 0 only on a slot revive. Non-secret.
+    read_failure_count: int = 0
     # The dynamic-store account identity (TASK-119): the `tg_user_id` from `get_me()`
     # for a slot loaded from the DB store, so a revive-signal can target THIS slot by
     # identity (None for an env-only bootstrap slot). NEVER a secret.
@@ -128,6 +134,10 @@ class AccountStatus:
     last_error_reason: str
     display_label: str | None = None
     tg_user_id: int | None = None
+    # CUMULATIVE read-failure count (pool-admin UI): how often this account's reads have
+    # failed (e.g. the "wrong session ID"/SecurityError loop), so the owner sees error
+    # FREQUENCY, not just the last reason. Never reset by an intermittent success. Non-secret.
+    read_failure_count: int = 0
 
 
 def _backoff_seconds(strikes: int) -> float:
@@ -284,6 +294,7 @@ class AccountPool:
                     last_error_reason=account.last_error_reason,
                     display_label=account.display_label,
                     tg_user_id=account.tg_user_id,
+                    read_failure_count=account.read_failure_count,
                 )
             )
         return statuses
@@ -310,10 +321,12 @@ class AccountPool:
         """Record a CLEAN read on the CURRENT account (TASK-118).
 
         Stamps `last_read_ok_at` (monotonic) and resets the consecutive-failure counter
-        and the no-read window, so a recovered account leaves `failing` even if the last
-        error reason text lingers (last-known, consistent with TASK-115). Annotation only
-        — does NOT change rotation/cooldown/quarantine. Called by the reader alongside
-        `report_success()` after a clean iteration.
+        and the no-read window, so a recovered account leaves `failing`. DELIBERATELY KEEPS
+        `last_error_reason` AND the cumulative `read_failure_count` (last-known, consistent
+        with TASK-115) — so a session that mostly fails but occasionally succeeds (the
+        "wrong session ID"/SecurityError case) still shows its error + failure frequency in
+        the pool-admin UI. Annotation only — does NOT change rotation/cooldown/quarantine.
+        Called by the reader alongside `report_success()` after a clean iteration.
         """
         if self._accounts:
             account = self._accounts[self._index]
@@ -334,6 +347,9 @@ class AccountPool:
         if self._accounts:
             account = self._accounts[self._index]
             account.consecutive_read_failures += 1
+            # Cumulative tally for the UI — never reset by an intermittent success (only on
+            # revive), so the owner sees how OFTEN a session has failed (TASK-118 follow-up).
+            account.read_failure_count += 1
             if account.first_read_failure_at is None:
                 account.first_read_failure_at = self._clock()
             account.last_error_reason = reason
@@ -534,6 +550,7 @@ class AccountPool:
         account.cooldown_until = 0.0
         account.flood_strikes = 0
         account.consecutive_read_failures = 0
+        account.read_failure_count = 0
         account.first_read_failure_at = None
         account.last_read_ok_at = None
         account.last_error_reason = ""

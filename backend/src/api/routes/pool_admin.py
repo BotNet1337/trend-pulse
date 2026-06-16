@@ -40,6 +40,8 @@ from api.auth import current_superuser
 from collector.constants import (
     POOL_HEALTH_REDIS_KEY,
     POOL_MAX,
+    POOL_RELOAD_SIGNAL_REDIS_KEY,
+    POOL_RELOAD_SIGNAL_TTL_SECONDS,
     POOL_REVIVE_SIGNAL_REDIS_KEY,
     POOL_REVIVE_SIGNAL_TTL_SECONDS,
     QUARANTINE_REDIS_KEY,
@@ -222,6 +224,10 @@ class PoolHealthAccount(BaseModel):
     # NON-SECRET per-account identity (TASK-120): null for an env-only / pre-identity slot.
     display_label: str | None = None
     tg_user_id: int | None = None
+    # CUMULATIVE read-failure count (pool-admin UI): how often this account's reads have
+    # failed (e.g. the "wrong session ID"/SecurityError loop), so the owner sees error
+    # FREQUENCY. Additive; default 0 so an older snapshot without the field validates.
+    read_failure_count: int = 0
 
 
 class PoolHealthResponse(BaseModel):
@@ -500,9 +506,31 @@ async def _persist_qr_success(
         )
         return response
 
+    # Live pickup (every successful scan — ADD and REVIVE): tell the worker to rebuild the
+    # pool from the store on its next tick so a newly-added/revived session goes live
+    # within ~one tick, no restart. Best-effort/fail-open (a missed flag self-heals on the
+    # next restart). The single-slot revive-signal below is kept for the in-place swap on a
+    # REVIVE (it carries the slot identity); the reload covers the ADD case it cannot.
+    _signal_reload(revive_redis)
     if result.outcome is ReviveOutcome.REVIVE:
         _signal_revive(revive_redis, result)
     return response.model_copy(update={"outcome": result.outcome.value})
+
+
+def _signal_reload(revive_redis: _ReviveRedisLike) -> None:
+    """Write the NON-SECRET pool-reload flag so the worker rebuilds the pool (best-effort).
+
+    Fires on EVERY successful QR scan (add AND revive). The value is a UTC ISO timestamp
+    only — NO session string, NO identity (the worker rebuilds the whole pool from the
+    encrypted DB store, so it needs no payload). Fail-open: a Redis error is logged (class
+    name only) and swallowed — a missed reload self-heals on the next worker restart / full
+    build, and the persisted DB row is the source of truth either way.
+    """
+    payload = datetime.now(UTC).isoformat()
+    try:
+        revive_redis.set(POOL_RELOAD_SIGNAL_REDIS_KEY, payload, ex=POOL_RELOAD_SIGNAL_TTL_SECONDS)
+    except RedisError as exc:
+        logger.warning("could not write pool reload signal (Redis): %s", type(exc).__name__)
 
 
 def _signal_revive(revive_redis: _ReviveRedisLike, result: UpsertResult) -> None:

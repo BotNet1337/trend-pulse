@@ -874,6 +874,11 @@
             "title": "Last Error Reason",
             "type": "string"
           },
+          "read_failure_count": {
+            "default": 0,
+            "title": "Read Failure Count",
+            "type": "integer"
+          },
           "state": {
             "title": "State",
             "type": "string"
