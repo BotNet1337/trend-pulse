@@ -51,7 +51,7 @@ from collector.errors import (
 )
 from collector.telegram.account_pool import session_fingerprint
 from collector.telegram.qr_login import QRLoginPoll, QRLoginService, QRLoginStatus
-from config import Settings, get_settings, telegram_pool_sessions
+from config import Settings, active_env_pool_sessions, get_settings
 from storage.database import get_session
 from storage.models.users import User
 from storage.pool_session_store import ReviveOutcome, UpsertResult, upsert_revive_or_add
@@ -461,7 +461,9 @@ async def _persist_qr_success(
     assert poll.tg_user_id is not None  # narrowed by the caller
     assert poll.session_string is not None
     assert poll.display_label is not None
-    env_floor_size = len(set(telegram_pool_sessions(settings)))
+    # Store-only by default → env floor reserves no capacity (active_env_pool_sessions
+    # is [] unless telegram_pool_use_env_sessions is explicitly enabled).
+    env_floor_size = len(set(active_env_pool_sessions(settings)))
     try:
         result: UpsertResult = await run_in_threadpool(
             upsert_revive_or_add,

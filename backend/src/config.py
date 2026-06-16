@@ -493,7 +493,14 @@ class Settings(BaseSettings):
     # Comma-separated pool StringSession strings (technical accounts) from env
     # TELEGRAM_POOL_SESSIONS. Secret — supplied via sensitive.env; NEVER a user
     # session_string (overview §2/§7). Parsed via `telegram_pool_sessions()`.
+    #
+    # DEPRECATED as the primary source: the pool is now sourced from the encrypted
+    # dynamic `pool_sessions` store (QR onboarding/revive, TASK-119/120). This env var
+    # is IGNORED by default (`telegram_pool_use_env_sessions=False` → store-only) and
+    # kept only as a reversible disaster-recovery/bootstrap escape hatch. Set
+    # TELEGRAM_POOL_USE_ENV_SESSIONS=true to re-enable the env floor.
     telegram_pool_sessions: str = ""
+    telegram_pool_use_env_sessions: bool = False
     # TASK-114: QR-login token validity window (seconds). The QR-login service mints
     # a brand-new StringSession for a user-owned account; this bounds how long an
     # in-progress login lives before `poll()` reports `expired`. Named default.
@@ -931,6 +938,19 @@ def telegram_pool_sessions(settings: Settings) -> list[str]:
     Empty entries are stripped. Returns `[]` when unset. Secrets are never logged.
     """
     return [s.strip() for s in settings.telegram_pool_sessions.split(",") if s.strip()]
+
+
+def active_env_pool_sessions(settings: Settings) -> list[str]:
+    """Env pool sessions ONLY when the env floor is explicitly enabled.
+
+    Store-only by default: the pool is sourced from the encrypted dynamic
+    `pool_sessions` store (QR onboarding/revive). The bootstrap/disaster-recovery env
+    floor is opt-in via `telegram_pool_use_env_sessions` (TELEGRAM_POOL_USE_ENV_SESSIONS).
+    Returns `[]` when the floor is disabled so `TELEGRAM_POOL_SESSIONS` is fully ignored.
+    """
+    if not settings.telegram_pool_use_env_sessions:
+        return []
+    return telegram_pool_sessions(settings)
 
 
 @lru_cache

@@ -68,7 +68,7 @@ def _build_telegram_collector() -> SourceCollector:
     from collector.telegram.account_pool import AccountPool, session_fingerprint
     from collector.telegram.client import build_telethon_client
     from collector.telegram.reader import TelegramCollector
-    from config import get_settings, telegram_pool_sessions
+    from config import active_env_pool_sessions, get_settings
     from storage.redis_client import get_redis_client
 
     settings = get_settings()
@@ -81,8 +81,11 @@ def _build_telegram_collector() -> SourceCollector:
     # collector (pool-health self-observation, TASK-035; revive-signal, TASK-119).
     redis = get_redis_client()
 
+    # Store-only by default: env floor is opt-in (active_env_pool_sessions → [] unless
+    # telegram_pool_use_env_sessions). The pool is sourced from the encrypted dynamic
+    # store; an empty store simply means no pool until a session is QR-onboarded.
     sessions, tg_user_ids, display_labels = _union_pool_sessions(
-        env_sessions=telegram_pool_sessions(settings),
+        env_sessions=active_env_pool_sessions(settings),
         fingerprint=session_fingerprint,
     )
     pool = AccountPool.from_sessions(
