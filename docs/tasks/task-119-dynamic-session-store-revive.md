@@ -206,16 +206,16 @@ Redis `pool:quarantined_fingerprints` (TASK-102), loaded in `from_sessions` and 
   error does not crash the tick.
 
 ## Checkpoints
-current_step: 4
+current_step: 6
 baseline_commit: 98bd84c834fb58f266e4837a54783d508f129070
 branch: "feat/pool-health-revive"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [x] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — full suite + migration round-trip + ruff + mypy strict green)
-- [ ] 5 review (code-reviewer)
-- [ ] 5.5 security (MANDATORY — encrypted-at-rest secret + revive concurrency; security-reviewer)
+- [x] 4 verify (1152 unit + migration round-trip on pgvector) (G2 — full suite + migration round-trip + ruff + mypy strict green)
+- [x] 5 review (opus: HIGH joint-cap + MEDIUM + LOW fixed) (code-reviewer)
+- [x] 5.5 security (opus PASS; INFO: verify prod FIELD_ENCRYPTION_KEY) (MANDATORY — encrypted-at-rest secret + revive concurrency; security-reviewer)
 - [ ] 6 ship (PR)
 - [ ] 7 learnings (auto)
 debug_runs: []
