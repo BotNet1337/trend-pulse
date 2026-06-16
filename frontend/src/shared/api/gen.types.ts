@@ -1254,6 +1254,11 @@ export interface components {
              */
             healthy: number;
             /**
+             * Ingest Contradiction
+             * @default false
+             */
+            ingest_contradiction: boolean;
+            /**
              * Quarantined
              * @default 0
              */

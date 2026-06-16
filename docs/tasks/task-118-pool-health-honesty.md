@@ -166,13 +166,13 @@ exists as `observability/signal_latency.py::emit_ingest_staleness` (TASK-100).
 - FE `lib` vitest: `failing` label/variant/narrowing.
 
 ## Checkpoints
-current_step: 3
+current_step: 4
 baseline_commit: 98bd84c834fb58f266e4837a54783d508f129070
-branch: ""
+branch: "feat/pool-health-revive"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
+- [x] 3 do (TDD: failing test → minimal code)
 - [ ] 4 verify (G2 — full suite + ruff + mypy strict + FE typecheck/vitest green)
 - [ ] 5 review (code-reviewer)
 - [ ] 5.5 security (snapshot index-only; confirm no secret/identity leak)
@@ -187,3 +187,46 @@ observational here so a false positive can never starve the pool before revive e
 ingest-staleness contradiction is the single most operator-meaningful signal from the incident
 ("all green but 0 posts") — surface it as a derived flag, computed cheaply from an existing metric,
 never by adding a DB query to the hot collect path.
+
+## Details (do — step 3, 2026-06-16)
+Implemented TDD (RED→GREEN), smallest diff. All gates green (see below).
+
+What changed (per-file, matches Scope):
+- `collector/constants.py` — `POOL_FAILING_THRESHOLD=5`, `POOL_FAILING_NO_READ_WINDOW_SECONDS=1800`
+  (via `_..._MINUTES`), `INGEST_STALENESS_REDIS_KEY="ingest:staleness:latest"`,
+  `INGEST_STALENESS_TTL_SECONDS=900` (named, no magic literals).
+- `account_pool.py` — `_Account` += `last_read_ok_at: float|None`, `consecutive_read_failures: int`,
+  `first_read_failure_at: float|None` (annotation-only). `AccountState` += `"failing"`. New
+  `note_read_success()` (stamp clock + reset failures/window) and `note_read_failure(reason)`
+  (increment + stamp first-failure window start + set `last_error_reason`). `account_statuses()`
+  classifies a LIVE account `failing` via pure `_is_failing()` AFTER quarantine/cooling (precedence
+  preserved). `acquire()`/rotation/cooldown/quarantine BYTE-FOR-BYTE unchanged.
+- `reader.py` — `note_read_success()` after the clean iteration loop (beside `report_success()`);
+  `note_read_failure(type(exc).__name__)` at the previously-silent transient `auth_error` branch AND
+  the mid-iteration transient branch. Cadence fix: `_emit_health_best_effort(emit_metric=...)` — the
+  once-per-tick `read()`-end call keeps `emit_metric=True`; the notify-only sites (auth_error /
+  all_flood / pool_exhausted / auth_dead) pass `emit_metric=False` so they only throttle-notify and
+  no longer re-emit the metric/snapshot per-channel/acquire (the ~1 emit/sec fix).
+- `signal_latency.py` — new `publish_ingest_staleness(redis, {stale, age_s})` writes the small bridge
+  key with TTL (best-effort). `observability/tasks.py` calls it after `emit_ingest_staleness`.
+- `pool_health.py` — `_publish_snapshot` adds `ingest_contradiction` via `_ingest_contradiction()`:
+  true iff `size>0 and healthy==size` AND the bridge key says `stale` (fail-open on
+  missing/expired/malformed/Redis-error). Single-emit semantics confirmed.
+- `pool_admin.py` — `_PoolHealthSnapshot` += `ingest_contradiction: bool=False` (extra="ignore" →
+  legacy snapshot still validates), `PoolHealthResponse` += `ingest_contradiction`, `state` doc
+  widened to mention `failing`. OpenAPI dump + gen types regenerated (additive +5/+5).
+- FE `lib.ts` — `AccountState` += `failing`; `asAccountState`/`accountStateLabel`("Failing")/
+  `accountStateBadgeVariant`(warning, distinct from quarantined danger). `pool-health-table.tsx` —
+  summary relabelled "{healthy} of {target} target healthy"; last-error column renders for `failing`
+  too; new `ingest_contradiction` alert banner.
+
+Tests added: `tests/unit/collector/test_account_pool_failing.py` (11),
+`tests/unit/collector/test_reader_read_outcome.py` (3), `+4` in `test_pool_health.py`, `+2` in
+integration `test_pool_admin_api.py`, FE `tests/unit/pool-admin/lib.spec.ts` (4).
+
+Gates: `make fmt/lint/typecheck` green; `make test` = 1117 passed; FE `tsc -b`/`eslint`/`vitest`
+= 306 passed; `openapi-drift-check` idempotent (only the additive field). Rotation invariant verified
+by the unchanged `test_account_pool_rotation.py` + `test_auth_quarantine.py` (still pass).
+
+Decision recorded: `failing` is OBSERVATIONAL — `test_failing_does_not_change_acquire` pins that a
+failing account is still handed out by `acquire()`.

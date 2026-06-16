@@ -22,6 +22,8 @@ from redis.exceptions import RedisError
 from collector.constants import (
     BACKOFF_BASE_SECONDS,
     BACKOFF_CAP_SECONDS,
+    POOL_FAILING_NO_READ_WINDOW_SECONDS,
+    POOL_FAILING_THRESHOLD,
     POOL_MAX,
     POOL_MIN,
     QUARANTINE_PERSIST_TTL_SECONDS,
@@ -81,10 +83,21 @@ class _Account:
     # CLASS NAME (e.g. "AuthKeyDuplicatedError") or "FLOOD_WAIT", set by the reader at
     # the existing catch sites. Last-known only (not history); NEVER a session string.
     last_error_reason: str = ""
+    # Read-outcome bookkeeping (TASK-118), set by the reader's success / transient-error
+    # catch sites. Annotation-only — they NEVER change rotation/cooldown/quarantine.
+    #   * `last_read_ok_at` — monotonic stamp of the last CLEAN read (None until first OK).
+    #   * `consecutive_read_failures` — count of read failures since the last clean read
+    #     (reset to 0 on success). Drives the `failing` classification.
+    #   * `first_read_failure_at` — monotonic stamp of the FIRST read failure since the
+    #     last clean read; the no-read-window timer starts here so a never-read-but-erroring
+    #     account is eventually surfaced as failing without alarming a freshly booted pool.
+    last_read_ok_at: float | None = None
+    consecutive_read_failures: int = 0
+    first_read_failure_at: float | None = None
 
 
-# Account lifecycle state exposed in the health snapshot (TASK-115).
-AccountState = Literal["healthy", "cooling", "quarantined"]
+# Account lifecycle state exposed in the health snapshot (TASK-115; `failing` TASK-118).
+AccountState = Literal["healthy", "cooling", "quarantined", "failing"]
 
 
 @dataclass(frozen=True)
@@ -213,6 +226,11 @@ class AccountPool:
             elif account.cooldown_until > now:
                 state = "cooling"
                 cooldown_remaining = account.cooldown_until - now
+            elif self._is_failing(account, now):
+                # Live (not quarantined/cooling) but its reads persistently fail —
+                # observational only (TASK-118); `acquire()` is UNAFFECTED.
+                state = "failing"
+                cooldown_remaining = None
             else:
                 state = "healthy"
                 cooldown_remaining = None
@@ -225,6 +243,56 @@ class AccountPool:
                 )
             )
         return statuses
+
+    @staticmethod
+    def _is_failing(account: _Account, now: float) -> bool:
+        """Classify a LIVE account (not quarantined/cooling) as `failing` (TASK-118).
+
+        Failing iff its reads persistently fail: either `POOL_FAILING_THRESHOLD`
+        consecutive read failures, OR it has errored at least once, never once read OK,
+        and the no-read window has elapsed since its FIRST failure. Pure + side-effect
+        free; FLOOD_WAIT cooling is handled by the caller (precedence) and never reaches
+        here as a read failure (it does not increment the counter).
+        """
+        if account.consecutive_read_failures >= POOL_FAILING_THRESHOLD:
+            return True
+        return (
+            account.last_read_ok_at is None
+            and account.first_read_failure_at is not None
+            and now - account.first_read_failure_at >= POOL_FAILING_NO_READ_WINDOW_SECONDS
+        )
+
+    def note_read_success(self) -> None:
+        """Record a CLEAN read on the CURRENT account (TASK-118).
+
+        Stamps `last_read_ok_at` (monotonic) and resets the consecutive-failure counter
+        and the no-read window, so a recovered account leaves `failing` even if the last
+        error reason text lingers (last-known, consistent with TASK-115). Annotation only
+        — does NOT change rotation/cooldown/quarantine. Called by the reader alongside
+        `report_success()` after a clean iteration.
+        """
+        if self._accounts:
+            account = self._accounts[self._index]
+            account.last_read_ok_at = self._clock()
+            account.consecutive_read_failures = 0
+            account.first_read_failure_at = None
+
+    def note_read_failure(self, reason: str) -> None:
+        """Record a READ FAILURE on the CURRENT account (TASK-118).
+
+        Increments the consecutive-failure counter, stamps the no-read window start on
+        the FIRST failure since the last clean read, and records the non-fatal `reason`
+        (an error CLASS NAME, e.g. the "wrong session ID" Telethon error — NEVER a
+        session string). Called by the reader at the currently-silent transient catch
+        site. Annotation only — does NOT change rotation/cooldown/quarantine, and is
+        DISTINCT from FLOOD_WAIT (which is cooling, not a read failure).
+        """
+        if self._accounts:
+            account = self._accounts[self._index]
+            account.consecutive_read_failures += 1
+            if account.first_read_failure_at is None:
+                account.first_read_failure_at = self._clock()
+            account.last_error_reason = reason
 
     def note_current_error(self, reason: str) -> None:
         """Record the last-known error `reason` on the CURRENT account (TASK-115).

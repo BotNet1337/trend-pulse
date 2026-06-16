@@ -91,8 +91,17 @@ class TelegramCollector:
         *,
         notify_reason: str | None = None,
         notify_text: str | None = None,
+        emit_metric: bool = True,
     ) -> None:
         """Emit pool health metric + optionally send an ops self-alert (best-effort).
+
+        `emit_metric` (TASK-118) controls the once-per-tick semantics of the
+        `pool_health` METRIC + Redis snapshot write: the periodic summary at the end of
+        `read()` keeps `emit_metric=True` (the single emit per collect cycle), while the
+        notify-only degradation sites (auth_error / all_flood / pool_exhausted /
+        auth_dead) call with `emit_metric=False` so they ONLY throttle-notify and do NOT
+        re-emit the metric per-channel/per-acquire (prod was seeing ~1 emit/sec). The
+        ops self-alert keeps its own Redis throttle in all cases.
 
         NEVER raises — swallows all exceptions with a warn log so self-observation
         cannot crash the collector (Invariant).  When settings/redis are None (unit
@@ -104,8 +113,11 @@ class TelegramCollector:
             from observability.pool_health import emit_pool_health, notify_ops
 
             # Pass redis so the full snapshot is bridged to `pool:health:latest`
-            # for the API to read cross-process (TASK-115); best-effort write.
-            result = emit_pool_health(self._pool, self._settings, self._redis)
+            # for the API to read cross-process (TASK-115); best-effort write. Only the
+            # once-per-tick caller emits the metric/snapshot (TASK-118 cadence fix).
+            result = (
+                emit_pool_health(self._pool, self._settings, self._redis) if emit_metric else None
+            )
             if notify_reason is not None and notify_text is not None:
                 notify_ops(
                     reason=notify_reason,
@@ -113,7 +125,7 @@ class TelegramCollector:
                     settings=self._settings,
                     redis=self._redis,
                 )
-            elif result["degraded"] and notify_reason is None:
+            elif result is not None and result["degraded"] and notify_reason is None:
                 # Periodic tick: degraded → self-alert without an explicit reason.
                 notify_ops(
                     reason="pool_below_target",
@@ -151,6 +163,7 @@ class TelegramCollector:
                 f"TG pool: сессия #{fingerprint} мертва ({type(exc).__name__}) — "
                 "аккаунт выселен из пула, перевыпусти сессию."
             ),
+            emit_metric=False,
         )
 
     async def aclose(self) -> None:
@@ -233,11 +246,17 @@ class TelegramCollector:
                 raise SourceUnavailableError(
                     f"telegram account quarantined (permanent auth error) reading {ref.handle}"
                 ) from exc
-            # Non-flood TRANSIENT error on entity resolve (network/private) — notify
-            # ops (throttled), keep the account (it may recover next tick).
+            # Non-flood TRANSIENT error on entity resolve (network/private, or the
+            # swallowed "wrong session ID" class) — record a READ FAILURE on the current
+            # account (TASK-118) so a persistently-failing-but-connected account is
+            # surfaced as `failing` instead of staying `healthy` forever. The reason is
+            # the error CLASS NAME, never a session string. Then notify ops (throttled)
+            # and keep the account (it may recover next tick) — rotation UNCHANGED.
+            self._pool.note_read_failure(type(exc).__name__)
             self._emit_health_best_effort(
                 notify_reason="auth_error",
                 notify_text=(f"TG pool: account error on entity resolve ({type(exc).__name__})"),
+                emit_metric=False,
             )
             raise SourceUnavailableError(f"cannot resolve telegram ref {ref.handle}") from exc
 
@@ -274,6 +293,10 @@ class TelegramCollector:
                     break
                 yield map_entity(message, ref)
             self._pool.report_success()
+            # Record a CLEAN read outcome on the current account (TASK-118): resets the
+            # consecutive-failure counter + stamps last_read_ok_at so a recovered account
+            # leaves `failing`. Annotation only — no rotation/cooldown change.
+            self._pool.note_read_success()
         except Exception as exc:
             if (wait := _flood_wait_seconds(exc)) is not None:
                 # Record the reason on the CURRENT account before report_flood_wait
@@ -292,6 +315,10 @@ class TelegramCollector:
                 raise SourceUnavailableError(
                     f"telegram account quarantined (permanent auth error) reading {ref.handle}"
                 ) from exc
+            # Non-flood TRANSIENT error mid-iteration (the swallowed "wrong session ID"
+            # class can surface here too) — record a READ FAILURE on the current account
+            # (TASK-118), class name only, then skip the ref. Rotation UNCHANGED.
+            self._pool.note_read_failure(type(exc).__name__)
             raise SourceUnavailableError(f"failed reading telegram ref {ref.handle}") from exc
 
     async def _acquire_ready_client(self) -> TelegramClientProtocol:
@@ -318,6 +345,7 @@ class TelegramCollector:
                         "TG pool fully exhausted - all sessions dead/quarantined; "
                         "ingest is stopped. Re-mint Telegram sessions."
                     ),
+                    emit_metric=False,
                 )
                 raise
             except AllAccountsFloodWaitError:
@@ -326,6 +354,7 @@ class TelegramCollector:
                 self._emit_health_best_effort(
                     notify_reason="all_flood",
                     notify_text=(f"TG pool: all accounts flooded. cooldown_remaining={int(wait)}s"),
+                    emit_metric=False,
                 )
                 if wait > FLOOD_WAIT_INLINE_CAP_SECONDS:
                     raise

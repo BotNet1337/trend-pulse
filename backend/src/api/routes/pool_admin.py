@@ -141,7 +141,7 @@ class PoolHealthAccount(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     index: int
-    state: str  # "healthy" | "cooling" | "quarantined"
+    state: str  # "healthy" | "cooling" | "quarantined" | "failing"
     cooldown_remaining_seconds: float | None = None
     last_error_reason: str = ""
 
@@ -166,6 +166,10 @@ class PoolHealthResponse(BaseModel):
     as_of: str | None = None
     stale: bool = True
     accounts: list[PoolHealthAccount] = Field(default_factory=list)
+    # Derived "all-healthy-but-ingest-stale" contradiction (TASK-118): true when every
+    # account is healthy yet ingest is stale (the "all green but 0 posts" signal). Default
+    # false (fail-open) so an old snapshot or a missing flag never raises a false alarm.
+    ingest_contradiction: bool = False
 
 
 class _PoolHealthSnapshot(BaseModel):
@@ -185,6 +189,8 @@ class _PoolHealthSnapshot(BaseModel):
     degraded: bool
     as_of: str
     accounts: list[PoolHealthAccount]
+    # Additive (TASK-118); default false so an older snapshot without the field validates.
+    ingest_contradiction: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -353,6 +359,7 @@ def get_pool_health(
         as_of=snapshot.as_of,
         stale=stale,
         accounts=snapshot.accounts,
+        ingest_contradiction=snapshot.ingest_contradiction,
     )
 
 

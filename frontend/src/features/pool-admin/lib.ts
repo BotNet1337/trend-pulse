@@ -9,8 +9,14 @@
  * QR flow state machine and the pool-health badges).
  */
 
-/** Per-account pool state (backend `PoolHealthAccount.state`). */
-export type AccountState = 'healthy' | 'cooling' | 'quarantined';
+/**
+ * Per-account pool state (backend `PoolHealthAccount.state`).
+ *
+ * `failing` (TASK-118) means the account is CONNECTED but its reads persistently fail
+ * (the swallowed "wrong session ID" class) — distinct from `quarantined` (a dead
+ * session, permanently evicted) and observational only on the backend.
+ */
+export type AccountState = 'healthy' | 'cooling' | 'quarantined' | 'failing';
 
 /** QR-login poll status (backend `QRLoginPollResponse.status`). */
 export type QrLoginStatus =
@@ -53,6 +59,7 @@ export function asAccountState(raw: string): AccountState {
     case 'healthy':
     case 'cooling':
     case 'quarantined':
+    case 'failing':
       return raw;
     default:
       return 'quarantined';
@@ -68,6 +75,8 @@ export function accountStateLabel(state: AccountState): string {
       return 'Cooling';
     case 'quarantined':
       return 'Quarantined';
+    case 'failing':
+      return 'Failing';
   }
 }
 
@@ -79,6 +88,10 @@ export function accountStateBadgeVariant(
     case 'healthy':
       return 'success';
     case 'cooling':
+      return 'warning';
+    // `failing` is a soft alert (connected-but-not-reading) — `warning`, distinct from
+    // the `danger` of a dead `quarantined` session (TASK-118).
+    case 'failing':
       return 'warning';
     case 'quarantined':
       return 'danger';

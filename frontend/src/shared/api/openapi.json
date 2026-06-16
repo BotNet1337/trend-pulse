@@ -912,6 +912,11 @@
             "title": "Healthy",
             "type": "integer"
           },
+          "ingest_contradiction": {
+            "default": false,
+            "title": "Ingest Contradiction",
+            "type": "boolean"
+          },
           "quarantined": {
             "default": 0,
             "title": "Quarantined",

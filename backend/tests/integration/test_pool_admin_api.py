@@ -364,6 +364,34 @@ class TestPoolHealth:
         assert cooling["cooldown_remaining_seconds"] == 42.0
         assert cooling["last_error_reason"] == "FLOOD_WAIT"
 
+    def test_fresh_snapshot_defaults_ingest_contradiction_false(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        """A legacy snapshot WITHOUT `ingest_contradiction` validates (extra=ignore) and
+        the response defaults the flag to false (TASK-118 additive, backward-compatible)."""
+        _seed_pool_health(_fresh_snapshot())
+        _login_as_superuser(client, db_session, "pa-health-contra-default@example.com")
+
+        body = client.get(_POOL_HEALTH_PATH).json()
+        assert body["ingest_contradiction"] is False
+
+    def test_snapshot_passes_through_ingest_contradiction_and_failing(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        """The API passes through the collector-derived `ingest_contradiction` flag and a
+        `failing` per-account state (TASK-118)."""
+        snapshot = _fresh_snapshot()
+        snapshot["ingest_contradiction"] = True
+        snapshot["accounts"][0]["state"] = "failing"
+        snapshot["accounts"][0]["last_error_reason"] = "WrongSessionIdError"
+        _seed_pool_health(snapshot)
+        _login_as_superuser(client, db_session, "pa-health-contra@example.com")
+
+        body = client.get(_POOL_HEALTH_PATH).json()
+        assert body["ingest_contradiction"] is True
+        failing = next(a for a in body["accounts"] if a["state"] == "failing")
+        assert failing["last_error_reason"] == "WrongSessionIdError"
+
     def test_missing_snapshot_is_stale(self, client: TestClient, db_session: Session) -> None:
         # Empty fakeredis (no key) wired as the dependency.
         redis = fakeredis.FakeRedis(decode_responses=True)
