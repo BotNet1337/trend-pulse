@@ -323,7 +323,13 @@ def get_pool_health(
             detail=_POOL_HEALTH_REDIS_UNREACHABLE_MESSAGE,
         ) from None
     finally:
-        redis.close()
+        # Teardown must NEVER mask the in-flight response (e.g. turn a 503 into a
+        # 500). Guard at the call site so it holds for ANY `_RedisLike` impl, not
+        # only the self-guarding `_RedisAdapter`. Log the type only (no DSN/secret).
+        try:
+            redis.close()
+        except Exception as exc:
+            logger.warning("pool-health redis close failed: %s", type(exc).__name__)
 
     if raw is None:
         # No recent snapshot (worker down ≥ TTL, or never ran).

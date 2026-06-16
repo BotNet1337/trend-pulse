@@ -148,3 +148,10 @@ Evidence (worktree root):
   behavioral proof is the fake-redis + DB-superuser integration suite; no live stack needed).
 
 Scope = pool_admin.py (new) + main.py (+5 lines) + test_pool_admin_api.py (new) + this task doc.
+
+### Fix — redis close-guard at endpoint finally (2026-06-16)
+Full-stack integration run surfaced a real gap: the close-guard lived only in
+`_RedisAdapter.close()`, but `get_pool_health`'s `finally: redis.close()` calls any injected
+`_RedisLike`, so a raising `close()` could still mask the 503→500. Guarded the endpoint
+`finally` itself (swallow + log type only). Integration suite now 17/17 green against a real
+pgvector Postgres + fakeredis.
