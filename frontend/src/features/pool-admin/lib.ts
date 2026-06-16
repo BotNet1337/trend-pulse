@@ -141,16 +141,45 @@ export function asReviveOutcome(raw: string | null | undefined): ReviveOutcome |
 }
 
 /**
- * Non-secret display label for an account (the masked id / `@username` from the store).
- * Falls back to `account #<index>` when the backend has no identity for the slot (an
- * env-only / pre-identity account) so every row is still nameable (TASK-120).
+ * Non-secret PRIMARY identity for an account row: the `@username` (`display_label` from
+ * `get_me()`, e.g. "@hart_1337"). Falls back to `#<index>` only when the backend has no
+ * identity for the slot (an env-only / pre-identity account) so every row is still
+ * nameable. The headline is the username; the numeric `index` is a muted secondary detail
+ * shown separately in the table.
  */
 export function accountLabel(
   displayLabel: string | null | undefined,
   index: number,
 ): string {
   const trimmed = displayLabel?.trim();
-  return trimmed ? trimmed : `account #${index}`;
+  return trimmed ? trimmed : `#${index}`;
+}
+
+/**
+ * Known per-account error CLASSES → a short, human RU explanation so the owner can react.
+ * Keys are the Telethon exception class names the backend records as `last_error_reason`
+ * (CLASS NAME only — never a secret/message). Maintained as a single source of truth.
+ */
+const KNOWN_ERROR_EXPLANATIONS: Readonly<Record<string, string>> = {
+  SecurityError:
+    'Конфликт сессии (wrong session ID) — сессия используется параллельно, переподключи через QR',
+  AuthKeyDuplicatedError: 'Сессия мертва — перевыпусти',
+  AuthKeyError: 'Сессия мертва — перевыпусти',
+  SessionRevokedError: 'Сессия мертва — перевыпусти',
+  UserDeactivatedError: 'Сессия мертва — перевыпусти',
+  FLOOD_WAIT: 'FLOOD_WAIT — временный лимит Telegram',
+};
+
+/**
+ * Human, non-secret explanation for an account's `last_error_reason` (the recorded error
+ * CLASS NAME, never a secret). Returns a readable RU line for a known class, the RAW class
+ * name for an unknown one (never guess), or null when there is no reason to show. Pure +
+ * unit-tested — never logs.
+ */
+export function accountErrorExplanation(reason: string | null | undefined): string | null {
+  const trimmed = reason?.trim();
+  if (!trimmed) return null;
+  return KNOWN_ERROR_EXPLANATIONS[trimmed] ?? trimmed;
 }
 
 /**

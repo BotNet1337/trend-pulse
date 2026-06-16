@@ -163,3 +163,90 @@ def test_empty_pool_statuses_empty() -> None:
     clock = _Clock()
     pool = AccountPool(_now=clock)
     assert pool.account_statuses() == []
+
+
+# ---------------------------------------------------------------------------
+# Pool-admin UI honesty (read_failure_count + durable last_error_reason)
+# ---------------------------------------------------------------------------
+
+
+def test_read_failure_count_increments_and_is_exposed() -> None:
+    """`note_read_failure` increments a CUMULATIVE per-account `read_failure_count`
+    surfaced on the status — so the UI can show error frequency (e.g. "xN")."""
+    clock = _Clock()
+    pool = _pool_with_clock(1, clock)
+    pool.acquire()
+
+    for _ in range(3):
+        pool.note_read_failure("SecurityError")
+
+    status = pool.account_statuses()[0]
+    assert status.read_failure_count == 3
+    assert status.last_error_reason == "SecurityError"
+
+
+def test_read_failure_count_is_cumulative_across_a_success() -> None:
+    """The CUMULATIVE failure count is NOT reset by a recovering read — only the
+    consecutive (failing-classification) counter is. The owner still sees how often a
+    session has failed even if it occasionally succeeds (the wrong-session-ID case)."""
+    clock = _Clock()
+    pool = _pool_with_clock(1, clock)
+    pool.acquire()
+
+    pool.note_read_failure("SecurityError")
+    pool.note_read_failure("SecurityError")
+    pool.note_read_success()  # intermittent success
+    pool.note_read_failure("SecurityError")
+
+    status = pool.account_statuses()[0]
+    assert status.read_failure_count == 3  # cumulative, survives the success
+    account = pool._accounts[0]
+    assert account.consecutive_read_failures == 1  # reset on success, then +1
+
+
+def test_last_error_reason_survives_an_intermittent_success() -> None:
+    """A mostly-failing session that occasionally succeeds must STILL show its last
+    error reason (the "wrong session ID" / SecurityError case) — `note_read_success`
+    keeps the last-known reason and only clears the consecutive counter/window."""
+    clock = _Clock()
+    pool = _pool_with_clock(1, clock)
+    pool.acquire()
+
+    pool.note_read_failure("SecurityError")
+    pool.note_read_success()
+
+    status = pool.account_statuses()[0]
+    assert status.last_error_reason == "SecurityError"  # NOT wiped by the success
+    assert status.state == "healthy"  # consecutive counter reset → recovered
+
+
+def test_security_error_is_recorded_as_class_name_not_message() -> None:
+    """A SecurityError-shaped read failure records the CLASS NAME only (never the
+    message / a secret) as the last error reason."""
+
+    class SecurityError(Exception):
+        """Mimics Telethon's SecurityError ("wrong session ID")."""
+
+    clock = _Clock()
+    pool = _pool_with_clock(1, clock)
+    pool.acquire()
+
+    exc = SecurityError("wrong session ID secret-leak-12345")
+    pool.note_read_failure(type(exc).__name__)
+
+    status = pool.account_statuses()[0]
+    assert status.last_error_reason == "SecurityError"
+    assert "secret-leak" not in status.last_error_reason
+
+
+def test_revive_resets_read_failure_count() -> None:
+    """A revived slot starts clean — its cumulative `read_failure_count` is reset to 0."""
+    clock = _Clock()
+    pool = _pool_with_clock(1, clock)
+    pool.acquire()
+    for _ in range(POOL_FAILING_THRESHOLD):
+        pool.note_read_failure("SecurityError")
+    assert pool.account_statuses()[0].read_failure_count == POOL_FAILING_THRESHOLD
+
+    pool._accounts[0].read_failure_count = 0  # mirrors revive_slot's reset
+    assert pool.account_statuses()[0].read_failure_count == 0

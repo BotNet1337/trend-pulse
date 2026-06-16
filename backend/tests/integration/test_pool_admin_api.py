@@ -439,14 +439,20 @@ class TestPoolHealth:
         snapshot = _fresh_snapshot()
         snapshot["ingest_contradiction"] = True
         snapshot["accounts"][0]["state"] = "failing"
-        snapshot["accounts"][0]["last_error_reason"] = "WrongSessionIdError"
+        snapshot["accounts"][0]["last_error_reason"] = "SecurityError"
+        snapshot["accounts"][0]["read_failure_count"] = 7
         _seed_pool_health(snapshot)
         _login_as_superuser(client, db_session, "pa-health-contra@example.com")
 
         body = client.get(_POOL_HEALTH_PATH).json()
         assert body["ingest_contradiction"] is True
         failing = next(a for a in body["accounts"] if a["state"] == "failing")
-        assert failing["last_error_reason"] == "WrongSessionIdError"
+        assert failing["last_error_reason"] == "SecurityError"
+        # The cumulative failure count passes through so the UI can show "xN" (TASK-118).
+        assert failing["read_failure_count"] == 7
+        # An account whose snapshot omits the field defaults to 0 (additive/back-compat).
+        cooling = next(a for a in body["accounts"] if a["state"] == "cooling")
+        assert cooling["read_failure_count"] == 0
 
     def test_missing_snapshot_is_stale(self, client: TestClient, db_session: Session) -> None:
         # Empty fakeredis (no key) wired as the dependency.

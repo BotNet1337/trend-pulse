@@ -224,6 +224,10 @@ class PoolHealthAccount(BaseModel):
     # NON-SECRET per-account identity (TASK-120): null for an env-only / pre-identity slot.
     display_label: str | None = None
     tg_user_id: int | None = None
+    # CUMULATIVE read-failure count (pool-admin UI): how often this account's reads have
+    # failed (e.g. the "wrong session ID"/SecurityError loop), so the owner sees error
+    # FREQUENCY. Additive; default 0 so an older snapshot without the field validates.
+    read_failure_count: int = 0
 
 
 class PoolHealthResponse(BaseModel):
