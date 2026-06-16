@@ -22,6 +22,8 @@ from datetime import UTC, datetime
 from typing import cast
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from collector.base import PostMetrics, RawPost, SourceKind, SourceRef
 from pipeline import batch_processor
 from storage.models import EMBEDDING_DIM
@@ -492,6 +494,105 @@ def test_dissimilar_candidate_creates_new_cluster() -> None:
     assert len(new_clusters) == 1
     assert new_clusters[0].user_id == user_id
     assert result == 1
+
+
+# ---------------------------------------------------------------------------
+# TASK-123: cross-channel loose merge threshold in _find_mergeable_cluster
+# ---------------------------------------------------------------------------
+
+
+class _StmtCapturingSession:
+    """Minimal fake session that records the SELECT statement _find_mergeable_cluster
+    builds, so the test can inspect the cosine-distance bound (the merge threshold)
+    WITHOUT a live pgvector DB. `scalars(stmt).first()` returns the queued result.
+    """
+
+    def __init__(self, result: object | None) -> None:
+        self.captured_stmt: object | None = None
+        self._result = result
+
+    def scalars(self, stmt: object) -> "_StmtCapturingSession":
+        self.captured_stmt = stmt
+        return self
+
+    def first(self) -> object | None:
+        return self._result
+
+
+def _max_distance_bound(captured_stmt: object, merge_threshold: float) -> float:
+    """Extract the cosine-distance upper bound (= 1 - merge_threshold) from the
+    captured statement's compiled bind params (pgvector vector can't render as a
+    literal, so we read the numeric bind params instead).
+
+    Robust extraction: rather than guessing "the single float in (0, 1)", match the
+    bind param whose value equals the expected cap `round(1 - merge_threshold, 12)`.
+    The query bounds distance via `distance <= max_distance`, so that constant is
+    present as a bind param regardless of how many other floats the statement carries.
+    """
+    from sqlalchemy.dialects import postgresql
+
+    compiled = captured_stmt.compile(dialect=postgresql.dialect())  # type: ignore[attr-defined]
+    expected = round(1.0 - merge_threshold, 12)
+    matches = [
+        v for v in compiled.params.values() if isinstance(v, float) and round(v, 12) == expected
+    ]
+    assert matches, (
+        f"expected a distance bound == {expected} (1 - {merge_threshold}) in "
+        f"params, got {list(compiled.params.values())}"
+    )
+    return matches[0]
+
+
+def test_find_mergeable_cluster_uses_loose_merge_threshold() -> None:
+    """AC1/AC4: the cross-batch merge NN query bounds cosine DISTANCE by
+    `1 - cluster_merge_cosine_threshold` (the LOOSE 0.65 tier), NOT
+    `1 - cluster_cosine_threshold` (the tight 0.75 intra-batch tier).
+
+    So a cross-channel candidate at cosine 0.70 (distance 0.30) — which the tight
+    0.75 (distance cap 0.25) would REJECT — falls inside the loose cap 0.35 and is
+    eligible to merge; a candidate at cosine 0.50 (distance 0.50) stays rejected.
+    """
+    centroid = [1.0] + [0.0] * (EMBEDDING_DIM - 1)
+    session = _StmtCapturingSession(result=None)
+
+    with patch.object(batch_processor, "get_settings") as mock_settings:
+        mock_settings.return_value.cluster_merge_cosine_threshold = 0.65
+        mock_settings.return_value.cluster_cosine_threshold = 0.75
+        mock_settings.return_value.cluster_merge_window_seconds = 86_400
+        mock_settings.return_value.cluster_max_span_seconds = 259_200
+        batch_processor._find_mergeable_cluster(cast("object", session), 5, centroid)  # type: ignore[arg-type]
+
+    bound = _max_distance_bound(session.captured_stmt, merge_threshold=0.65)
+    # 1 - 0.65 = 0.35 (loose), proving the merge tier is used, not 1 - 0.75 = 0.25.
+    assert bound == pytest.approx(0.35)
+    # cosine 0.70 → distance 0.30 <= 0.35 → eligible (would FAIL under tight 0.25).
+    assert bound >= (1.0 - 0.70)
+    # cosine 0.50 → distance 0.50 > 0.35 → still rejected (no over-loosening).
+    assert bound < (1.0 - 0.50)
+
+
+def test_find_mergeable_cluster_respects_recency_and_span_windows() -> None:
+    """The loose threshold only changes the cosine cap — the freshness (updated_at)
+    and span (first_seen) bounds are still applied (TASK-123 edge case: windows not
+    weakened). We assert both temporal bounds appear as bind params on the query."""
+    from datetime import datetime
+
+    centroid = [1.0] + [0.0] * (EMBEDDING_DIM - 1)
+    session = _StmtCapturingSession(result=None)
+
+    with patch.object(batch_processor, "get_settings") as mock_settings:
+        mock_settings.return_value.cluster_merge_cosine_threshold = 0.65
+        mock_settings.return_value.cluster_cosine_threshold = 0.75
+        mock_settings.return_value.cluster_merge_window_seconds = 86_400
+        mock_settings.return_value.cluster_max_span_seconds = 259_200
+        batch_processor._find_mergeable_cluster(cast("object", session), 5, centroid)  # type: ignore[arg-type]
+
+    from sqlalchemy.dialects import postgresql
+
+    compiled = session.captured_stmt.compile(dialect=postgresql.dialect())  # type: ignore[attr-defined]
+    datetimes = [v for v in compiled.params.values() if isinstance(v, datetime)]
+    # Two temporal bounds: updated_at >= window_start AND first_seen >= span_start.
+    assert len(datetimes) == 2
 
 
 def test_process_user_batch_without_redis_identical_to_direct_embed() -> None:

@@ -1,6 +1,8 @@
 """AC4 — cluster groups semantically-close vectors; far post stands alone."""
 
+import math
 from datetime import UTC, datetime
+from unittest.mock import patch
 
 import pytest
 
@@ -84,6 +86,23 @@ def test_cluster_candidate_is_frozen() -> None:
     candidates = cluster.run([_post("1")], [[1.0, 0.0]])
     with pytest.raises(AttributeError):
         candidates[0].topic = "changed"  # type: ignore[misc]
+
+
+def test_cluster_intra_batch_isolation_not_loosened_by_merge_threshold() -> None:
+    """TASK-123 AC2: the new LOOSE `cluster_merge_cosine_threshold` (cross-batch
+    merge tier) must NOT loosen intra-batch grouping, which still uses the TIGHT
+    `cluster_cosine_threshold`. Two centroids at cosine ~0.707 (unit vectors at
+    0° and 45°) sit BELOW the tight 0.75 cutoff, so they must form 2 DISTINCT
+    candidates — not collapse into one."""
+    posts = [_post("1", "@a"), _post("2", "@b")]
+    # cos(45°) ≈ 0.707 — below the tight 0.75 intra-batch threshold.
+    vectors = [[1.0, 0.0], [math.cos(math.radians(45.0)), math.sin(math.radians(45.0))]]
+    with patch.object(cluster, "get_settings") as mock_settings:
+        mock_settings.return_value.cluster_cosine_threshold = 0.75
+        candidates = cluster.run(posts, vectors)
+    # 0.707 < 0.75 → NOT grouped (intra-batch isolation preserved).
+    assert len(candidates) == 2
+    assert all(len(c.posts) == 1 for c in candidates)
 
 
 def test_cluster_candidate_carries_per_post_embeddings() -> None:

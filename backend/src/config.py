@@ -7,7 +7,7 @@ materialized by `make ansible-unpack` into `development/env/*.env`.
 import base64
 from functools import lru_cache
 
-from pydantic import ValidationInfo, field_validator
+from pydantic import ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Hosts that are allowed to use plain http:// for public_base_url — dev G2 runs
@@ -60,6 +60,20 @@ _DEFAULT_COLLECT_LOCK_TTL_SECONDS = 600
 _DEFAULT_EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 _DEFAULT_DEDUP_SIMILARITY_THRESHOLD = 0.8
 _DEFAULT_CLUSTER_COSINE_THRESHOLD = 0.75
+
+# Cross-batch / cross-channel cluster MERGE cosine threshold (TASK-123). A SECOND,
+# LOOSER tier distinct from the tight `_DEFAULT_CLUSTER_COSINE_THRESHOLD` (0.75) above.
+# The tight threshold governs INTRA-batch grouping/dedup (`pipeline/steps/cluster.py`)
+# — near-duplicate texts of one post. The loose threshold governs ONLY the cross-batch
+# merge site (`pipeline/batch_processor._find_mergeable_cluster`): whether a candidate
+# is "the same STORY across channels/ticks" and should collapse into an existing cluster
+# (so `channels_count > 1` — cross-channel breadth). Different channels paraphrase one
+# event, so their centroids sit ~0.6-0.75, BELOW the tight dedup cutoff; 0.65 (mid of the
+# 0.62-0.70 band) captures "same story, different words" while still excluding different
+# stories (~0.45-0.6). INVARIANT (model_validator below): this loose threshold MUST be
+# <= the tight one — a loose tier stricter than the tight tier is meaningless. Override
+# via env CLUSTER_MERGE_COSINE_THRESHOLD.
+_DEFAULT_CLUSTER_MERGE_COSINE_THRESHOLD = 0.65
 
 # Cross-batch cluster merge window (TASK-080). Named, non-secret default; time in
 # SECONDS (CONVENTIONS). Clustering is per-batch, so the same recurring topic used to
@@ -432,6 +446,11 @@ class Settings(BaseSettings):
     embedding_model_name: str = _DEFAULT_EMBEDDING_MODEL_NAME
     dedup_similarity_threshold: float = _DEFAULT_DEDUP_SIMILARITY_THRESHOLD
     cluster_cosine_threshold: float = _DEFAULT_CLUSTER_COSINE_THRESHOLD
+    # Loose cross-channel cross-batch merge threshold (TASK-123). Used ONLY in
+    # `_find_mergeable_cluster`; the tight `cluster_cosine_threshold` still governs
+    # intra-batch grouping/dedup. INVARIANT enforced below: must be <= the tight one.
+    # Override via env CLUSTER_MERGE_COSINE_THRESHOLD.
+    cluster_merge_cosine_threshold: float = _DEFAULT_CLUSTER_MERGE_COSINE_THRESHOLD
     # Cross-batch merge freshness window (TASK-080). A batch cluster candidate merges
     # into the nearest existing cluster of the same user (centroid cosine-sim
     # >= cluster_cosine_threshold) only if that cluster was updated within this
@@ -745,6 +764,26 @@ class Settings(BaseSettings):
                 "collect tick wrote, so collect must tick at least as often."
             )
         return v
+
+    @model_validator(mode="after")
+    def validate_cluster_merge_threshold_invariant(self) -> "Settings":
+        """Enforce: cluster_merge_cosine_threshold <= cluster_cosine_threshold (TASK-123).
+
+        The loose cross-channel merge tier must never be STRICTER than the tight
+        intra-batch grouping/dedup tier — a two-tier scheme where "loose" is tighter
+        than "tight" is meaningless (it would merge LESS across channels, the opposite
+        of the goal). Equality is allowed (it restores the single-tier behaviour, a
+        safe A/B fallback). A model_validator(mode="after") is used so BOTH fields are
+        already parsed/coerced when the cross-field invariant is checked.
+        """
+        if self.cluster_merge_cosine_threshold > self.cluster_cosine_threshold:
+            raise ValueError(
+                f"cluster_merge_cosine_threshold ({self.cluster_merge_cosine_threshold}) "
+                f"must not exceed cluster_cosine_threshold "
+                f"({self.cluster_cosine_threshold}): the loose cross-channel merge tier "
+                "cannot be stricter than the tight intra-batch grouping tier."
+            )
+        return self
 
     @field_validator("showcase_post_delay_seconds")
     @classmethod

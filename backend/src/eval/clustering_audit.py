@@ -31,6 +31,10 @@ DUPLICATE_CENTROID_COSINE = 0.9
 # slice to (block x n) floats at a time instead of materialising the full n-by-n matrix.
 _COSINE_BLOCK_ROWS = 512
 
+# Default cap on how many top merge-window pairs the audit samples for human
+# spot-check (TASK-123). Named, not a magic literal (CONVENTIONS).
+_DEFAULT_MERGE_SAMPLE_SIZE = 20
+
 
 @dataclass(frozen=True)
 class SizeAudit:
@@ -158,3 +162,150 @@ def count_duplicate_centroid_pairs(
             later = sims[local_row, global_row + 1 :]
             total += int(np.count_nonzero(later >= cosine_threshold))
     return total
+
+
+# ---------------------------------------------------------------------------
+# Merge-window precision audit (TASK-123 — over-merge guard).
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class PairLabel:
+    """Per-cluster relatedness metadata used as an over-merge proxy.
+
+    `topic` is the cluster's topic string; `channels` is the set of channel handles
+    that contribute to the cluster. Two clusters are treated as RELATED (a genuine
+    cross-channel story) when they share the same topic string OR overlap on at least
+    one channel handle; otherwise an in-window pair is counted as a (proxy) over-merge.
+    """
+
+    topic: str
+    channels: frozenset[str]
+
+
+@dataclass(frozen=True)
+class MergeWindowPair:
+    """One unordered cluster pair whose centroid cosine sits in the merge window."""
+
+    index_a: int
+    index_b: int
+    cosine: float
+    label_a: PairLabel | None
+    label_b: PairLabel | None
+    is_over_merge: bool | None
+
+
+@dataclass(frozen=True)
+class MergeWindowAudit:
+    """Result of `count_merge_window_pairs` — the NEW merges a looser threshold adds.
+
+    `window_pair_count` is the number of unordered cluster pairs whose centroid cosine
+    is in ``[merge_threshold, tight_threshold)`` — pairs the loose tier WOULD merge that
+    the tight tier would NOT. `over_merge_pair_count` / `over_merge_fraction` are the
+    proxy over-merge stats (None when no labels were supplied → "meta missing"). `sample`
+    holds the top window pairs by descending cosine for human spot-check.
+    """
+
+    window_pair_count: int
+    over_merge_pair_count: int | None
+    over_merge_fraction: float | None
+    labels_available: bool
+    sample: tuple[MergeWindowPair, ...]
+
+
+def _pairs_related(a: PairLabel, b: PairLabel) -> bool:
+    """Proxy relatedness: same topic string OR at least one shared channel handle."""
+    if a.topic == b.topic:
+        return True
+    return bool(a.channels & b.channels)
+
+
+def count_merge_window_pairs(
+    centroids: Sequence[Sequence[float]],
+    *,
+    merge_threshold: float,
+    tight_threshold: float,
+    labels: Sequence[PairLabel] | None = None,
+    sample_size: int = _DEFAULT_MERGE_SAMPLE_SIZE,
+) -> MergeWindowAudit:
+    """Count candidate merge pairs in the cosine window ``[merge_threshold, tight_threshold)``.
+
+    These are exactly the cross-channel merges a looser cross-batch threshold introduces
+    over the tight intra-batch one (TASK-123): pairs the loose tier WOULD collapse into
+    one cluster but the tight tier would keep apart. When ``labels`` is provided (parallel
+    to ``centroids``), an over-merge PROXY is computed: an in-window pair is flagged as a
+    (likely) over-merge when the two clusters are UNRELATED — different topic string AND
+    no shared channel handle. Without labels the proxy is unavailable (``None``).
+
+    Pure + typed: no DB/IO. Blocked upper-triangle cosine pass mirrors
+    `count_duplicate_centroid_pairs` (L2-normalise once, count i<j above/below bounds),
+    but also retains the in-window pairs (capped at `sample_size`, top cosine first) so
+    the harness can print a human spot-check sample. Degenerate inputs (<2 centroids,
+    zero vectors) behave like the duplicate-pair counter: zero pairs, empty sample.
+    """
+    if labels is not None and len(labels) != len(centroids):
+        raise ValueError(
+            f"labels length ({len(labels)}) must match centroids length ({len(centroids)})."
+        )
+
+    matrix = np.asarray(centroids, dtype=np.float64)
+    if matrix.ndim != 2 or matrix.shape[0] < 2:
+        return MergeWindowAudit(
+            window_pair_count=0,
+            over_merge_pair_count=0 if labels is not None else None,
+            over_merge_fraction=None,
+            labels_available=labels is not None,
+            sample=(),
+        )
+
+    norms = np.linalg.norm(matrix, axis=1, keepdims=True)
+    # Guard zero-vectors (degenerate centroid) → leave as 0 so they never enter a window.
+    norms[norms == 0] = 1.0
+    unit = matrix / norms
+    n = unit.shape[0]
+
+    window_pairs: list[MergeWindowPair] = []
+    over_merge = 0
+    for start in range(0, n, _COSINE_BLOCK_ROWS):
+        stop = min(start + _COSINE_BLOCK_ROWS, n)
+        sims = unit[start:stop] @ unit.T  # (block, n)
+        for local_row in range(stop - start):
+            i = start + local_row
+            row = sims[local_row]
+            for j in range(i + 1, n):
+                cosine = float(row[j])
+                if merge_threshold <= cosine < tight_threshold:
+                    label_a = labels[i] if labels is not None else None
+                    label_b = labels[j] if labels is not None else None
+                    related: bool | None = None
+                    if label_a is not None and label_b is not None:
+                        related = _pairs_related(label_a, label_b)
+                    is_over_merge = (related is False) if related is not None else None
+                    if is_over_merge:
+                        over_merge += 1
+                    window_pairs.append(
+                        MergeWindowPair(
+                            index_a=i,
+                            index_b=j,
+                            cosine=cosine,
+                            label_a=label_a,
+                            label_b=label_b,
+                            is_over_merge=is_over_merge,
+                        )
+                    )
+
+    window_pair_count = len(window_pairs)
+    over_merge_pair_count = over_merge if labels is not None else None
+    over_merge_fraction = (
+        (over_merge / window_pair_count) if (labels is not None and window_pair_count) else None
+    )
+    sample = tuple(
+        sorted(window_pairs, key=lambda p: p.cosine, reverse=True)[: max(0, sample_size)]
+    )
+    return MergeWindowAudit(
+        window_pair_count=window_pair_count,
+        over_merge_pair_count=over_merge_pair_count,
+        over_merge_fraction=over_merge_fraction,
+        labels_available=labels is not None,
+        sample=sample,
+    )
