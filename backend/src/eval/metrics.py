@@ -116,6 +116,25 @@ def average_precision(scores: Sequence[float], labels: Sequence[int]) -> float:
     return ap
 
 
+def brier_score(probs: Sequence[float], labels: Sequence[int]) -> float:
+    """Brier score = mean squared error between predicted probabilities and binary labels.
+
+    ``Brier = mean( (p_i - y_i)^2 )`` over the ``(prob, label)`` pairs. It is a proper
+    scoring rule that measures CALIBRATION, not ranking: 0.0 is a perfect, perfectly
+    calibrated prediction; 0.25 is the always-0.5 coin-flip baseline; 1.0 is the
+    confidently-wrong worst case. This is the metric of record for whether a score-as-
+    probability is honest (S0/D5) — the v2 ranking formula normalised into [0, 1] is an
+    UNCALIBRATED baseline against which a calibrated model (S4) must improve.
+
+    Inputs are validated at the boundary (length match, non-empty, binary labels); the
+    probabilities are NOT range-checked here (the caller clamps score÷scale into [0, 1]).
+    """
+    _check_pairs(probs, labels)
+    _check_binary_labels(labels)
+    total = sum((float(p) - label) ** 2 for p, label in zip(probs, labels, strict=True))
+    return total / len(labels)
+
+
 def precision_at_k(scores: Sequence[float], labels: Sequence[int], k: int) -> float:
     """Fraction of the top-`k` items (ranked by score, descending) that are truly viral.
 
