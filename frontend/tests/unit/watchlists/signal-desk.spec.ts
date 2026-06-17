@@ -13,6 +13,11 @@ import {
   nextSort,
   velocityTier,
   formatVelocityBadge,
+  scoreTier,
+  formatScoreBadge,
+  formatSignalTooltip,
+  SCORE_HOT_THRESHOLD,
+  SCORE_WARM_THRESHOLD,
   hasSparkline,
   sparklinePoints,
   formatLastAlert,
@@ -205,6 +210,67 @@ describe('formatVelocityBadge', () => {
   });
 });
 
+describe('scoreTier', () => {
+  it('exposes named thresholds (no magic literals)', () => {
+    expect(SCORE_HOT_THRESHOLD).toBeGreaterThan(SCORE_WARM_THRESHOLD);
+    expect(SCORE_WARM_THRESHOLD).toBeGreaterThan(0);
+  });
+
+  it('maps viral_score (0-100) into hot/warm/calm tiers by threshold', () => {
+    expect(scoreTier(SCORE_HOT_THRESHOLD)).toBe('hot');
+    expect(scoreTier(SCORE_HOT_THRESHOLD + 10)).toBe('hot');
+    expect(scoreTier(SCORE_HOT_THRESHOLD - 0.1)).toBe('warm');
+    expect(scoreTier(SCORE_WARM_THRESHOLD)).toBe('warm');
+    expect(scoreTier(SCORE_WARM_THRESHOLD - 0.1)).toBe('calm');
+    expect(scoreTier(0)).toBe('calm');
+  });
+
+  it('treats null/undefined/non-finite as the neutral calm tier', () => {
+    expect(scoreTier(null)).toBe('calm');
+    expect(scoreTier(undefined)).toBe('calm');
+    expect(scoreTier(Number.NaN)).toBe('calm');
+    expect(scoreTier(Number.POSITIVE_INFINITY)).toBe('calm');
+  });
+});
+
+describe('formatScoreBadge', () => {
+  it('renders the viral_score as a rounded integer 0-100', () => {
+    expect(formatScoreBadge(47.4)).toBe('47');
+    expect(formatScoreBadge(47.6)).toBe('48');
+    expect(formatScoreBadge(0)).toBe('0');
+    expect(formatScoreBadge(100)).toBe('100');
+    // Clamp out-of-range to the advertised 0-100 band.
+    expect(formatScoreBadge(150)).toBe('100');
+    expect(formatScoreBadge(-5)).toBe('0');
+  });
+
+  it('returns null when there is no score (graceful placeholder)', () => {
+    expect(formatScoreBadge(null)).toBeNull();
+    expect(formatScoreBadge(undefined)).toBeNull();
+    expect(formatScoreBadge(Number.NaN)).toBeNull();
+    expect(formatScoreBadge(Number.POSITIVE_INFINITY)).toBeNull();
+  });
+});
+
+describe('formatSignalTooltip', () => {
+  it('includes both the score and the velocity ×baseline part', () => {
+    expect(formatSignalTooltip(47.4, 0.3)).toBe(
+      'Live signal 47/100 · velocity ×0.3 baseline',
+    );
+  });
+
+  it('omits the velocity part when velocity is absent', () => {
+    expect(formatSignalTooltip(47.4, null)).toBe('Live signal 47/100');
+    expect(formatSignalTooltip(47.4, undefined)).toBe('Live signal 47/100');
+    expect(formatSignalTooltip(47.4, Number.NaN)).toBe('Live signal 47/100');
+  });
+
+  it('returns the no-signal label when there is no score', () => {
+    expect(formatSignalTooltip(null, 0.3)).toBe('No live signal yet');
+    expect(formatSignalTooltip(undefined, null)).toBe('No live signal yet');
+  });
+});
+
 describe('hasSparkline', () => {
   it('is true only for a series with at least one finite point', () => {
     expect(hasSparkline([1, 2, 3])).toBe(true);
@@ -274,6 +340,7 @@ describe('rowSignal', () => {
       live_score: null,
       sparkline_24h: [],
       last_alert_at: null,
+      effective_sources: null,
     });
   });
 });

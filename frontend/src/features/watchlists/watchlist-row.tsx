@@ -2,10 +2,12 @@
  * WatchlistRow — one row of the Signal Desk table (`/watchlists`).
  *
  * Renders a watchlist with the SAME edit/delete handlers the previous card used,
- * plus the live `signal` (TASK-096): a real 24h sparkline, the live ×baseline
- * velocity badge (hot/warm/calm tiers) and the last-alert time. Every signal
- * field is graceful — when the backend has no data the column falls back to its
- * neutral placeholder; no fabricated values, no pause action (no pause endpoint).
+ * plus the live `signal` (TASK-096): a real 24h sparkline and the live-signal
+ * badge. The PRIMARY badge is the viral_score (`live_score`, 0-100) with a
+ * hot/warm/calm tier colour (TASK-121); velocity is demoted to the badge tooltip
+ * (kept for the API contract, not removed). Every signal field is graceful —
+ * when the backend has no data the column falls back to its neutral placeholder;
+ * no fabricated values, no pause action (no pause endpoint).
  */
 
 import React from 'react';
@@ -14,8 +16,11 @@ import {
   sourcesCount,
   thresholdBarPercent,
   rowSignal,
-  velocityTier,
-  formatVelocityBadge,
+  scoreTier,
+  formatScoreBadge,
+  formatSignalTooltip,
+  formatIndependenceBadge,
+  formatIndependenceTooltip,
   hasSparkline,
   sparklinePoints,
   formatLastAlert,
@@ -70,10 +75,13 @@ export const WatchlistRow: React.FC<WatchlistRowProps> = ({
   const sources = sourcesCount(watchlist);
 
   // Live signal (TASK-096) — every field graceful-empty when there is no data.
+  // Primary badge = viral_score (TASK-121); velocity is kept for the tooltip.
   const signal = rowSignal(watchlist);
+  const score = signal.live_score;
   const velocity = signal.live_velocity;
-  const tier = velocityTier(velocity);
-  const velocityLabel = formatVelocityBadge(velocity);
+  const tier = scoreTier(score);
+  const scoreLabel = formatScoreBadge(score);
+  const signalTooltip = formatSignalTooltip(score, velocity);
   const sparklineSeries = signal.sparkline_24h ?? [];
   const sparklineOn = hasSparkline(sparklineSeries);
   const sparkPoints = sparklinePoints(
@@ -82,6 +90,18 @@ export const WatchlistRow: React.FC<WatchlistRowProps> = ({
     SPARK_HEIGHT - SPARK_INSET * 2,
   );
   const lastAlertLabel = formatLastAlert(signal.last_alert_at);
+
+  // Source-independence chip (TASK-126): shown ONLY when effective_sources is real
+  // and >= MIN_INDEPENDENCE_DISPLAY (single-source ~1 is hidden). Honest tooltip:
+  // organic-spread signal, NOT a coordination verdict.
+  const effectiveSources = signal.effective_sources;
+  const independenceLabel = formatIndependenceBadge(effectiveSources);
+  const independenceTooltip =
+    // `effectiveSources != null` is for TypeScript narrowing only — it is logically
+    // implied by `independenceLabel !== null` (a non-null label requires a real value).
+    independenceLabel !== null && effectiveSources != null
+      ? formatIndependenceTooltip(effectiveSources)
+      : undefined;
 
   return (
     <tr tabIndex={0} aria-label={`Watchlist ${handle} — ${topic}`}>
@@ -98,7 +118,7 @@ export const WatchlistRow: React.FC<WatchlistRowProps> = ({
           </span>
         </div>
       </td>
-      {/* Live signal: real 24h sparkline + ×baseline velocity, graceful placeholder when empty. */}
+      {/* Live signal: real 24h sparkline + viral_score badge (velocity in tooltip), graceful placeholder when empty. */}
       <td>
         <div className="spark">
           <svg
@@ -127,13 +147,18 @@ export const WatchlistRow: React.FC<WatchlistRowProps> = ({
               />
             )}
           </svg>
-          {velocityLabel !== null ? (
-            <span className={`vel-badge ${tier}`} title={`Live velocity: ${velocityLabel}`}>
-              {velocityLabel}
+          {scoreLabel !== null ? (
+            <span className={`vel-badge ${tier}`} title={signalTooltip}>
+              {scoreLabel}
             </span>
           ) : (
-            <span className="vel-badge vel-badge--empty" title="No live velocity data yet">
-              no data
+            <span className="vel-badge vel-badge--empty" title={signalTooltip}>
+              no signal
+            </span>
+          )}
+          {independenceLabel !== null && (
+            <span className="vel-badge vel-badge--independence" title={independenceTooltip}>
+              {independenceLabel}
             </span>
           )}
         </div>

@@ -84,6 +84,26 @@ def test_crypto_reddit_pack_is_all_reddit_kind() -> None:
     )
 
 
+def test_crypto_ru_overlap_pack() -> None:
+    """crypto-ru-overlap (TASK-128): event-overlap TG pack — aggregators + origins.
+
+    Mirrors test_crypto_reddit_pack_is_all_reddit_kind: present in catalog, topic
+    crypto, >=15 well-formed unique Telegram handles, all kind=TELEGRAM.
+    """
+    pack = get_pack("crypto-ru-overlap")
+    assert pack is not None
+    assert pack.slug == "crypto-ru-overlap"
+    assert pack.topic == "crypto"
+    assert len(pack.channels) >= 15, "overlap pack should have >=15 co-reporting channels"
+    assert all(ch.kind is SourceKind.TELEGRAM for ch in pack.channels)
+    # Handles well-formed (TELEGRAM format) and unique.
+    handles = [ch.handle for ch in pack.channels]
+    assert all(_TELEGRAM_HANDLE_RE.match(h) for h in handles)
+    assert len(handles) == len(set(handles)), f"duplicate handles in overlap pack: {handles}"
+    # Included in the catalog list.
+    assert "crypto-ru-overlap" in {p.slug for p in PACK_CATALOG}
+
+
 def test_all_pack_fields_non_empty() -> None:
     for pack in PACK_CATALOG:
         assert pack.slug, f"pack {pack!r} has empty slug"

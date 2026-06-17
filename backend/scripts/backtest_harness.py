@@ -31,16 +31,25 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from eval.clustering_audit import (
     DUPLICATE_CENTROID_COSINE,
+    PairLabel,
     audit_duplicate_topics,
     audit_sizes,
     count_duplicate_centroid_pairs,
+    count_merge_window_pairs,
 )
-from eval.corpus import cluster_sizes, load_clusters, load_posts
+from eval.corpus import ClusterRecord, cluster_sizes, load_clusters, load_posts
 from eval.distribution import count_at_or_above, histogram, summarize
 from eval.scoring_replay import lead_time_proxy_hours, replay_scores
 
 # Default score window — mirrors config._DEFAULT_SCORE_WINDOW_SECONDS (24h, TASK-079).
 _DEFAULT_SCORE_WINDOW_SECONDS = 86_400
+# Two-tier cluster thresholds (TASK-123) — mirror config defaults. The LOOSE merge
+# threshold governs cross-channel merge; the TIGHT one governs intra-batch dedup. The
+# merge-precision section counts the NEW pairs the loose tier adds in [merge, tight).
+_DEFAULT_CLUSTER_MERGE_COSINE_THRESHOLD = 0.65
+_DEFAULT_CLUSTER_COSINE_THRESHOLD = 0.75
+# How many top merge-window pairs to print for human spot-check.
+_MERGE_SAMPLE_SIZE = 20
 # Alert-threshold bars to count crossings for (typical watchlist thresholds).
 _THRESHOLD_BARS = (85.0, 90.0)
 # Score-distribution histogram edges (viral_score is unbounded above; 0..100+ bins).
@@ -59,6 +68,18 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         help="ASSUMED watched-channel count for cross_channel (no live watchlists in corpus)",
     )
     parser.add_argument("--top-topics", type=int, default=10)
+    parser.add_argument(
+        "--merge-cosine-threshold",
+        type=float,
+        default=_DEFAULT_CLUSTER_MERGE_COSINE_THRESHOLD,
+        help="LOOSE cross-channel merge threshold (TASK-123); window lower bound",
+    )
+    parser.add_argument(
+        "--tight-cosine-threshold",
+        type=float,
+        default=_DEFAULT_CLUSTER_COSINE_THRESHOLD,
+        help="TIGHT intra-batch grouping threshold; merge window upper bound",
+    )
     return parser.parse_args(argv)
 
 
@@ -155,10 +176,74 @@ def _report_clustering(args: argparse.Namespace) -> None:
     print(f"duplicate_centroid_pairs(cosine>={DUPLICATE_CENTROID_COSINE})={dup_pairs}")
 
 
+def _cluster_pair_labels(clusters: list[ClusterRecord]) -> list[PairLabel]:
+    """Build over-merge proxy labels from the corpus.
+
+    The corpus snapshot carries each cluster's `topic` string but NOT its channel
+    handles (channels are a live/watchlist concept absent from the 2-CSV export), so
+    relatedness degrades to topic-string match only (empty channel set). This is the
+    "corpus without channel meta" edge case from the plan — the proxy is topic-only.
+    """
+    return [PairLabel(topic=c.topic, channels=frozenset()) for c in clusters]
+
+
+def _report_merge_precision(args: argparse.Namespace) -> None:
+    """Merge-precision / over-merge guard (TASK-123, AC5) — read-only.
+
+    Counts the NEW cross-channel merge pairs the LOOSE threshold introduces over the
+    TIGHT one (centroid cosine in ``[merge, tight)``), an over-merge PROXY fraction
+    (window pairs whose clusters are unrelated by the topic/channel proxy), and a
+    sample of the top pairs for human spot-check. This is a PROXY, not a judged
+    precision — owner must eyeball the sample BEFORE deploying a lowered threshold.
+    """
+    clusters = load_clusters(args.clusters)
+    print("\n===== MERGE-PRECISION (over-merge guard, PROXY — not judged) =====")
+    merge_thr = float(args.merge_cosine_threshold)
+    tight_thr = float(args.tight_cosine_threshold)
+    print(
+        f"window=[{merge_thr:.3f},{tight_thr:.3f})  "
+        "(NEW cross-channel merges the loose tier adds over the tight tier)"
+    )
+
+    centroids = [c.centroid for c in clusters]
+    labels = _cluster_pair_labels(clusters)
+    audit = count_merge_window_pairs(
+        centroids,
+        merge_threshold=merge_thr,
+        tight_threshold=tight_thr,
+        labels=labels,
+        sample_size=_MERGE_SAMPLE_SIZE,
+    )
+    print(f"new_merge_window_pairs={audit.window_pair_count}")
+    if audit.over_merge_fraction is None:
+        if not audit.labels_available:
+            print("over_merge_proxy=N/A (no labels — topic/channel proxy unavailable)")
+        else:
+            print("over_merge_proxy=N/A (0 window pairs — no new merges in this cosine band)")
+    else:
+        print(
+            f"over_merge_proxy_pairs={audit.over_merge_pair_count} "
+            f"({audit.over_merge_fraction * 100:.1f}% of new pairs; "
+            "proxy=unrelated topic AND no channel overlap)"
+        )
+    print(
+        f"\nspot_check_sample(top {min(_MERGE_SAMPLE_SIZE, len(audit.sample))} by cosine — "
+        "OWNER must confirm 'same story' BEFORE deploy):"
+    )
+    for pair in audit.sample:
+        topic_a = pair.label_a.topic[:50] if pair.label_a else "?"
+        topic_b = pair.label_b.topic[:50] if pair.label_b else "?"
+        flag = (
+            "OVER?" if pair.is_over_merge else "ok   " if pair.is_over_merge is False else "  -  "
+        )
+        print(f"  [{flag}] cos={pair.cosine:.3f}  {topic_a!r}  <->  {topic_b!r}")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
     _report_scoring(args)
     _report_clustering(args)
+    _report_merge_precision(args)
     return 0
 
 

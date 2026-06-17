@@ -149,7 +149,11 @@ flowchart LR
 
 **Ключевые свойства потока:** канал читается один раз для всех тенантов (cross-tenant dedup, [ADR-002](./adr-002-multi-tenancy-and-queues.md)); pipeline-шаги работают только с нормализованным `RawPost`/`NormalizedPost` ([ADR-001](./adr-001-source-abstraction.md)) — платформо-независимы; сырой контент живёт ≤ 48h (overview §7).
 
-Формула: `viral_score = velocity·0.4 + engagement·0.35 + cross_channel·0.25`.
+**Формула (v2, факт в проде на 2026-06-16):**
+`viral_score = 100·(engagement·0.55 + cross_channel·0.30 + velocity·0.15)`, каждый терм ∈ [0,1] → score ∈ [0,100].
+`engagement = min(log1p(views + 3·forwards + 2·reactions)/14, 1)` (доминирует, AUC≈0.91–0.98);
+`cross_channel = min(unique_channels/watched_channels, 1)`; `velocity = min(log1p(max(Δch−1,0))/max(Δh,1ч)/3, 1)` (слабейший терм).
+GBDT-модель (`scorer/viral_model.py`, артефакт `eval_offline/models/viral_gbdt_higgs_1h.txt`) написана, но **в live-пути НЕ вызывается** (dormant). Текущее, target и план эволюции скоринга вынесены в [`states/`](./states/01-state-current.md).
 
 ## 6. Cross-cutting
 

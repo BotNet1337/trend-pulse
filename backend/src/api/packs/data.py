@@ -11,12 +11,14 @@ validated by `TELEGRAM_HANDLE_PATTERN` (watchlist/schemas.py): '@' + 4-32 of
 
 Two packs are required by TASK-038 as a baseline, a third added 2026-06-12, a
 fourth (Twitter/X) added 2026-06-14 (TASK-031/089), a fifth (Reddit) added
-2026-06-14 (TASK-092/093):
-  - crypto-ru       (~29 handles): Russian-language crypto / DeFi Telegram channels
-  - tech-en         (~6 handles):  English-language tech / startup Telegram channels
-  - crypto-en       (~8 handles):  English-language crypto / on-chain Telegram channels
-  - crypto-twitter  (~40 handles): crypto Twitter/X accounts (RU+EN), kind=TWITTER
-  - crypto-reddit   (~22 subs):    crypto subreddits (mostly EN), kind=REDDIT
+2026-06-14 (TASK-092/093), a sixth (event-overlap crypto-RU) added 2026-06-17
+(TASK-128):
+  - crypto-ru         (~29 handles): Russian-language crypto / DeFi Telegram channels
+  - tech-en           (~6 handles):  English-language tech / startup Telegram channels
+  - crypto-en         (~8 handles):  English-language crypto / on-chain Telegram channels
+  - crypto-twitter    (~40 handles): crypto Twitter/X accounts (RU+EN), kind=TWITTER
+  - crypto-reddit     (~22 subs):    crypto subreddits (mostly EN), kind=REDDIT
+  - crypto-ru-overlap (~20 handles): event-overlap crypto-RU TG (aggregators + origins)
 
 The Twitter pack handles are CANDIDATES (well-known accounts); live existence is
 not pre-validated here because it requires TWITTER_BEARER_TOKEN (owner-gated). Dead
@@ -229,6 +231,39 @@ _CRYPTO_REDDIT_CHANNELS: tuple[PackChannel, ...] = (
     PackChannel("cryptocurrencyru", kind=SourceKind.REDDIT),  # r/CryptoCurrencyRU
 )
 
+# Event-overlap crypto-RU pack (TASK-128, sixth pack). Where _CRYPTO_RU_CHANNELS is
+# topic-broad density (all of crypto-RU), this is a NARROW event-overlap set: news
+# aggregators + origin channels (exchanges/ecosystems) that co-report ONE breaking
+# event (listing, hack, regulation) within minutes → a direct, measurable driver of
+# channels_count>1 on a single story. Most handles are reused verified-live from
+# _CRYPTO_RU_CHANNELS (✓ via t.me/s 2026-06-13); the rest are public candidates pruned
+# by the collector at read time (dead → resolve None → skip, ADR-001). Live overlap
+# measurement is owner/runtime-gated (needs pool>=3, TASK-059). 20 unique handles.
+_CRYPTO_RU_OVERLAP_CHANNELS: tuple[PackChannel, ...] = (
+    # -- news aggregators / media (fast co-report of one event) --
+    PackChannel("@forklog"),  # ForkLog ✓reused
+    PackChannel("@RBCCrypto"),  # РБК Крипто ✓reused
+    PackChannel("@if_market_news"),  # InvestFuture Market News ✓reused
+    PackChannel("@cryptodaily"),  # Crypto Daily ✓reused
+    PackChannel("@web3news"),  # Web3 News RU ✓reused
+    PackChannel("@incrypted"),  # Incrypted ✓reused
+    PackChannel("@bitsmedia"),  # BITS.MEDIA ✓reused
+    PackChannel("@hashtelegraph"),  # Hash Telegraph ✓reused
+    PackChannel("@coin_post"),  # CoinPost ✓reused
+    PackChannel("@crypto_hd"),  # Crypto Headlines ✓reused
+    PackChannel("@cryptodaily_ru"),  # Crypto Daily RU (candidate, verify live)
+    PackChannel("@bitnovosti"),  # BitNovosti (candidate, verify live)
+    PackChannel("@cryptorussia_news"),  # CryptoRussia (candidate, verify live)
+    # -- origins / exchanges / ecosystem (origin channel of the event) --
+    PackChannel("@binance_ru"),  # Binance Новости RU ✓reused
+    PackChannel("@toncoin_rus"),  # Toncoin RUS ✓reused
+    PackChannel("@tonblockchain"),  # TON Blockchain ✓reused
+    PackChannel("@decenter"),  # DeCenter ✓reused
+    PackChannel("@crypto_sekta"),  # Криптосекта ✓reused
+    PackChannel("@bybite_ru"),  # Bybit RU (candidate, verify live)
+    PackChannel("@okx_russian"),  # OKX Russian (candidate, verify live)
+)
+
 # The catalog is a frozen tuple — immutable at runtime (CONVENTIONS: no mutable globals).
 PACK_CATALOG: tuple[PackDef, ...] = (
     PackDef(
@@ -260,6 +295,12 @@ PACK_CATALOG: tuple[PackDef, ...] = (
         title="Crypto Reddit (RU+EN)",
         topic="crypto",
         channels=_CRYPTO_REDDIT_CHANNELS,
+    ),
+    PackDef(
+        slug="crypto-ru-overlap",
+        title="Crypto RU Overlap",
+        topic="crypto",
+        channels=_CRYPTO_RU_OVERLAP_CHANNELS,
     ),
 )
 

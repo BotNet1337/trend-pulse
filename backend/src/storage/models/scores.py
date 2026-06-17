@@ -27,6 +27,13 @@ class Score(UserOwnedBase):
         Integer, nullable=False, server_default="1", default=1
     )
     viral_score: Mapped[float] = mapped_column(Float, nullable=False)
+    # exp(source-entropy) over the cluster's in-window per-channel post distribution
+    # (TASK-126, REUSE eval.science_features.effective_independent_sources): the
+    # "effective number" of independent sources — an organic-spread / independence
+    # signal, NOT a coordination detector (pair with synchrony/similarity-null next).
+    # nullable=True so pre-migration rows read gracefully as NULL (no server_default,
+    # no backfill). Observed/badge-only — it is NOT folded into viral_score (D4 deferred).
+    effective_sources: Mapped[float | None] = mapped_column(Float, nullable=True)
     computed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )

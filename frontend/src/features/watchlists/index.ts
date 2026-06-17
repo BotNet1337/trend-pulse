@@ -13,12 +13,17 @@ export {
   nextSort,
   velocityTier,
   formatVelocityBadge,
+  scoreTier,
+  formatScoreBadge,
+  formatSignalTooltip,
   hasSparkline,
   sparklinePoints,
   formatLastAlert,
   rowSignal,
   VELOCITY_HOT_THRESHOLD,
   VELOCITY_WARM_THRESHOLD,
+  SCORE_HOT_THRESHOLD,
+  SCORE_WARM_THRESHOLD,
 } from './signal-desk';
 export type {
   DeskSortKey,

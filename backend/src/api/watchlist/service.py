@@ -41,6 +41,7 @@ def _to_signal(data: WatchlistSignalData) -> WatchlistSignal:
         live_score=data.live_score,
         sparkline_24h=list(data.sparkline_24h),
         last_alert_at=data.last_alert_at,
+        effective_sources=data.effective_sources,
     )
 
 

@@ -53,6 +53,11 @@ class WatchlistSignalData:
     live_score: float | None = None
     sparkline_24h: tuple[float, ...] = field(default_factory=tuple)
     last_alert_at: datetime | None = None
+    # exp(source-entropy) of the latest in-window score (TASK-126): the effective
+    # number of independent sources — an organic-spread / independence signal, NOT a
+    # coordination verdict. `None` when there is no in-window score OR the score row
+    # predates the migration (graceful NULL — INV2, never fabricated).
+    effective_sources: float | None = None
 
 
 # Empty signal reused for channels with no data (immutable, safe to share).
@@ -94,25 +99,36 @@ def _scores_by_cluster(
     user_id: int,
     cluster_ids: Sequence[int],
     window_start: datetime,
-) -> dict[int, list[tuple[datetime, float, float]]]:
-    """Map `cluster_id` → its in-window scores as `(computed_at, viral_score, velocity)`.
+) -> dict[int, list[tuple[datetime, float, float, float | None]]]:
+    """Map `cluster_id` → in-window scores `(computed_at, viral_score, velocity, eff_sources)`.
 
     One query over all relevant clusters' scores; the caller buckets them per
     channel. Scores are upserted per `(user_id, cluster_id)`, so this is at most
     one row per cluster today, but the code treats it as a series so a future
-    history table needs no change here.
+    history table needs no change here. `effective_sources` (TASK-126) is selected on
+    the SAME row (no extra query / no N+1) and is `None` for pre-migration rows.
     """
     if not cluster_ids:
         return {}
     stmt = (
-        select(Score.cluster_id, Score.computed_at, Score.viral_score, Score.velocity)
+        select(
+            Score.cluster_id,
+            Score.computed_at,
+            Score.viral_score,
+            Score.velocity,
+            Score.effective_sources,
+        )
         .where(Score.user_id == user_id)
         .where(Score.cluster_id.in_(cluster_ids))
         .where(Score.computed_at >= window_start)
     )
-    mapping: dict[int, list[tuple[datetime, float, float]]] = {}
-    for cluster_id, computed_at, viral_score, velocity in session.execute(stmt).all():
-        mapping.setdefault(cluster_id, []).append((computed_at, viral_score, velocity))
+    mapping: dict[int, list[tuple[datetime, float, float, float | None]]] = {}
+    for cluster_id, computed_at, viral_score, velocity, effective_sources in session.execute(
+        stmt
+    ).all():
+        mapping.setdefault(cluster_id, []).append(
+            (computed_at, viral_score, velocity, effective_sources)
+        )
     return mapping
 
 
@@ -142,12 +158,12 @@ def _hour_bucket(moment: datetime) -> datetime:
 def _build_signal(
     cluster_ids: set[int],
     *,
-    scores_by_cluster: dict[int, list[tuple[datetime, float, float]]],
+    scores_by_cluster: dict[int, list[tuple[datetime, float, float, float | None]]],
     last_alert_by_cluster: dict[int, datetime],
 ) -> WatchlistSignalData:
     """Assemble one channel's signal from its clusters' scores + alerts."""
     # Flatten this channel's score points across its clusters.
-    points: list[tuple[datetime, float, float]] = []
+    points: list[tuple[datetime, float, float, float | None]] = []
     for cluster_id in cluster_ids:
         points.extend(scores_by_cluster.get(cluster_id, ()))
 
@@ -155,14 +171,16 @@ def _build_signal(
         live_velocity: float | None = None
         live_score: float | None = None
         sparkline: tuple[float, ...] = ()
+        effective_sources: float | None = None
     else:
-        # Latest in-window score → live velocity + live score.
+        # Latest in-window score → live velocity + live score + independence (TASK-126).
         latest = max(points, key=lambda p: p[0])
         live_score = latest[1]
         live_velocity = latest[2]
+        effective_sources = latest[3]
         # Hourly max viral_score, oldest → newest (max one bucket per hour).
         buckets: dict[datetime, float] = {}
-        for computed_at, viral_score, _velocity in points:
+        for computed_at, viral_score, _velocity, _effective_sources in points:
             key = _hour_bucket(computed_at)
             current = buckets.get(key)
             if current is None or viral_score > current:
@@ -181,6 +199,7 @@ def _build_signal(
         live_score=live_score,
         sparkline_24h=sparkline,
         last_alert_at=last_alert_at,
+        effective_sources=effective_sources,
     )
 
 

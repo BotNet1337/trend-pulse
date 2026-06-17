@@ -42,9 +42,11 @@ CONVENTIONS); no platform/collector import (the scorer is platform-independent).
 """
 
 import logging
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from sqlalchemy import func, select
@@ -55,9 +57,27 @@ from sqlalchemy.orm import Session
 from billing.limits import effective_plan
 from billing.plans import Plan
 from config import get_settings
+from eval.science_features import TimedEvent, effective_independent_sources
 from observability.logging import log_event
 from scorer.feature_snapshots import build_snapshot_metrics, windows_due
-from scorer.score import FORWARD_FACTOR, REACTION_FACTOR, ScoreInputs, compute_components
+from scorer.score import (
+    BURST_FLOOR_HOURS,
+    FORWARD_FACTOR,
+    REACTION_FACTOR,
+    ScoreEvent,
+    ScoreInputs,
+    compute_components,
+    engagement_numerator,
+)
+from scorer.viral_model import (
+    FEATURE_ORDER,
+    EarlyFeatures,
+    FormulaFallbackModel,
+    GbdtViralModel,
+    ViralModel,
+    ViralModelError,
+    select_prediction,
+)
 from storage.database import get_session
 from storage.models.alerts import Alert
 from storage.models.base import utcnow
@@ -79,6 +99,11 @@ _SECONDS_PER_HOUR = 3600.0
 # Rate-guard sliding window (seconds): matches the alerts_per_hour_limit semantics.
 # Always 1 hour — a named constant so there is no magic literal at the call site.
 _RATE_GUARD_WINDOW_SECONDS: int = 3600
+
+# Unit weight per ScoreEvent when projecting a post into a science `TimedEvent`
+# (TASK-126). One post == one independent observation; mirrors `score._EVENT_WEIGHT`
+# so the independence feature sees the same projection the temporal term does.
+_INDEPENDENCE_EVENT_WEIGHT = 1.0
 
 
 @dataclass(frozen=True)
@@ -277,6 +302,15 @@ def _build_score_inputs(
     latest = max(p.posted_at for p in posts)
     delta_hours = (latest - earliest).total_seconds() / _SECONDS_PER_HOUR
 
+    # Per-post event stream for the temporal score term (TASK-124): built from the
+    # ALREADY-loaded in-window posts (no extra query / migration). epoch = posted_at
+    # as a UNIX timestamp; channel_id is the spread source. These are the same
+    # leak-free, in-window posts the aggregates are derived from, so the temporal term
+    # carries no post-T_obs signal.
+    events = tuple(
+        ScoreEvent(epoch=p.posted_at.timestamp(), channel_id=p.channel_id) for p in posts
+    )
+
     # Historical channel_avg: use the channel of the first post as the reference
     # (per-cluster scoring; a cluster spans one or more channels — use the primary
     # channel, i.e. the first post's channel, for the baseline query).
@@ -310,19 +344,147 @@ def _build_score_inputs(
         delta_hours=delta_hours,
         unique_channels_count=len(unique_channels),
         watched_channels_count=watched_channels_count,
+        events=events,
     )
 
 
+def _early_features_from_inputs(inputs: ScoreInputs, *, post_count: int) -> EarlyFeatures:
+    """Map a ready `ScoreInputs` (+ in-window post count) into `EarlyFeatures` (TASK-125).
+
+    Pure mirror of the offline trainer's `CascadeFeatures` so the live feature schema
+    matches `FEATURE_ORDER` by meaning (the loaded artifact also validates names):
+
+    - ``e_ch``      = ``unique_channels_count``  (distinct channels = breadth)
+    - ``e_posts``   = ``post_count`` (number of in-window posts = early interaction count).
+      The live caller passes ``post_count = len(inputs.events)`` — there is exactly one
+      ``ScoreEvent`` per in-window post, so this is the cluster's in-window post count
+      (no extra query).
+    - ``e_eng_log`` = ``log1p(engagement_numerator(views, forwards, reactions))`` —
+      REUSES the same weighted numerator (F=3 / R=2) the formula uses, then ``log1p``
+    - ``e_burst``   = ``e_ch / max(delta_hours, BURST_FLOOR_HOURS)`` (distinct channels
+      per hour = spread speed; the 1-hour floor avoids a sub-hour burst manufacturing a
+      tiny denominator and is REUSED from `scorer.score.BURST_FLOOR_HOURS`).
+
+    The `EarlyFeatures` constructor validates non-negative/finite, so any degenerate
+    input raises `ViralModelError` rather than feeding the model a bad row.
+    """
+    e_ch = float(inputs.unique_channels_count)
+    e_eng_log = math.log1p(
+        engagement_numerator(
+            views=inputs.views, forwards=inputs.forwards, reactions=inputs.reactions
+        )
+    )
+    e_burst = e_ch / max(inputs.delta_hours, BURST_FLOOR_HOURS)
+    return EarlyFeatures(
+        e_ch=e_ch,
+        e_posts=float(post_count),
+        e_eng_log=e_eng_log,
+        e_burst=e_burst,
+    )
+
+
+def _load_viral_model(settings: "Settings") -> ViralModel | None:
+    """Load the GBDT virality model ONCE per scorer tick — lazy, flag-gated, graceful.
+
+    Returns ``None`` (formula-only path, AC1) when serving is disabled or no artifact is
+    configured: `scorer_model_enabled` is False OR `scorer_model_path` is empty. When
+    enabled with a path, `GbdtViralModel.load` (which imports lightgbm LAZILY) is called;
+    any `ViralModelError` (missing file / lightgbm absent / feature mismatch) is LOGGED
+    and swallowed into ``None`` — a model-load failure must NEVER break the
+    revenue-critical scoring tick (it degrades to the formula fallback, AC5).
+
+    Called once at the top of `score_recent_clusters` so lightgbm is never imported on
+    api/worker boot while the flag is OFF (lean image), and the frozen model is reused
+    across every cluster of the tick.
+    """
+    if not settings.scorer_model_enabled or not settings.scorer_model_path:
+        return None
+    try:
+        return GbdtViralModel.load(Path(settings.scorer_model_path), feature_order=FEATURE_ORDER)
+    except ViralModelError:
+        # Graceful: load failure (missing artifact / no lightgbm / mismatch) → fall back
+        # to the formula. Logged, not swallowed silently (CONVENTIONS).
+        logger.warning(
+            "viral_model_load_failed model_path=%s (falling back to formula)",
+            settings.scorer_model_path,
+        )
+        return None
+
+
+def _effective_sources(inputs: ScoreInputs) -> float:
+    """exp(source-entropy) over the cluster's in-window per-channel posts (TASK-126).
+
+    REUSES `eval.science_features.effective_independent_sources` (NOT reimplemented) by
+    projecting each in-window `ScoreEvent` to a `TimedEvent(epoch, source_id=channel_id,
+    weight=1)` — the SAME mapping `score._temporal` uses. Total/pure on any `events`,
+    including empty (→ 0.0), so it can never raise into the scoring tick (Invariants).
+
+    The result is an organic-spread / independence signal (effective number of
+    independent sources; single-source amplification collapses to ~1.0). It is
+    persisted as an observed/badge signal — it is NOT folded into `viral_score`.
+    """
+    timed = [
+        TimedEvent(epoch=event.epoch, source_id=event.channel_id, weight=_INDEPENDENCE_EVENT_WEIGHT)
+        for event in inputs.events
+    ]
+    return effective_independent_sources(timed)
+
+
 def _persist_score(
-    session: Session, *, user_id: int, cluster_id: int, inputs: ScoreInputs
+    session: Session,
+    *,
+    user_id: int,
+    cluster_id: int,
+    inputs: ScoreInputs,
+    gbdt: ViralModel | None = None,
+    post_count: int = 0,
 ) -> float:
     """Compute score components, upsert a `Score` row, return the viral score.
 
     Uses PostgreSQL `ON CONFLICT DO UPDATE` on `uq_scores_user_cluster` so repeated
     scorer ticks for the same `(user_id, cluster_id)` update `computed_at` and
     score values in place — the `scores` table does not grow unboundedly (AC3).
+
+    SHADOW ML serving (TASK-125): when a GBDT model is loaded (`gbdt is not None`, i.e.
+    the flag is ON and the artifact loaded), `select_prediction` is ALSO evaluated and
+    its `model_choice` + shadow `p_grow` are emitted via `log_event` for observability
+    (the GBDT-vs-fallback ratio). This is shadow-only: the persisted `viral_score`
+    ALWAYS stays `compute_components(inputs).viral_score` (the v2 formula) — `p(grow)`
+    never overwrites it. With `gbdt is None` (default, flag OFF) this branch is skipped
+    entirely, so the persisted score is byte-identical to pre-change (AC1, zero-risk).
     """
+    # The persisted/returned `viral_score` (the v2 formula) is computed and bound BEFORE
+    # the shadow block, so a shadow-side failure can NEVER affect the stored score.
     components = compute_components(inputs)
+    viral_score = components.viral_score
+    if gbdt is not None:
+        # Shadow-only: log the model's choice + probability; never touch `viral_score`.
+        # Wrapped best-effort (mirrors `_capture_feature_snapshots`): a non-ViralModelError
+        # from the booster (raw lightgbm RuntimeError/ValueError) must NEVER propagate up
+        # and abort the user's scoring loop — model failure (load or predict) never breaks
+        # the scoring/alert path. Logged with exc_info, not swallowed silently.
+        try:
+            features = _early_features_from_inputs(inputs, post_count=post_count)
+            fallback = FormulaFallbackModel(
+                watched_channels_count=max(inputs.watched_channels_count, 1)
+            )
+            prediction = select_prediction(features, gbdt=gbdt, fallback=fallback)
+            log_event(
+                "model_choice",
+                user_id=user_id,
+                cluster_id=cluster_id,
+                choice=prediction.chosen.value,
+                p_grow=prediction.probability,
+            )
+        except Exception:
+            logger.warning(
+                "shadow_model_predict_failed",
+                extra={"user_id": user_id, "cluster_id": cluster_id},
+                exc_info=True,
+            )
+    # Independence signal (TASK-126): observed/badge only, computed from the SAME
+    # in-window events as the temporal term — it does NOT touch `viral_score`.
+    effective_sources = _effective_sources(inputs)
     now = utcnow()
     stmt = (
         pg_insert(Score)
@@ -333,7 +495,8 @@ def _persist_score(
             engagement=components.engagement,
             cross_channel=components.cross_channel,
             channels_count=inputs.unique_channels_count,
-            viral_score=components.viral_score,
+            viral_score=viral_score,
+            effective_sources=effective_sources,
             computed_at=now,
         )
         .on_conflict_do_update(
@@ -343,14 +506,15 @@ def _persist_score(
                 engagement=components.engagement,
                 cross_channel=components.cross_channel,
                 channels_count=inputs.unique_channels_count,
-                viral_score=components.viral_score,
+                viral_score=viral_score,
+                effective_sources=effective_sources,
                 computed_at=now,
             ),
         )
     )
     session.execute(stmt)
     session.flush()
-    return components.viral_score
+    return viral_score
 
 
 def check_rate_guard(
@@ -572,7 +736,11 @@ def _capture_feature_snapshots(session: Session, *, user_id: int, cluster: Clust
 
 
 def _score_user(
-    session: Session, *, user_id: int, window_start: datetime
+    session: Session,
+    *,
+    user_id: int,
+    window_start: datetime,
+    gbdt: ViralModel | None = None,
 ) -> list[tuple[int, int | None]]:
     """Score one user's fresh clusters; create alerts on topic-match + threshold.
 
@@ -632,7 +800,16 @@ def _score_user(
             # No posts inside the score window (TASK-079) → no score, no alert.
             continue
 
-        viral_score = _persist_score(session, user_id=user_id, cluster_id=cluster.id, inputs=inputs)
+        # `events` carries exactly one ScoreEvent per in-window post, so its length is
+        # the cluster's in-window post count (no extra query) — the `e_posts` feature.
+        viral_score = _persist_score(
+            session,
+            user_id=user_id,
+            cluster_id=cluster.id,
+            inputs=inputs,
+            gbdt=gbdt,
+            post_count=len(inputs.events),
+        )
         if viral_score <= config.threshold:
             # Below (or at) threshold → no alert (AC3).
             continue
@@ -699,12 +876,18 @@ def score_recent_clusters() -> int:
     """
     settings = get_settings()
     window_start = utcnow() - timedelta(seconds=settings.scorer_recent_window_seconds)
+    # Load the optional GBDT model ONCE per tick (lazy, flag-gated, graceful → None when
+    # OFF); the frozen model is reused across all users/clusters (TASK-125). None when
+    # the flag is OFF → the formula-only path, byte-identical to pre-change.
+    gbdt = _load_viral_model(settings)
     created: list[tuple[int, int | None]] = []
     with get_session() as session:
         user_ids = list_active_user_ids(session)
     for user_id in user_ids:
         with get_session() as session:
-            created.extend(_score_user(session, user_id=user_id, window_start=window_start))
+            created.extend(
+                _score_user(session, user_id=user_id, window_start=window_start, gbdt=gbdt)
+            )
     for alert_id, countdown in created:
         _enqueue_delivery(alert_id, countdown=countdown)
     logger.info(

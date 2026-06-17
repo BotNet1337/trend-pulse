@@ -101,6 +101,53 @@ class TestBeatHeartbeatTtlValidator:
                 Settings(beat_heartbeat_ttl_seconds=bad)
 
 
+class TestClusterMergeCosineThresholdInvariant:
+    """cluster_merge_cosine_threshold <= cluster_cosine_threshold (TASK-123).
+
+    The loose cross-channel merge tier must never be STRICTER than the tight
+    intra-batch grouping/dedup tier — otherwise two-tier clustering is meaningless.
+    Enforced by a model_validator(mode="after") at Settings construction.
+    """
+
+    def test_default_is_loose_merge_threshold(self) -> None:
+        """Default loose merge threshold is 0.65 (not the tight 0.75)."""
+        from config import Settings
+
+        s = Settings()
+        assert s.cluster_merge_cosine_threshold == pytest.approx(0.65)
+        # And it is <= the tight intra-batch threshold (default 0.75).
+        assert s.cluster_merge_cosine_threshold <= s.cluster_cosine_threshold
+
+    def test_equal_to_tight_allowed(self) -> None:
+        """loose == tight (both 0.75) is the safe-fallback / A-B point — accepted."""
+        from config import Settings
+
+        s = Settings(cluster_merge_cosine_threshold=0.75, cluster_cosine_threshold=0.75)
+        assert s.cluster_merge_cosine_threshold == pytest.approx(0.75)
+
+    def test_looser_than_tight_allowed(self) -> None:
+        """A merge threshold below the tight threshold is accepted (the whole point)."""
+        from config import Settings
+
+        s = Settings(cluster_merge_cosine_threshold=0.62, cluster_cosine_threshold=0.75)
+        assert s.cluster_merge_cosine_threshold == pytest.approx(0.62)
+
+    def test_stricter_than_tight_rejected(self) -> None:
+        """loose > tight (0.80 > 0.75) must raise — two-tier inversion is misconfig."""
+        from config import Settings
+
+        with pytest.raises(ValidationError):
+            Settings(cluster_merge_cosine_threshold=0.80, cluster_cosine_threshold=0.75)
+
+    def test_env_override_above_tight_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """AC3: env CLUSTER_MERGE_COSINE_THRESHOLD=0.80 (> tight 0.75) → ValidationError."""
+        from config import Settings
+
+        monkeypatch.setenv("CLUSTER_MERGE_COSINE_THRESHOLD", "0.80")
+        with pytest.raises(ValidationError):
+            Settings()
+
+
 class TestActiveEnvPoolSessions:
     """Store-only by default: the env pool floor is opt-in (TASK store-only)."""
 
