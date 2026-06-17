@@ -19,6 +19,8 @@ import {
   scoreTier,
   formatScoreBadge,
   formatSignalTooltip,
+  formatIndependenceBadge,
+  formatIndependenceTooltip,
   hasSparkline,
   sparklinePoints,
   formatLastAlert,
@@ -89,6 +91,18 @@ export const WatchlistRow: React.FC<WatchlistRowProps> = ({
   );
   const lastAlertLabel = formatLastAlert(signal.last_alert_at);
 
+  // Source-independence chip (TASK-126): shown ONLY when effective_sources is real
+  // and >= MIN_INDEPENDENCE_DISPLAY (single-source ~1 is hidden). Honest tooltip:
+  // organic-spread signal, NOT a coordination verdict.
+  const effectiveSources = signal.effective_sources;
+  const independenceLabel = formatIndependenceBadge(effectiveSources);
+  const independenceTooltip =
+    // `effectiveSources != null` is for TypeScript narrowing only — it is logically
+    // implied by `independenceLabel !== null` (a non-null label requires a real value).
+    independenceLabel !== null && effectiveSources != null
+      ? formatIndependenceTooltip(effectiveSources)
+      : undefined;
+
   return (
     <tr tabIndex={0} aria-label={`Watchlist ${handle} — ${topic}`}>
       <td>
@@ -140,6 +154,11 @@ export const WatchlistRow: React.FC<WatchlistRowProps> = ({
           ) : (
             <span className="vel-badge vel-badge--empty" title={signalTooltip}>
               no signal
+            </span>
+          )}
+          {independenceLabel !== null && (
+            <span className="vel-badge vel-badge--independence" title={independenceTooltip}>
+              {independenceLabel}
             </span>
           )}
         </div>

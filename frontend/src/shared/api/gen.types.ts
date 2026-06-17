@@ -1610,8 +1610,15 @@ export interface components {
          *     - `sparkline_24h` — hourly max `viral_score` over the last 24h, oldest→newest;
          *       empty when no in-window scores.
          *     - `last_alert_at` — most recent alert's `first_seen`, `None` when no alert.
+         *     - `effective_sources` — `exp(source-entropy)` of the latest in-window score
+         *       (TASK-126): the effective number of independent sources (single-source
+         *       amplification collapses to ~1.0). An organic-spread / independence signal,
+         *       NOT a coordination verdict; pair with synchrony/similarity-null next. `None`
+         *       when there is no in-window score or the score predates the migration.
          */
         WatchlistSignal: {
+            /** Effective Sources */
+            effective_sources?: number | null;
             /** Last Alert At */
             last_alert_at?: string | null;
             /** Live Score */

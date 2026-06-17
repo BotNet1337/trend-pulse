@@ -178,3 +178,41 @@ def test_pool_sessions_migration_up_down() -> None:
         assert _has_table(engine)
     finally:
         engine.dispose()
+
+
+def test_scores_effective_sources_migration_up_down() -> None:
+    """0025 (TASK-126): upgrade adds `scores.effective_sources` (nullable double
+    precision), downgrade drops it cleanly, and re-upgrade restores it."""
+    from alembic import command
+
+    def _effective_sources_column(engine_: object) -> dict[str, object] | None:
+        for col in inspect(engine_).get_columns("scores"):
+            if col["name"] == "effective_sources":
+                return col
+        return None
+
+    engine = create_engine(get_settings().database_url)
+    try:
+        with engine.begin() as conn:
+            tables = (
+                conn.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'"))
+                .scalars()
+                .all()
+            )
+            for table in tables:
+                conn.execute(text(f'DROP TABLE IF EXISTS "{table}" CASCADE'))
+
+        command.upgrade(_alembic_config(), "head")
+        column = _effective_sources_column(engine)
+        assert column is not None
+        assert column["nullable"] is True
+        # Float maps to PG double precision; assert the runtime type is real-valued.
+        assert "DOUBLE PRECISION" in str(column["type"]).upper()
+
+        command.downgrade(_alembic_config(), "0024")
+        assert _effective_sources_column(engine) is None
+
+        command.upgrade(_alembic_config(), "head")
+        assert _effective_sources_column(engine) is not None
+    finally:
+        engine.dispose()

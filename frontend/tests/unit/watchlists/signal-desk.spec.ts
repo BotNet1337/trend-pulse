@@ -340,6 +340,7 @@ describe('rowSignal', () => {
       live_score: null,
       sparkline_24h: [],
       last_alert_at: null,
+      effective_sources: null,
     });
   });
 });

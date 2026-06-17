@@ -241,6 +241,42 @@ export function formatLastAlert(
   return then.toISOString().slice(0, 10);
 }
 
+// ── Source-independence badge (TASK-126) ───────────────────────────────────────
+
+/**
+ * Minimum `effective_sources` (effective number of independent sources) to surface
+ * the independence chip. effective_sources collapses to ~1 for single-source
+ * amplification (77% of clusters are single-channel), which is NOT a "trust" signal,
+ * so the chip is shown only at/above this threshold — named, never a magic literal.
+ */
+export const MIN_INDEPENDENCE_DISPLAY = 2.0;
+
+/**
+ * Label for the independence chip: `N independent sources` where N is the rounded
+ * `effective_sources`. Returns `null` (chip hidden) when the value is null /
+ * non-finite or below `MIN_INDEPENDENCE_DISPLAY` (single-source ~1 is hidden, not
+ * rendered as "1 independent source" noise). Honest framing: this is an organic-spread
+ * signal, NOT a coordination verdict (RQ3).
+ */
+export function formatIndependenceBadge(
+  effectiveSources: number | null | undefined,
+): string | null {
+  if (effectiveSources == null || !Number.isFinite(effectiveSources)) return null;
+  if (effectiveSources < MIN_INDEPENDENCE_DISPLAY) return null;
+  const n = Math.round(effectiveSources);
+  const noun = n === 1 ? 'source' : 'sources';
+  return `${n} independent ${noun}`;
+}
+
+/**
+ * Honest tooltip for the independence chip: frames it as an organic-spread signal,
+ * explicitly NOT a coordination / anti-fraud verdict (RQ3, AC6).
+ */
+export function formatIndependenceTooltip(effectiveSources: number): string {
+  const n = Math.round(effectiveSources);
+  return `${n} effective independent sources (organic spread signal, not a coordination verdict)`;
+}
+
 /** Convenience accessor: the row's signal, or an all-empty signal fallback. */
 export function rowSignal(watchlist: WatchlistRead): WatchlistSignal {
   return (
@@ -249,6 +285,7 @@ export function rowSignal(watchlist: WatchlistRead): WatchlistSignal {
       live_score: null,
       sparkline_24h: [],
       last_alert_at: null,
+      effective_sources: null,
     }
   );
 }

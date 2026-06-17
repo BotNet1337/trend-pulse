@@ -57,6 +57,7 @@ from sqlalchemy.orm import Session
 from billing.limits import effective_plan
 from billing.plans import Plan
 from config import get_settings
+from eval.science_features import TimedEvent, effective_independent_sources
 from observability.logging import log_event
 from scorer.feature_snapshots import build_snapshot_metrics, windows_due
 from scorer.score import (
@@ -98,6 +99,11 @@ _SECONDS_PER_HOUR = 3600.0
 # Rate-guard sliding window (seconds): matches the alerts_per_hour_limit semantics.
 # Always 1 hour — a named constant so there is no magic literal at the call site.
 _RATE_GUARD_WINDOW_SECONDS: int = 3600
+
+# Unit weight per ScoreEvent when projecting a post into a science `TimedEvent`
+# (TASK-126). One post == one independent observation; mirrors `score._EVENT_WEIGHT`
+# so the independence feature sees the same projection the temporal term does.
+_INDEPENDENCE_EVENT_WEIGHT = 1.0
 
 
 @dataclass(frozen=True)
@@ -405,6 +411,25 @@ def _load_viral_model(settings: "Settings") -> ViralModel | None:
         return None
 
 
+def _effective_sources(inputs: ScoreInputs) -> float:
+    """exp(source-entropy) over the cluster's in-window per-channel posts (TASK-126).
+
+    REUSES `eval.science_features.effective_independent_sources` (NOT reimplemented) by
+    projecting each in-window `ScoreEvent` to a `TimedEvent(epoch, source_id=channel_id,
+    weight=1)` — the SAME mapping `score._temporal` uses. Total/pure on any `events`,
+    including empty (→ 0.0), so it can never raise into the scoring tick (Invariants).
+
+    The result is an organic-spread / independence signal (effective number of
+    independent sources; single-source amplification collapses to ~1.0). It is
+    persisted as an observed/badge signal — it is NOT folded into `viral_score`.
+    """
+    timed = [
+        TimedEvent(epoch=event.epoch, source_id=event.channel_id, weight=_INDEPENDENCE_EVENT_WEIGHT)
+        for event in inputs.events
+    ]
+    return effective_independent_sources(timed)
+
+
 def _persist_score(
     session: Session,
     *,
@@ -457,6 +482,9 @@ def _persist_score(
                 extra={"user_id": user_id, "cluster_id": cluster_id},
                 exc_info=True,
             )
+    # Independence signal (TASK-126): observed/badge only, computed from the SAME
+    # in-window events as the temporal term — it does NOT touch `viral_score`.
+    effective_sources = _effective_sources(inputs)
     now = utcnow()
     stmt = (
         pg_insert(Score)
@@ -468,6 +496,7 @@ def _persist_score(
             cross_channel=components.cross_channel,
             channels_count=inputs.unique_channels_count,
             viral_score=viral_score,
+            effective_sources=effective_sources,
             computed_at=now,
         )
         .on_conflict_do_update(
@@ -478,6 +507,7 @@ def _persist_score(
                 cross_channel=components.cross_channel,
                 channels_count=inputs.unique_channels_count,
                 viral_score=viral_score,
+                effective_sources=effective_sources,
                 computed_at=now,
             ),
         )

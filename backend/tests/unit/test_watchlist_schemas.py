@@ -7,6 +7,7 @@ from api.watchlist.schemas import (
     AlertConfig,
     ChannelRef,
     WatchlistCreate,
+    WatchlistSignal,
 )
 from storage.models.channels import SourceKind
 
@@ -124,3 +125,30 @@ def test_watchlist_create_valid() -> None:
     )
     assert model.topic == "ai"
     assert model.channel.kind is SourceKind.TELEGRAM
+
+
+# --- WatchlistSignal.effective_sources (TASK-126) ---------------------------------
+
+
+def test_watchlist_signal_effective_sources_defaults_to_none() -> None:
+    """The independence field is nullable and absent by default (graceful)."""
+    signal = WatchlistSignal()
+    assert signal.effective_sources is None
+
+
+def test_watchlist_signal_serializes_effective_sources_value() -> None:
+    """A real float is carried through serialization unchanged."""
+    signal = WatchlistSignal(live_score=55.0, effective_sources=3.0)
+    dumped = signal.model_dump()
+    assert dumped["effective_sources"] == pytest.approx(3.0)
+
+
+def test_watchlist_signal_serializes_effective_sources_null() -> None:
+    """`None` serializes as null (never fabricated — INV2)."""
+    assert WatchlistSignal().model_dump()["effective_sources"] is None
+
+
+def test_watchlist_signal_forbids_extra_fields() -> None:
+    """`extra='forbid'` is preserved (no silent unknown fields)."""
+    with pytest.raises(ValidationError):
+        WatchlistSignal.model_validate({"unknown_field": 1})
