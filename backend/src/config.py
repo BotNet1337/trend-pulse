@@ -319,19 +319,22 @@ _DEFAULT_LATENCY_WINDOW_SECONDS: int = 3600
 # `showcase_post_delay_seconds`: minimum cluster age before posting (default 40 min =
 #   2400s). INVARIANT: must be > free_alert_delay_seconds (value-ladder: channel is
 #   slower than Free plan; validator enforces this at Settings construction).
-# `showcase_post_min_score`: viral_score threshold for candidates (default 85.0).
+# `showcase_post_min_score`: viral_score threshold for candidates. Recalibrated to
+#   the v2 [0,100] scale (TASK-scoring-v2): 85.0 was tuned for the old unbounded
+#   score and is UNREACHABLE under v2 (live max ~44 — showcase stayed empty). 32 is
+#   below the v2 multi-channel band so genuine cross-channel stories get showcased.
 # `showcase_posts_per_day_max`: anti-spam daily cap (default 8 posts/day UTC).
 _DEFAULT_SHOWCASE_POST_INTERVAL_SECONDS: int = 900  # 15 minutes
 _DEFAULT_SHOWCASE_POST_DELAY_SECONDS: int = 2400  # 40 minutes
-_DEFAULT_SHOWCASE_POST_MIN_SCORE: float = 85.0
+_DEFAULT_SHOWCASE_POST_MIN_SCORE: float = 32.0
 _DEFAULT_SHOWCASE_POSTS_PER_DAY_MAX: int = 8
 
 # Proof-of-speed cases (TASK-045). Named, non-secret defaults.
-# `showcase_case_min_score`: viral_score threshold for case fixation (default 90.0).
-#   Intentionally higher than showcase_post_min_score (85.0) — only exceptional
-#   signals become marketing proof-points.
+# `showcase_case_min_score`: viral_score threshold for case fixation. v2-recalibrated
+#   to 40.0 — kept above showcase_post_min_score (32.0) so only exceptional signals
+#   become marketing proof-points, but reachable on the v2 [0,100] scale (was 90.0).
 # `cases_top_n_max`: hard cap for GET /cases (422 if exceeded); default 20.
-_DEFAULT_SHOWCASE_CASE_MIN_SCORE: float = 90.0
+_DEFAULT_SHOWCASE_CASE_MIN_SCORE: float = 40.0
 _DEFAULT_CASES_TOP_N_MAX: int = 20
 
 # Referral program (TASK-046). Named, non-secret default; amount in USDT.
