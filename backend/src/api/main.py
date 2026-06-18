@@ -55,6 +55,7 @@ from api.routes.email_unsubscribe import router as email_unsubscribe_router
 from api.routes.ops_business import router as ops_business_router
 from api.routes.pool_admin import router as pool_admin_router
 from api.security.csrf import CSRFOriginMiddleware
+from api.signals.router import router as signals_router
 from api.trending.router import router as trending_router
 from api.watchlist import router as watchlist_router
 from billing.deps import BillingNotConfiguredError
@@ -333,6 +334,7 @@ v1_router.include_router(packs_router)
 
 # --- Trending showcase (TASK-039): GET /trending?pack=&limit= (auth required). ---
 v1_router.include_router(trending_router)
+v1_router.include_router(signals_router)
 
 # --- Watchlist CRUD (tenant-scoped, behind current_user). ---
 v1_router.include_router(watchlist_router)

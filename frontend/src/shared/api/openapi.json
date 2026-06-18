@@ -612,6 +612,18 @@
         "title": "ErrorModel",
         "type": "object"
       },
+      "EventCategory": {
+        "description": "Coarse event taxonomy for a signal (str-enum: JSON/DB friendly).",
+        "enum": [
+          "listing",
+          "hack",
+          "regulation",
+          "price_move",
+          "other"
+        ],
+        "title": "EventCategory",
+        "type": "string"
+      },
       "FunnelDayRow": {
         "additionalProperties": false,
         "description": "One UTC calendar day's funnel counters (from business_metrics_daily).",
@@ -1172,6 +1184,96 @@
           "paid_at"
         ],
         "title": "ReferralRewardRead",
+        "type": "object"
+      },
+      "SignalKind": {
+        "description": "Noise classification of a cluster (str-enum: JSON/DB friendly).",
+        "enum": [
+          "organic",
+          "promo",
+          "coordinated"
+        ],
+        "title": "SignalKind",
+        "type": "string"
+      },
+      "SignalOut": {
+        "description": "One actionable signal (API boundary model).",
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/EventCategory"
+          },
+          "headline_score": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Headline Score",
+            "type": "number"
+          },
+          "independent_channels": {
+            "minimum": 0.0,
+            "title": "Independent Channels",
+            "type": "number"
+          },
+          "lead_time_to_confirmation_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lead Time To Confirmation Seconds"
+          },
+          "narrative": {
+            "title": "Narrative",
+            "type": "string"
+          },
+          "origin_at": {
+            "title": "Origin At",
+            "type": "number"
+          },
+          "origin_channel": {
+            "title": "Origin Channel",
+            "type": "integer"
+          },
+          "signal_kind": {
+            "$ref": "#/components/schemas/SignalKind"
+          },
+          "total_channels": {
+            "minimum": 0.0,
+            "title": "Total Channels",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "headline_score",
+          "signal_kind",
+          "category",
+          "origin_channel",
+          "origin_at",
+          "total_channels",
+          "independent_channels",
+          "lead_time_to_confirmation_seconds",
+          "narrative"
+        ],
+        "title": "SignalOut",
+        "type": "object"
+      },
+      "SignalsResponse": {
+        "description": "Envelope for GET /signals (list of signals, newest/strongest first).",
+        "properties": {
+          "signals": {
+            "items": {
+              "$ref": "#/components/schemas/SignalOut"
+            },
+            "title": "Signals",
+            "type": "array"
+          }
+        },
+        "required": [
+          "signals"
+        ],
+        "title": "SignalsResponse",
         "type": "object"
       },
       "SourceKind": {
@@ -3002,6 +3104,59 @@
         "summary": "Get Referral Me",
         "tags": [
           "referral"
+        ]
+      }
+    },
+    "/v1/signals": {
+      "get": {
+        "description": "Return recent actionable signals (independence-weighted, noise-excluded).",
+        "operationId": "list_signals_v1_signals_get",
+        "parameters": [
+          {
+            "description": "Max signals to return (1..100, default 20).",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "description": "Max signals to return (1..100, default 20).",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignalsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Signals",
+        "tags": [
+          "signals"
         ]
       }
     },
