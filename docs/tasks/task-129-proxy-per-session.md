@@ -1,7 +1,7 @@
 ---
 id: TASK-129
 title: Proxy-per-session — encrypted proxy column + SOCKS5 passthrough to Telethon
-status: review
+status: done
 owner: backend
 created: 2026-06-19
 updated: 2026-06-19
@@ -79,18 +79,18 @@ that proxy; when absent, behaviour is byte-identical to today. Proxy string trea
 - integration: `0026` round-trip + ciphertext assert (mirror `test_pool_session_store.py`).
 
 ## Checkpoints
-current_step: 6
+current_step: done
 baseline_commit: acb9d1ead373ebd99f5dd570dcc75ff0c1625546
 branch: "gsd/phase-129-proxy-per-session"
-lock: "executor-task129"
+lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [x] 3 do (TDD: failing test → minimal code)
 - [x] 4 verify (G2 — tests + migration round-trip + factory-proxy behavioural assert)
 - [x] 5 review (auto, adversarial — 2 HIGH + 2 LOW fixed in debug run 1, re-verified green)
 - [x] 5.5 security (touches secrets — proxy creds + session — PASS, 5/5 invariants hold)
-- [ ] 6 ship (PR)
-- [ ] 7 learnings (auto)
+- [x] 6 ship (PR #189 merged --admin; only depsec perma-red)
+- [x] 7 learnings (auto)
 debug_runs:
   - run: 1
     trigger: review HIGH x2

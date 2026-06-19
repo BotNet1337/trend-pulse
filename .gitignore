@@ -52,3 +52,6 @@ _bmad-output/
 # OS / editor cruft
 .DS_Store
 docs/.obsidian/
+
+
+.env
