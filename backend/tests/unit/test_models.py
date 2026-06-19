@@ -58,6 +58,7 @@ def test_all_models_share_base_metadata() -> None:
         "business_metrics_daily",  # TASK-050: daily funnel aggregate
         "cluster_feature_snapshots",  # TASK-109: forward early-window feature capture (B1)
         "pool_sessions",  # TASK-119: dynamic encrypted pool session store + revive
+        "factory_accounts",  # TASK-132: account-factory provisioning lifecycle
     }
 
 

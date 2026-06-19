@@ -1,10 +1,10 @@
 ---
 id: TASK-132
 title: factory_accounts table + store (state machine)
-status: planned
+status: review
 owner: backend
 created: 2026-06-19
-updated: 2026-06-19
+updated: 2026-06-20
 baseline_commit: acb9d1ead373ebd99f5dd570dcc75ff0c1625546
 branch: ""
 tags: [account-factory, storage, state-machine, probation, layer-b]
@@ -45,12 +45,12 @@ timestamp; `cost_usd` for budget accounting (TASK-134); `last_error`; `provider`
 - Blast radius: new table only (no existing-schema change).
 
 ## Acceptance Criteria
-- [ ] Migration `0028` creates `factory_accounts` (encrypted `session_string`, masked `phone`, indexes
-      on `state` and `probation_until`); applies and rolls back.
-- [ ] Store: `create_purchased(...)`, `transition(id, to_state)` (rejects illegal transitions),
-      `list_by_state(...)`, `get(id)`, `total_spent_usd()`.
-- [ ] `session_string` persisted as Fernet ciphertext (raw-SQL assert); `phone` stored masked only.
-- [ ] Illegal transition (e.g. `purchased → promoted`) raises `IllegalFactoryTransitionError`.
+- [x] Migration `0028` creates `factory_accounts` (encrypted `session_string`, masked `phone`, indexes
+      on `state` and `probation_until`); applies and rolls back. (verify: `test_factory_accounts_migration_up_down` live PG)
+- [x] Store: `create_purchased(...)`, `transition(id, to_state)` (rejects illegal transitions),
+      `list_by_state(...)`, `get(id)`, `total_spent_usd()`. (all in `storage/factory_account_store.py`, unit+integration tested)
+- [x] `session_string` persisted as Fernet ciphertext (raw-SQL assert); `phone` stored masked only. (verify: `test_session_stored_as_ciphertext` live PG `gAA...`; `test_phone_stored_masked_only`)
+- [x] Illegal transition (e.g. `purchased → promoted`) raises `IllegalFactoryTransitionError`. (`test_illegal_transition_purchased_to_promoted_raises`)
 
 ## Plan
 1. `factory/constants.py` — `FactoryState` names + `ALLOWED_TRANSITIONS` map + col widths.
@@ -73,19 +73,42 @@ timestamp; `cost_usd` for budget accounting (TASK-134); `last_error`; `provider`
 - integration: `0028` round-trip + ciphertext assert (mirror `test_pool_session_store.py`).
 
 ## Checkpoints
-current_step: 3
-baseline_commit: acb9d1ead373ebd99f5dd570dcc75ff0c1625546
-branch: ""
-lock: ""
+current_step: 6
+baseline_commit: 4007b06585ba0564c735130d006e82a2e9403865
+branch: "gsd/phase-132-factory-accounts-store"
+lock: "executor-132-run1"
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — migration round-trip + ciphertext + transition rejection)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (encrypted session + PII phone masking)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — migration round-trip + ciphertext + transition rejection)
+- [x] 5 review (auto, adversarial)
+- [x] 5.5 security (encrypted session + PII phone masking)
 - [ ] 6 ship (PR)
 - [ ] 7 learnings (auto)
 debug_runs: []
 
 ## Details
-(initial)
+
+### do (TDD, opus)
+Created: `factory/__init__.py`, `factory/constants.py` (FactoryState Final consts + FACTORY_STATES frozenset + ALLOWED_TRANSITIONS + col widths), `factory/errors.py` (FactoryError/FactoryAccountStoreError/FactoryAccountNotFoundError/IllegalFactoryTransitionError), `storage/models/factory_accounts.py` (FactoryAccount ORM — EncryptedString session_string/proxy, masked phone, Numeric(10,2) cost_usd, indexes on state + probation_until), `storage/factory_account_store.py` (frozen FactoryAccountRecord DTO repr=False on secrets; create_purchased/transition/get/list_by_state/total_spent_usd), `migrations/versions/0028_factory_accounts.py` (rev 0028 ← 0027, local constants). Edited: `storage/models/__init__.py` (register + __all__), `tests/integration/test_migrations.py` (factory_accounts in _EXPECTED_TABLES + test_factory_accounts_migration_up_down), `tests/unit/test_models.py` (schema-completeness set). Tests: `tests/unit/storage/test_factory_account_store.py` (15) + `tests/integration/test_factory_account_store.py` (2). No Any / no `# type: ignore` / no magic literals.
+
+### verify (G2, sonnet) — PASS, all 6 ACs
+- ci-fast: ruff format `405 files already formatted`; ruff check `All checks passed!`; mypy `Success: no issues found in 191 source files`; pytest `1301 passed, 316 deselected`.
+- Live Postgres integration: `8 passed` (test_factory_account_store.py 2 + test_migrations.py 6).
+- Migration 0028 up/down on live PG: `test_factory_accounts_migration_up_down` — upgrade creates table + ix_factory_accounts_state + ix_factory_accounts_probation_until, downgrade→0027 drops it, re-upgrade restores. `alembic current` = `0028 (head)` (full 0001→0028 chain clean).
+- Ciphertext-at-rest on real PG: `test_session_stored_as_ciphertext` — raw SELECT returns Fernet token `gAA...`, ORM read decrypts.
+- Illegal transition: `test_illegal_transition_purchased_to_promoted_raises` + `..._registered_to_promoted_raises` → `IllegalFactoryTransitionError`.
+- total_spent_usd: `test_total_spent_usd_sums_on_postgres` — Decimal('1.50')+Decimal('2.25')=Decimal('3.75') on real PG NUMERIC.
+- Masked phone: `test_phone_stored_masked_only` — `+79*****1234` stored as-is, no raw-phone leak.
+
+### review (python-reviewer, opus) — PASS (no CRITICAL/HIGH)
+All CONVENTIONS hard rules PASS; scope contained; state-machine/migration audits clean. Folded in 2 MEDIUM + 1 security-LOW (below). Remaining LOWs are pre-existing patterns / belt-and-suspenders (no change): `text()` DROP-TABLE in test_migrations (trusted pg_tables, pre-existing) and the unreachable None-branch in `total_spent_usd` (coalesce guarantees non-NULL).
+
+### security (security-reviewer, opus) — PASS (no CRITICAL/HIGH)
+(a) `session_string` + `proxy` encrypted at rest via EncryptedString (Fernet, ADR-008) ✅; (b) both repr-suppressed, never in any log `extra` ✅; (c) full phone never persisted (only `phone_masked` column/param) ✅. MEDIUM (pre-existing, NOT this diff): `EncryptedString.process_result_value` InvalidToken fallback returns raw value — inherited from pool_sessions, deferred (would touch shared encryption.py).
+
+### follow-up do (opus) — 3 improvements, re-verified green
+1. State machine: `purchased → banned` now LEGAL (provider can ban a slot pre-registration, e.g. VoIP); comment fixed; `purchased→promoted`/`→probation` remain illegal (tested).
+2. PII boundary guard: `create_purchased` raises new domain error `FactoryAccountValidationError` when `phone_masked` lacks the mask char (`FACTORY_PHONE_MASK_CHAR: Final = "*"`); message omits the PII value (tested).
+3. Proxy repr test: asserts proxy creds (`secretpass`/`socks5://`) absent from `repr(record)` (tested).
+Re-verify: ci-fast `1305 passed`; integration `8 passed` (migration up/down + ciphertext + total_spent_usd on live PG) with `POSTGRES_HOST` override.
