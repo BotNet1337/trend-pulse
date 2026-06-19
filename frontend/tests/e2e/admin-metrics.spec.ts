@@ -18,8 +18,12 @@ import { test, expect, type Page } from "@playwright/test";
 
 // ─── helpers (alerts.spec.ts pattern) ─────────────────────────────────────────
 
+// NOTE: the domain must NOT contain the substring "admin". AC2 asserts
+// `getByText(/admin/i)` has count 0, and the authenticated AppShell renders the
+// user's full email in the (hidden) account-menu header — `toHaveCount` counts
+// hidden DOM too. An "admin"-bearing domain would self-trigger that assertion.
 const uniqueEmail = (prefix: string) =>
-  `${prefix}-${Date.now()}@playwright-admin.example.com`;
+  `${prefix}-${Date.now()}@playwright-e2e.example.com`;
 
 async function registerAndLogin(page: Page, email: string, password: string) {
   await page.request.post("/api/v1/auth/register", {
