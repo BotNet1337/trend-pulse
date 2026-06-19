@@ -79,19 +79,48 @@ API (`docs.smspva.com`): API-key auth, buy number, poll for SMS code, finish/can
 - unit: fake scenarios; smspva request/parse with `respx`/mocked httpx; selection by env; error mapping.
 
 ## Checkpoints
-current_step: 3
-baseline_commit: acb9d1ead373ebd99f5dd570dcc75ff0c1625546
-branch: ""
-lock: ""
+current_step: 6
+baseline_commit: 7d1d808
+branch: "gsd/phase-133-provider-abstraction"
+lock: "agent-a14b9d477b61677df"
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — fake + mocked-httpx smspva + env selection)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (API-key + session secrets, external HTTP boundary)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — fake + mocked-httpx smspva + env selection); REAL balance()=10.0000 live
+- [x] 5 review (auto, adversarial) — pass; MEDIUM aclose() gap FIXED
+- [x] 5.5 security (API-key + session secrets, external HTTP boundary) — pass; LOW `from None` FIXED
 - [ ] 6 ship (PR)
 - [ ] 7 learnings (auto)
 debug_runs: []
 
 ## Details
-(initial)
+
+### 2026-06-20 — executor run (do→verify→review→security→fix)
+
+**Implemented (DI seam, no orchestration — that's TASK-134):**
+- `factory/providers/base.py` — `PurchasedNumber` frozen DTO + `SmsProvider` @runtime_checkable Protocol (`balance→Decimal`, `buy_number`, `poll_code`, `finish`, `cancel`, `aclose`).
+- `factory/providers/fake.py` — `FakeSmsProvider(scenario=ok|no_code|banned)`, deterministic, no sleeps/network.
+- `factory/providers/smspva.py` — `SmsPvaProvider` over httpx (GET `/priemnik.php`, `metod`/`service`/`apikey`/`country`/`id`); tolerates `response`/`responce` misspelling; typed error mapping; status-only messages (api_key never echoed); `Decimal` balance; deadline-bounded poll loop; `build_smspva_provider` lazy httpx.
+- `factory/registrar/base.py` — `RegisteredSession` DTO + async `CodeCallback` + `TelegramRegistrar` @runtime_checkable Protocol.
+- `factory/registrar/fake.py` — `FakeRegistrar` deterministic session+tg_user_id (awaits code_cb once).
+- `factory/registrar/telethon.py` — `TelethonRegistrar`: lazy telethon import, reuses `collector.telegram.client.parse_socks5_proxy`, `send_code_request`→`code_cb`→`sign_in`→`get_me`, banned/2FA → typed errors, `cast` at boundary; config-gated, never runs in CI.
+- `factory/providers/factory.py` — `get_sms_provider`/`get_registrar` env selection (`ACCOUNT_FACTORY_PROVIDER`, default `fake`; smspva fail-fast on empty key; real registrar only when telegram api creds set).
+- `config.py` — `account_factory_provider` (default `fake`) + `smspva_api_key` (secret, empty default).
+- Appended SMSPVA constants/poll-timeouts/defaults to `factory/constants.py`; provider/registrar domain errors to `factory/errors.py`.
+
+**Verify (G2) evidence:**
+- `ruff format --check` + `ruff check` → All checks passed; `mypy` → Success: no issues in 191 source files; `mypy scripts/dump_openapi.py` → ok.
+- `pytest tests/unit/factory/ -q` → **29 passed** (fake ok|no_code|banned; mocked-httpx smspva request-build+parse+typed-error-mapping incl. api_key-absence asserts; env selection fake-default/smspva-when-set; fake registrar deterministic; aclose).
+- **REAL SMSPVA connectivity smoke (owner key from gitignored `.env`, READ-ONLY, balance() only — NO spend):** `SMSPVA balance OK: 10.0000` — the live SMSPVA API path works end-to-end. Throwaway script deleted; `.env`/key NOT staged (`.env` gitignored).
+
+**Review/security findings folded in (cheap correctness, in-scope):**
+- security LOW: transport-error catch `raise ... from exc` retained httpx `__cause__` whose repr carries `apikey=` URL → changed to `from None`.
+- review MEDIUM: `httpx.AsyncClient` never closed (deviation from `collector/twitter/client.py`) → added `aclose()` to Protocol + `SmsPvaProvider` + no-op on `FakeSmsProvider`.
+
+**Handoff notes for TASK-134 (account-factory core orchestration: buy→register→probation→promote; provider-driven activation, budget cap):**
+- Call `get_sms_provider(settings)` / `get_registrar(settings)`; default `fake` keeps CI/dev safe. Enable real path via `ACCOUNT_FACTORY_PROVIDER=smspva` + `SMSPVA_API_KEY` (+ `TELEGRAM_API_ID/HASH` for the real registrar).
+- **Budget cap:** `balance()` returns `Decimal` USD — gate `buy_number` on a configurable min-balance / per-run spend cap. `finish()`=SMSPVA `ban` (mark number consumed), `cancel()`=`denial` (release unused) — call `cancel()` on any register failure to avoid paying for an unused number.
+- **Lifecycle wiring:** `buy_number→FACTORY_STATE_PURCHASED`; `register(...)` success→`registered` (persist session via TASK-132 store, encrypted); probation→promoted copies session into `pool_sessions`. Map `SmsNumberUnavailableError`/`SmsCodeTimeoutError`→`failed`, `RegistrarBannedError`→`banned`.
+- Provider holds an httpx client → call `await provider.aclose()` when the loop ends (or use a context per run).
+- Constrain `country`/`service` to an allow-list at the call site (provider accepts arbitrary str; defaults `RU`/`opt1` in constants).
+- Run the factory in a worker/Celery context (not the API request path) so a `SmsProviderResponseError` is logged type+message only — never `exc_info` against the API global handler.

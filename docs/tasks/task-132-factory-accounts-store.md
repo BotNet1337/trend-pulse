@@ -1,7 +1,7 @@
 ---
 id: TASK-132
 title: factory_accounts table + store (state machine)
-status: review
+status: done
 owner: backend
 created: 2026-06-19
 updated: 2026-06-20
@@ -73,18 +73,18 @@ timestamp; `cost_usd` for budget accounting (TASK-134); `last_error`; `provider`
 - integration: `0028` round-trip + ciphertext assert (mirror `test_pool_session_store.py`).
 
 ## Checkpoints
-current_step: 6
+current_step: done
 baseline_commit: 4007b06585ba0564c735130d006e82a2e9403865
 branch: "gsd/phase-132-factory-accounts-store"
-lock: "executor-132-run1"
+lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [x] 3 do (TDD: failing test → minimal code)
 - [x] 4 verify (G2 — migration round-trip + ciphertext + transition rejection)
 - [x] 5 review (auto, adversarial)
 - [x] 5.5 security (encrypted session + PII phone masking)
-- [ ] 6 ship (PR)
-- [ ] 7 learnings (auto)
+- [x] 6 ship (PR #197 merged --admin)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details

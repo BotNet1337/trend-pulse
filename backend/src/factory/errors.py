@@ -31,3 +31,58 @@ class IllegalFactoryTransitionError(FactoryAccountStoreError):
     Raised by `transition` when the target state is illegal from the row's current
     state (e.g. `purchased → promoted`, skipping registration/probation). Guards the
     lifecycle invariant: an account can only be promoted into the pool after probation."""
+
+
+# --- SMS provider errors (TASK-133). Mapped at the SMSPVA HTTP boundary; messages
+# carry status/metod only — NEVER the response body, params, or the api_key. ---
+class SmsProviderError(FactoryError):
+    """Base for all SMS-provider (e.g. SMSPVA) domain errors."""
+
+
+class SmsProviderAuthError(SmsProviderError):
+    """The provider rejected the API key (response=`error`/auth failure).
+
+    Raised when SMSPVA returns the `error` status (bad/expired key). The provider's
+    `error_msg` and the api_key are NEVER included in the message."""
+
+
+class SmsNumberUnavailableError(SmsProviderError):
+    """No phone number is currently available to buy (get_number response=2).
+
+    A transient condition — the caller (TASK-134) retries after a backoff. Also the
+    scripted failure used by the fake's `banned` scenario."""
+
+
+class SmsCodeTimeoutError(SmsProviderError):
+    """The SMS verification code never arrived within the poll budget.
+
+    Raised by `poll_code` when the timeout elapses with no code, or when the order id
+    is reported invalid/expired (get_sms response=3)."""
+
+
+class SmsProviderResponseError(SmsProviderError):
+    """A non-OK or malformed provider response (TASK-133).
+
+    Covers non-2xx HTTP, malformed/non-object JSON, unexpected response shapes, and
+    the global error codes (5 rate-limit / 6 negative-karma ban / 7 concurrent-stream
+    limit), plus finish/cancel failures. The message names the metod and status only —
+    NEVER the response body or the api_key (which could leak the secret)."""
+
+
+# --- Telegram registrar errors (TASK-133). Raised by the real Telethon registrar. ---
+class RegistrarError(FactoryError):
+    """Base for all Telegram-registrar domain errors."""
+
+
+class RegistrarBannedError(RegistrarError):
+    """Telegram banned/blocked the phone number (PHONE_NUMBER_BANNED).
+
+    Terminal for that number — the factory moves the account to `banned`. The phone
+    number is a secret and is NEVER included in the message."""
+
+
+class RegistrarPasswordNeededError(RegistrarError):
+    """The account has 2FA enabled and a cloud password is required (SESSION_PASSWORD_NEEDED).
+
+    The registrar cannot complete sign-in without the 2FA password; the caller treats
+    this as a registration failure for that number."""
