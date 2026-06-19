@@ -55,11 +55,15 @@ class _RecordingClient:
 def _build_pool(
     log: list[str], new_client: _RecordingClient
 ) -> tuple[AccountPool, _RecordingClient, _RecordingClient]:
-    """Pool with two slots; the factory hands out `new_client` for the NEW session."""
+    """Pool with two slots; the factory hands out `new_client` for the NEW session.
+
+    TASK-129: factory accepts optional proxy arg (2-arg signature) so revive_slot
+    calling `self._factory(session_string, None)` does not break existing tests.
+    """
     old = _RecordingClient("old", log)
     sibling = _RecordingClient("sibling", log)
 
-    def factory(session: str) -> _RecordingClient:
+    def factory(session: str, _proxy: str | None = None) -> _RecordingClient:
         if session == _SESSION_OLD:
             return old
         if session == _SESSION_SIBLING:
@@ -147,7 +151,7 @@ async def test_revive_proceeds_when_old_disconnect_raises() -> None:
     old = _RecordingClient("old", log, disconnect_raises=True)
     sibling = _RecordingClient("sibling", log)
 
-    def factory(session: str) -> _RecordingClient:
+    def factory(session: str, _proxy: str | None = None) -> _RecordingClient:
         return {
             _SESSION_OLD: old,
             _SESSION_SIBLING: sibling,
@@ -181,7 +185,7 @@ async def test_revive_clears_old_fingerprint_from_persisted_quarantine() -> None
     old = _RecordingClient("old", log)
     sibling = _RecordingClient("sibling", log)
 
-    def factory(session: str) -> _RecordingClient:
+    def factory(session: str, _proxy: str | None = None) -> _RecordingClient:
         return {_SESSION_OLD: old, _SESSION_SIBLING: sibling, _SESSION_NEW: new}[session]
 
     r = fakeredis.FakeRedis()
@@ -217,3 +221,97 @@ def test_find_slot_index_falls_back_to_fingerprint() -> None:
     # tg_user_id not present → fall back to the OLD fingerprint.
     assert pool.find_slot_index(tg_user_id=None, fingerprint=session_fingerprint(_SESSION_OLD)) == 0
     assert pool.find_slot_index(tg_user_id=None, fingerprint="deadbeefdeadbeef") is None
+
+
+# ---------------------------------------------------------------------------
+# FIX 2 — revive_slot must thread the slot's proxy to the new client
+# ---------------------------------------------------------------------------
+
+
+async def test_revive_slot_threads_proxy_to_new_client() -> None:
+    """FIX 2: after revive_slot, the new client is built with the slot's original proxy.
+
+    Builds a pool where slot 0 has proxy "socks5://u:p@h:1080" via a proxy-capturing
+    factory. After revive_slot(slot_index=0), the new client must have received
+    proxy="socks5://u:p@h:1080", NOT None (which would silently send traffic via the
+    bare VPS IP, defeating the anti-ban purpose).
+    """
+    _PROXY = "socks5://u:p@h:1080"
+    _SESSION_REVIVED = "1AbCsession-REVIVED"
+
+    class _ProxyCapturingRecordingClient:
+        """Combined proxy-capture + connect/disconnect recording for revive tests."""
+
+        def __init__(self, name: str, proxy: str | None = None) -> None:
+            self.name = name
+            self.proxy = proxy
+            self.connect_calls = 0
+            self.disconnect_calls = 0
+
+        async def connect(self) -> None:
+            self.connect_calls += 1
+
+        async def disconnect(self) -> None:
+            self.disconnect_calls += 1
+
+        def is_connected(self) -> bool:
+            return False
+
+    clients_by_session: dict[str, _ProxyCapturingRecordingClient] = {}
+
+    def factory(session: str, proxy: str | None = None) -> _ProxyCapturingRecordingClient:
+        client = _ProxyCapturingRecordingClient(name=session, proxy=proxy)
+        clients_by_session[session] = client
+        return client
+
+    pool = AccountPool.from_sessions(
+        sessions=[_SESSION_OLD, _SESSION_SIBLING],
+        factory=factory,
+        tg_user_ids=[111, 222],
+        proxies=[_PROXY, None],
+    )
+
+    # Pre-check: slot 0's INITIAL client captured the proxy.
+    assert clients_by_session[_SESSION_OLD].proxy == _PROXY
+
+    # Revive slot 0 with a new session.
+    await pool.revive_slot(slot_index=0, tg_user_id=111, session_string=_SESSION_REVIVED)
+
+    # FIX 2 assertion: the revived client must carry the same proxy as the slot.
+    revived_client = clients_by_session[_SESSION_REVIVED]
+    assert revived_client.proxy == _PROXY, (
+        f"revived client got proxy={revived_client.proxy!r}, expected {_PROXY!r}; "
+        "revive_slot must thread account.proxy to the factory call"
+    )
+
+
+async def test_revive_slot_no_proxy_slot_still_gets_none() -> None:
+    """A slot with no proxy (None) remains proxy=None after revive — no regression."""
+    _SESSION_REVIVED2 = "1AbCsession-REVIVED2"
+    clients_built: dict[str, str | None] = {}
+
+    class _MinimalClient:
+        async def connect(self) -> None:
+            pass
+
+        async def disconnect(self) -> None:
+            pass
+
+        def is_connected(self) -> bool:
+            return False
+
+    def factory(session: str, proxy: str | None = None) -> _MinimalClient:
+        clients_built[session] = proxy
+        return _MinimalClient()
+
+    pool = AccountPool.from_sessions(
+        sessions=[_SESSION_OLD, _SESSION_SIBLING],
+        factory=factory,
+        tg_user_ids=[111, 222],
+        proxies=[None, None],
+    )
+
+    await pool.revive_slot(slot_index=0, tg_user_id=111, session_string=_SESSION_REVIVED2)
+
+    # Slot had no proxy; revive must pass None (no-proxy path is preserved).
+    assert clients_built[_SESSION_REVIVED2] is None

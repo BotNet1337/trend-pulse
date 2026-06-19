@@ -21,9 +21,10 @@ from collector.telegram.client import TelegramClientProtocol
 from .conftest import FakeClient
 
 
-def _factory_for(sessions: list[str]) -> Callable[[str], TelegramClientProtocol]:
+def _factory_for(sessions: list[str]) -> Callable[[str, str | None], TelegramClientProtocol]:
     clients = iter([FakeClient() for _ in sessions])
-    return lambda _session: next(clients)
+    # TASK-129: factory accepts optional proxy arg (2-arg signature).
+    return lambda _session, _proxy=None: next(clients)
 
 
 def _pool(sessions: list[str], redis: object | None) -> AccountPool:

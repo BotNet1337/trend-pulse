@@ -9,6 +9,20 @@ class PoolConfigError(CollectorError):
     """Account-pool misconfiguration (missing creds, size outside POOL_MIN..POOL_MAX)."""
 
 
+class InvalidProxyError(PoolConfigError):
+    """A malformed SOCKS5 proxy URI for ONE pool session slot (TASK-129).
+
+    A misconfig at the per-slot level: the proxy URI supplied for exactly ONE
+    session cannot be parsed into a valid `(socks.SOCKS5, host, port, rdns,
+    user, pass)` Telethon proxy tuple. This is subclassed from `PoolConfigError`
+    so the pool-builder's per-slot skip logic (boot/skip handling) remains
+    consistent: `from_sessions` catches `InvalidProxyError` per slot, logs a
+    WARNING (no secret — only the slot index), and continues building the rest.
+    One bad proxy degrades exactly one slot; it never crashes the whole pool.
+    The error message MUST NOT include credentials (user:pass) from the URI.
+    """
+
+
 class SourceUnavailableError(CollectorError):
     """A source could not be read (private/removed/renamed) — skip it, keep the rest."""
 
