@@ -25,6 +25,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from collector.constants import (
     POOL_SESSION_DISPLAY_LABEL_MAX,
+    POOL_SESSION_PROXY_MAX,
     POOL_SESSION_STRING_MAX,
 )
 from collector.constants import SESSION_FINGERPRINT_LEN as _FINGERPRINT_LEN
@@ -74,6 +75,15 @@ class PoolSession(Base):
     display_label: Mapped[str] = mapped_column(
         String(POOL_SESSION_DISPLAY_LABEL_MAX),
         nullable=False,
+    )
+    # SOCKS5 proxy URI for this session (TASK-129). Non-secret? NO — it carries
+    # user:pass credentials → ENCRYPTED like session_string via EncryptedString,
+    # NEVER logged, NEVER placed in Redis, NEVER sent via the API. NULL means no
+    # proxy configured for this slot (behaviour is byte-identical to today).
+    proxy: Mapped[str | None] = mapped_column(
+        EncryptedString(POOL_SESSION_PROXY_MAX),
+        nullable=True,
+        default=None,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

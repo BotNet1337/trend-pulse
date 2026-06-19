@@ -20,6 +20,8 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from collector.telegram.account_pool import session_fingerprint
+from storage.models.base import utcnow
+from storage.models.pool_sessions import PoolSession
 from storage.pool_session_store import (
     ReviveOutcome,
     active_sessions,
@@ -94,6 +96,48 @@ def test_revive_then_add_persist(db_engine: Engine, session: Session) -> None:
     assert active[0].session_string == _SESSION_REMINTED
 
 
+def test_proxy_stored_as_ciphertext(db_engine: Engine, session: Session) -> None:
+    """TASK-129: a proxy URI is stored as Fernet ciphertext (raw-SQL assert), and
+    the ORM/`active_sessions` read returns the plaintext proxy URI.
+
+    Inserts a row directly (not via upsert, which has no proxy param yet — out of
+    scope per task) with a plaintext proxy URI and asserts the stored raw value is
+    encrypted while the ORM returns plaintext.
+    """
+    _PROXY = "socks5://proxyuser:proxypass@proxy.example.com:1080"
+    fp = session_fingerprint(_SESSION)
+    now = utcnow()
+    row = PoolSession(
+        tg_user_id=900_002,
+        session_string=_SESSION,
+        session_fingerprint=fp,
+        display_label="@proxy-test",
+        proxy=_PROXY,
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(row)
+    session.commit()
+
+    with db_engine.connect() as conn:
+        raw = conn.execute(
+            text("SELECT proxy FROM pool_sessions WHERE tg_user_id = 900002")
+        ).scalar()
+    assert raw is not None
+    assert raw != _PROXY, "plaintext proxy URI leaked into the DB!"
+    assert raw.startswith("gAA"), f"DB proxy value is not a Fernet token: {raw!r}"
+
+    # ORM read via active_sessions decrypts back to plaintext proxy.
+    fresh = sessionmaker(bind=db_engine, autoflush=False, expire_on_commit=False)()
+    try:
+        active = active_sessions(fresh)
+        stored = next((a for a in active if a.tg_user_id == 900_002), None)
+        assert stored is not None
+        assert stored.proxy == _PROXY
+    finally:
+        fresh.close()
+
+
 def test_union_loader_merges_env_and_store(db_engine: Engine, session: Session) -> None:
     """`_union_pool_sessions` merges env + DB store, de-duped by fingerprint."""
     from collector.registry import _union_pool_sessions
@@ -104,7 +148,9 @@ def test_union_loader_merges_env_and_store(db_engine: Engine, session: Session) 
     session.commit()
 
     env_only = "1AbCenv-only-bootstrap-session"
-    sessions, tg_user_ids, display_labels = _union_pool_sessions(
+    # TASK-129: _union_pool_sessions now returns a 4-tuple (sessions, tg_user_ids,
+    # display_labels, proxies). Unpack accordingly.
+    sessions, tg_user_ids, display_labels, proxies = _union_pool_sessions(
         env_sessions=[env_only, _SESSION],  # _SESSION duplicates the DB row
         fingerprint=session_fingerprint,
     )
@@ -119,3 +165,6 @@ def test_union_loader_merges_env_and_store(db_engine: Engine, session: Session) 
     assert tg_user_ids[idx_env] is None
     assert display_labels[idx_db] == "@a"  # TASK-120: DB row carries its label
     assert display_labels[idx_env] is None
+    # TASK-129: proxy is None for both (DB row has no proxy set, env slot never has one).
+    assert proxies[idx_db] is None
+    assert proxies[idx_env] is None

@@ -30,7 +30,12 @@ from collector.constants import (
     QUARANTINE_REDIS_KEY,
     SESSION_FINGERPRINT_LEN,
 )
-from collector.errors import AllAccountsFloodWaitError, PoolConfigError, PoolExhaustedError
+from collector.errors import (
+    AllAccountsFloodWaitError,
+    InvalidProxyError,
+    PoolConfigError,
+    PoolExhaustedError,
+)
 from collector.telegram.client import TelegramClientFactory, TelegramClientProtocol
 
 if TYPE_CHECKING:
@@ -108,6 +113,12 @@ class _Account:
     # surfaced in the health snapshot so the UI labels each row by account (None for an
     # env-only bootstrap slot with no store identity). NEVER a secret (not the session).
     display_label: str | None = None
+    # FIX 2 (TASK-129): the per-session SOCKS5 proxy URI this slot was built with.
+    # This is a SECRET (carries user:pass credentials) and must NEVER appear in logs,
+    # AccountStatus, health snapshots, or Redis. Held here so revive_slot can rebuild
+    # the new client with the SAME egress IP — the account keeps its proxy affinity
+    # across a session re-mint.
+    proxy: str | None = None
 
 
 # Account lifecycle state exposed in the health snapshot (TASK-115; `failing` TASK-118).
@@ -172,6 +183,7 @@ class AccountPool:
         redis: "Redis | None" = None,
         tg_user_ids: list[int | None] | None = None,
         display_labels: list[str | None] | None = None,
+        proxies: list[str | None] | None = None,
     ) -> "AccountPool":
         """Build a pool from pool session strings; validates size POOL_MIN..POOL_MAX.
 
@@ -189,6 +201,14 @@ class AccountPool:
         `display_labels` (TASK-120, optional) is the per-session NON-SECRET display label
         (positional with `sessions`); a DB-store slot carries its masked id / `@username`
         so the health snapshot can label the row by account. Env slots pass None.
+
+        `proxies` (TASK-129, optional) is the per-session SOCKS5 proxy URI (positional
+        with `sessions`). When an entry is a non-None string, `factory(session, proxy)` is
+        called with that URI; when None, `factory(session, None)` preserves today's
+        byte-identical no-proxy path. A `InvalidProxyError` raised by the factory for a
+        single slot is caught here: the slot is SKIPPED with a WARNING (no secret — only
+        the slot index is logged), and the remaining slots build normally. This gives
+        per-slot fail-closed isolation: one bad proxy degrades exactly one slot.
         """
         size = len(sessions)
         if size < POOL_MIN or size > POOL_MAX:
@@ -204,15 +224,48 @@ class AccountPool:
             raise PoolConfigError(
                 f"display_labels length ({len(labels)}) must match sessions ({size})"
             )
-        accounts = [
-            _Account(
-                client=factory(session),
-                fingerprint=session_fingerprint(session),
-                tg_user_id=tg_user_id,
-                display_label=display_label,
+        proxy_list: list[str | None] = proxies if proxies is not None else [None] * size
+        if len(proxy_list) != size:
+            raise PoolConfigError(
+                f"proxies length ({len(proxy_list)}) must match sessions ({size})"
             )
-            for session, tg_user_id, display_label in zip(sessions, ids, labels, strict=True)
-        ]
+        accounts: list[_Account] = []
+        # FIX 4: use enumerate to get the true INPUT position for the skip warning —
+        # len(accounts) shifts after an earlier skip, making the log message misleading.
+        for input_index, (session, tg_user_id, display_label, proxy) in enumerate(
+            zip(sessions, ids, labels, proxy_list, strict=True)
+        ):
+            try:
+                client = factory(session, proxy)
+            except InvalidProxyError:
+                # Per-slot fail-closed (AC3): log the INPUT slot index only — NEVER the
+                # proxy URI (it carries user:pass credentials). Skip this slot; others
+                # build normally.
+                logger.warning(
+                    "invalid proxy for pool slot %d — skipping this slot (proxy not logged)",
+                    input_index,
+                )
+                continue
+            accounts.append(
+                _Account(
+                    client=client,
+                    fingerprint=session_fingerprint(session),
+                    tg_user_id=tg_user_id,
+                    display_label=display_label,
+                    # FIX 2: store the per-slot proxy URI so revive_slot can thread it
+                    # to the factory when rebuilding this slot's client after a re-mint.
+                    # SECRET — never logged, never in AccountStatus/snapshots/Redis.
+                    proxy=proxy,
+                )
+            )
+        # After per-slot skip: the built pool may be smaller than `size`. Validate
+        # POOL_MIN..POOL_MAX on the ACTUAL number of successfully-built accounts.
+        actual = len(accounts)
+        if actual < POOL_MIN or actual > POOL_MAX:
+            raise PoolConfigError(
+                f"telegram pool must have between {POOL_MIN} and {POOL_MAX} "
+                f"technical accounts after proxy filtering, got {actual}"
+            )
         persisted = cls._load_quarantined_fingerprints(redis)
         for account in accounts:
             if account.fingerprint in persisted:
@@ -535,7 +588,10 @@ class AccountPool:
             logger.warning("old client disconnect failed during revive (proceeding)")
 
         # 2. Build + connect the NEW client (only after the old one is down).
-        new_client = self._factory(session_string)
+        # FIX 2 (TASK-129): thread the slot's existing proxy to the factory — the proxy
+        # assignment is per-account/IP affinity (the account keeps its dedicated egress
+        # IP across a re-mint). account.proxy is a SECRET and is never logged here.
+        new_client = self._factory(session_string, account.proxy)
         await new_client.connect()
 
         # 3. Swap in place + reset THIS slot's state (single-slot only).

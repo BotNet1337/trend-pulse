@@ -56,6 +56,11 @@ class StoredSession:
     `session_string` is the plaintext Telethon StringSession — repr-suppressed so a
     stray `repr()`/log line cannot echo it. Only the worker (building a real client)
     ever reads it; the API/UI use `tg_user_id`/`fingerprint`/`display_label`.
+
+    `proxy` (TASK-129) is the plaintext SOCKS5 proxy URI (decrypted by the
+    EncryptedString TypeDecorator on DB read), or None when no proxy is configured.
+    It carries user:pass credentials → repr-suppressed like `session_string`,
+    NEVER logged, NEVER placed in Redis, NEVER sent via the API.
     """
 
     tg_user_id: int
@@ -63,6 +68,8 @@ class StoredSession:
     display_label: str
     # repr=False: the session is a secret — keep it out of any repr()/log/traceback.
     session_string: str = field(default="", repr=False)
+    # repr=False: the proxy carries user:pass creds — same secret treatment as session.
+    proxy: str | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True)
@@ -184,6 +191,7 @@ def active_sessions(session: Session) -> list[StoredSession]:
             fingerprint=row.session_fingerprint,
             display_label=row.display_label,
             session_string=row.session_string,
+            proxy=row.proxy,
         )
         for row in rows
     ]
@@ -209,6 +217,7 @@ def find_active_by_tg_user_id(session: Session, tg_user_id: int) -> StoredSessio
         fingerprint=row.session_fingerprint,
         display_label=row.display_label,
         session_string=row.session_string,
+        proxy=row.proxy,
     )
 
 

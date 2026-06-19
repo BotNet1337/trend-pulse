@@ -124,7 +124,7 @@ def _build_telegram_collector() -> SourceCollector:
     # Store-only by default: env floor is opt-in (active_env_pool_sessions → [] unless
     # telegram_pool_use_env_sessions). The pool is sourced from the encrypted dynamic
     # store; an empty store simply means no pool until a session is QR-onboarded.
-    sessions, tg_user_ids, display_labels = _union_pool_sessions(
+    sessions, tg_user_ids, display_labels, proxies = _union_pool_sessions(
         env_sessions=active_env_pool_sessions(settings),
         fingerprint=session_fingerprint,
     )
@@ -134,6 +134,7 @@ def _build_telegram_collector() -> SourceCollector:
         redis=redis,
         tg_user_ids=tg_user_ids,
         display_labels=display_labels,
+        proxies=proxies,
     )
     return TelegramCollector(pool, settings=settings, redis=redis)
 
@@ -142,15 +143,18 @@ def _union_pool_sessions(
     *,
     env_sessions: list[str],
     fingerprint: Callable[[str], str],
-) -> tuple[list[str], list[int | None], list[str | None]]:
+) -> tuple[list[str], list[int | None], list[str | None], list[str | None]]:
     """Union env sessions with the active DB-store sessions, de-duped by fingerprint.
 
     The DB store WINS on a fingerprint conflict (its identity `tg_user_id` is carried).
-    Returns positional `(sessions, tg_user_ids, display_labels)` for
+    Returns positional `(sessions, tg_user_ids, display_labels, proxies)` for
     `AccountPool.from_sessions` (the non-secret `display_label` labels each health row,
-    TASK-120; env slots carry None). Reads
-    the store via a short-lived session; FAILS OPEN to env-only on ANY error (the worker
-    must boot even if the DB is briefly unreachable — disaster-recovery floor).
+    TASK-120; env slots carry None for labels). `proxies` (TASK-129) carries the
+    per-slot SOCKS5 proxy URI from the DB row — it is a SECRET (user:pass), so it is
+    decrypted by the EncryptedString TypeDecorator on DB read and passed to the
+    factory; env slots always carry None (no proxy configured for env bootstrap slots).
+    Reads the store via a short-lived session; FAILS OPEN to env-only on ANY error (the
+    worker must boot even if the DB is briefly unreachable — disaster-recovery floor).
 
     JOINT `POOL_MAX` cap (TASK-119 fix): the de-duped union is TRUNCATED to `POOL_MAX`
     so the list handed to `from_sessions` can never exceed the bound and raise
@@ -165,6 +169,7 @@ def _union_pool_sessions(
     sessions: list[str] = []
     tg_user_ids: list[int | None] = []
     display_labels: list[str | None] = []
+    proxies: list[str | None] = []
     seen: set[str] = set()
 
     db_sessions = _load_db_store_sessions()
@@ -176,6 +181,7 @@ def _union_pool_sessions(
         sessions.append(stored.session_string)
         tg_user_ids.append(stored.tg_user_id)
         display_labels.append(stored.display_label or None)
+        proxies.append(stored.proxy)  # TASK-129: proxy is a secret, None for no-proxy
 
     for raw in env_sessions:
         fp = fingerprint(raw)
@@ -185,6 +191,7 @@ def _union_pool_sessions(
         sessions.append(raw)
         tg_user_ids.append(None)
         display_labels.append(None)
+        proxies.append(None)  # env bootstrap slots always have no proxy
 
     if len(sessions) > POOL_MAX:
         # DB-first truncation: keep the live identity-keyed slots, drop the overflow
@@ -197,8 +204,9 @@ def _union_pool_sessions(
         sessions = sessions[:POOL_MAX]
         tg_user_ids = tg_user_ids[:POOL_MAX]
         display_labels = display_labels[:POOL_MAX]
+        proxies = proxies[:POOL_MAX]
 
-    return sessions, tg_user_ids, display_labels
+    return sessions, tg_user_ids, display_labels, proxies
 
 
 def _load_db_store_sessions() -> list["StoredSession"]:

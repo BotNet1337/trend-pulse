@@ -240,6 +240,23 @@ POOL_RELOAD_SIGNAL_TTL_SECONDS: Final = _POOL_RELOAD_SIGNAL_TTL_MINUTES * 60  # 
 POOL_SESSION_STRING_MAX: Final = 1024
 POOL_SESSION_DISPLAY_LABEL_MAX: Final = 64
 
+# SOCKS5 proxy support per session (TASK-129).
+# IANA-registered default port for SOCKS5; used when a proxy URI omits the port
+# (e.g. `socks5://user:pass@proxy.example.com`).
+SOCKS5_DEFAULT_PORT: Final = 1080
+# Telethon's proxy tuple uses an integer to identify the proxy protocol type.
+# 2 == SOCKS5 in both the PySocks (`socks.SOCKS5`) and python-socks (`ProxyType.SOCKS5`)
+# conventions that Telethon accepts — see telethon/network/connection/connection.py.
+# Using the integer here avoids a runtime dependency on either library: Telethon
+# resolves the protocol type itself and accepts the raw integer value.
+SOCKS5_PROXY_TYPE: Final = 2
+# Column width for the encrypted proxy column on `pool_sessions`. A
+# `socks5://user:pass@host:port` URI is short in plaintext (~50 chars), but
+# Fernet ciphertext + base64 expansion adds ~89 bytes of overhead — a generous
+# cap mirrors the rationale of `POOL_SESSION_STRING_MAX` above. Carries user:pass
+# credentials → ENCRYPTED like session_string, NEVER logged or sent via Redis.
+POOL_SESSION_PROXY_MAX: Final = 512
+
 # --- collect-tick (beat ingest task) — import-cycle-free contract constants. ---
 # Celery task name for the collect tick. Lives here (not in collector.tasks,
 # which imports celery_app) so `scheduler` can reference it without a circular

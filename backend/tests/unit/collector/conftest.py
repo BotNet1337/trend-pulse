@@ -45,6 +45,8 @@ class FakeClient:
         walks forward (the task-083 prod trap: a flushed marker → ancient posts);
       * `limit` caps how many are yielded (whichever end the order starts from).
     `last_iter_kwargs` records what the reader actually passed at the seam.
+    `proxy` (TASK-129) records the proxy string passed at construction so tests can
+    assert that per-slot proxies reach the factory correctly.
     """
 
     def __init__(
@@ -53,6 +55,7 @@ class FakeClient:
         messages: Sequence[SimpleNamespace] | None = None,
         raise_on_iter: Exception | None = None,
         raise_on_entity: Exception | None = None,
+        proxy: str | None = None,
     ) -> None:
         self._messages = list(messages or [make_message(1)])
         self._raise_on_iter = raise_on_iter
@@ -62,6 +65,8 @@ class FakeClient:
         self.disconnect_calls = 0
         self._connected = False
         self.last_iter_kwargs: dict[str, object] | None = None
+        # TASK-129: capture the proxy kwarg so tests can assert proxy passthrough.
+        self.proxy = proxy
 
     async def connect(self) -> None:
         self.connect_calls += 1
@@ -131,10 +136,16 @@ class FakeClient:
 
 
 def make_pool(clients: list[FakeClient]) -> AccountPool:
-    """Build an AccountPool over given fake clients with a controllable clock."""
+    """Build an AccountPool over given fake clients with a controllable clock.
+
+    The factory accepts the 2-arg signature `(session, proxy=None)` introduced in
+    TASK-129; `proxy` is ignored here (FakeClient already captures it if needed for
+    a specific proxy-assertion test — use _make_proxy_pool in test_proxy.py instead).
+    Back-compatible: existing tests that call make_pool([...]) continue to work.
+    """
     factory_iter = iter(clients)
 
-    def factory(_session: str) -> FakeClient:
+    def factory(_session: str, _proxy: str | None = None) -> FakeClient:
         return next(factory_iter)
 
     sessions = [f"session-{i}" for i in range(len(clients))]
