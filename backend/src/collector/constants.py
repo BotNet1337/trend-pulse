@@ -21,11 +21,12 @@ MAX_RAW_BUFFER_LEN: Final = 50_000
 BACKOFF_BASE_SECONDS: Final = 2
 BACKOFF_CAP_SECONDS: Final = 300
 
-# Technical-account pool size bounds. Target is 3..10 technical accounts
+# Technical-account pool size bounds. Target is 3..20 technical accounts
 # (overview §2); POOL_MIN is set to 1 for now (early bootstrap with a single
 # dev account) — raise back to 3 once the full pool is provisioned.
+# Ceiling raised to 20 (TASK-131: pool sizing + deterministic channel sharding).
 POOL_MIN: Final = 1
-POOL_MAX: Final = 10
+POOL_MAX: Final = 20
 
 # Persistent dead-session quarantine (TASK-102). A Redis SET of NON-SECRET session
 # fingerprints (sha256[:16]) so a quarantine survives worker restarts/recycling

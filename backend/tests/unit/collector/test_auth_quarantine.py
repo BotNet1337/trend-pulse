@@ -33,7 +33,12 @@ from collector.telegram.reader import TelegramCollector
 
 from .conftest import FakeClient, make_message, make_pool
 
-_REF = SourceRef(SourceKind.TELEGRAM, "@news")
+# TASK-131: deterministic channel→slot sharding means the read path now acquires the
+# slot `pick_slot_for_channel(handle, healthy)` maps to (sha256(handle) % healthy_count),
+# not always index 0. These tests put the DEAD/erroring account at index 0 and assert it
+# is acquired first, so the handle must map to slot 0. "@dead" → slot 0 for n=1,2,3
+# (verified), preserving each test's dead→quarantine→rotate-to-healthy intent unchanged.
+_REF = SourceRef(SourceKind.TELEGRAM, "@dead")
 
 
 # ---------------------------------------------------------------------------
