@@ -80,3 +80,62 @@ FACTORY_SESSION_STRING_MAX: Final = 1024
 FACTORY_STATE_MAX: Final = 16
 # Last-error diagnostic message (non-secret) recorded on a failed/banned transition.
 FACTORY_LAST_ERROR_MAX: Final = 512
+
+# --- Provider selection (TASK-133). Chooses the SmsProvider/TelegramRegistrar impl
+# from env `ACCOUNT_FACTORY_PROVIDER`; default `fake` keeps CI/this env network-free. ---
+ACCOUNT_FACTORY_PROVIDER_FAKE: Final = "fake"
+ACCOUNT_FACTORY_PROVIDER_SMSPVA: Final = "smspva"
+
+# --- SMSPVA REST API (TASK-133). All calls are GET to {base}{path} with JSON bodies;
+# the API-key is a query param (`apikey`) — a SECRET, never logged. ---
+SMSPVA_BASE_URL: Final = "https://smspva.com"
+SMSPVA_ENDPOINT_PATH: Final = "/priemnik.php"
+
+# `metod` query values — one per operation in the buy → poll → finish/cancel flow.
+SMSPVA_METOD_BALANCE: Final = "get_balance"
+SMSPVA_METOD_NUMBER: Final = "get_number"
+SMSPVA_METOD_SMS: Final = "get_sms"
+SMSPVA_METOD_BAN: Final = "ban"
+SMSPVA_METOD_DENIAL: Final = "denial"
+
+# Query param names (no magic literals in smspva.py).
+SMSPVA_PARAM_METOD: Final = "metod"
+SMSPVA_PARAM_SERVICE: Final = "service"
+SMSPVA_PARAM_APIKEY: Final = "apikey"
+SMSPVA_PARAM_COUNTRY: Final = "country"
+SMSPVA_PARAM_ID: Final = "id"
+
+# Status field — the API misspells `response` as `responce` in some replies, so the
+# provider reads BOTH keys. Response-code constants (the `response`/`responce` value):
+SMSPVA_RESPONSE_OK: Final = "1"  # success
+SMSPVA_RESPONSE_WAIT: Final = "2"  # get_number: unavailable / get_sms: code not yet
+SMSPVA_RESPONSE_INVALID_ID: Final = "3"  # get_sms: invalid id / timeout expired
+SMSPVA_RESPONSE_MISSED: Final = "4"  # get_sms: missed
+SMSPVA_RESPONSE_RATE_LIMIT: Final = "5"  # per-minute request limit exceeded
+SMSPVA_RESPONSE_KARMA_BAN: Final = "6"  # negative-karma ban (10 min)
+SMSPVA_RESPONSE_STREAM_LIMIT: Final = "7"  # concurrent-stream limit
+SMSPVA_RESPONSE_ERROR: Final = "error"  # auth/key invalid (carries error_msg)
+
+# Response JSON field names read by the provider.
+SMSPVA_FIELD_RESPONSE: Final = "response"
+SMSPVA_FIELD_RESPONSE_ALT: Final = "responce"  # API misspelling — handled too
+SMSPVA_FIELD_BALANCE: Final = "balance"
+SMSPVA_FIELD_NUMBER: Final = "number"
+SMSPVA_FIELD_ID: Final = "id"
+SMSPVA_FIELD_SMS: Final = "sms"
+
+# Default order target — overridable per buy_number call.
+SMSPVA_DEFAULT_COUNTRY: Final = "RU"
+SMSPVA_DEFAULT_SERVICE: Final = "opt1"  # Telegram service slug on SMSPVA.
+
+# httpx client timeout for SMSPVA calls (seconds).
+SMSPVA_HTTP_TIMEOUT_SECONDS: Final = 15.0
+
+# SMS-code polling budget + per-attempt sleep (SECONDS, named — no magic literals).
+# The interval matches the API's ~20s retry hint; the timeout bounds the whole loop.
+SMS_CODE_POLL_TIMEOUT_SECONDS: Final = 300
+SMS_CODE_POLL_INTERVAL_SECONDS: Final = 20
+
+# httpx 2xx success band (mirrors collector/twitter/client._HTTP_OK_*).
+SMSPVA_HTTP_OK_FLOOR: Final = 200
+SMSPVA_HTTP_OK_CEIL: Final = 300

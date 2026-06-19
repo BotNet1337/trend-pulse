@@ -10,6 +10,9 @@ from functools import lru_cache
 from pydantic import ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Pure constants module (no config import) — safe, no import cycle (TASK-133).
+from factory.constants import ACCOUNT_FACTORY_PROVIDER_FAKE
+
 # Hosts that are allowed to use plain http:// for public_base_url — dev G2 runs
 # use http://localhost:8000; prod MUST use https:// (enforced by validator below).
 _HTTP_ALLOWED_HOSTS = ("localhost", "127.0.0.1")
@@ -546,6 +549,15 @@ class Settings(BaseSettings):
     # a brand-new StringSession for a user-owned account; this bounds how long an
     # in-progress login lives before `poll()` reports `expired`. Named default.
     qr_login_timeout_seconds: int = _DEFAULT_QR_LOGIN_TIMEOUT_SECONDS
+
+    # --- Account factory provider (TASK-133, Layer B2). Selects the SmsProvider/
+    # TelegramRegistrar impl. Default `fake` keeps CI/this env network-free; set
+    # ACCOUNT_FACTORY_PROVIDER=smspva to wire the real SMSPVA path. ---
+    account_factory_provider: str = ACCOUNT_FACTORY_PROVIDER_FAKE
+    # SMSPVA REST API key — a SECRET (sensitive.env as SMSPVA_API_KEY), NEVER hardcoded
+    # or logged. Empty default so the app boots without it (mirrors nowpayments_api_key);
+    # `get_sms_provider` fails fast if `account_factory_provider=smspva` and this is empty.
+    smspva_api_key: str = ""
 
     # --- Twitter/X source (TASK-031, ADR-001). Optional: app boots without it
     # (collector unregistered → ingest no-op for TWITTER refs, like an empty TG
