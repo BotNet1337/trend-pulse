@@ -281,7 +281,19 @@ def test_alert_deleted_returns_404_or_410(db_session: Session, client: TestClien
 
 
 def _seed_alerts_for_precision(session: Session, n: int) -> tuple[User, list[Alert]]:
-    """Seed one user with n alerts (all delivered_at=_NOW) for precision tests."""
+    """Seed one user with n alerts (all delivered_at within the precision window).
+
+    The precision query filters ``delivered_at >= NOW() - precision_window_seconds``
+    against the *real* clock (and the feedback rows below are stamped with the
+    real ``utcnow()``).  Seeding against a fixed historical ``_NOW`` made this a
+    time-bomb: once wall-clock drifted past the 7-day window the alerts fell out
+    of range and ``total_alerts`` collapsed to 0.  Seed relative to the current
+    instant so the alerts always sit inside the window.
+    """
+    from storage.models.base import utcnow
+
+    seeded_at = utcnow()
+
     user = User(email=f"precision_test_{n}@example.com", hashed_password="x" * 16)
     session.add(user)
     session.flush()
@@ -292,8 +304,8 @@ def _seed_alerts_for_precision(session: Session, n: int) -> tuple[User, list[Ale
             user_id=user.id,
             topic=f"precision_topic_{i}",
             embedding=[0.1 + i * 0.001] + [0.0] * (_EMBEDDING_DIM - 1),
-            first_seen=_NOW,
-            updated_at=_NOW,
+            first_seen=seeded_at,
+            updated_at=seeded_at,
         )
         session.add(cluster)
         session.flush()
@@ -305,8 +317,8 @@ def _seed_alerts_for_precision(session: Session, n: int) -> tuple[User, list[Ale
             cluster_id=cluster.id,
             score=80.0 + i,
             channels_count=1,
-            first_seen=_NOW,
-            delivered_at=_NOW,
+            first_seen=seeded_at,
+            delivered_at=seeded_at,
             delivery_status=DELIVERY_STATUS_DELIVERED,
         )
         session.add(alert)
