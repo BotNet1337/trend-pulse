@@ -21,12 +21,17 @@ import pytest
 from sqlalchemy import StaticPool, create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
-from collector.constants import QUARANTINE_REDIS_KEY
+from collector.constants import (
+    POOL_SOURCE_AUTO,
+    POOL_SOURCE_MANUAL,
+    QUARANTINE_REDIS_KEY,
+)
 from collector.errors import PoolCapacityExceededError
 from collector.telegram.account_pool import session_fingerprint
 from storage.models.base import Base
 from storage.pool_session_store import (
     ReviveOutcome,
+    StoredSession,
     active_sessions,
     clear_quarantine_for,
     find_active_by_tg_user_id,
@@ -231,6 +236,99 @@ def test_clear_quarantine_for_ignores_malformed_and_none() -> None:
     r = fakeredis.FakeRedis()
     clear_quarantine_for(r, "not-a-valid-fp")  # malformed → no-op, no raise
     clear_quarantine_for(None, session_fingerprint(_SESSION_A))  # redis=None → no-op
+
+
+def test_stored_session_source_defaults_manual() -> None:
+    """A `StoredSession` provenance defaults to `manual` (TASK-130)."""
+    stored = StoredSession(tg_user_id=1, fingerprint="f", display_label="@a")
+    assert stored.source == POOL_SOURCE_MANUAL
+
+
+def test_add_default_source_is_manual(db: Session) -> None:
+    """An ADD with no `source` kw persists `manual` (TASK-130 — QR keeps the default)."""
+    upsert_revive_or_add(
+        db, tg_user_id=111, session_string=_SESSION_A, display_label="@alice", pool_max=_POOL_MAX
+    )
+    active = active_sessions(db)
+    assert len(active) == 1
+    assert active[0].source == POOL_SOURCE_MANUAL
+
+
+def test_add_explicit_source_auto_is_persisted(db: Session) -> None:
+    """`upsert_revive_or_add(..., source='auto')` persists `auto` on ADD (TASK-130/134)."""
+    upsert_revive_or_add(
+        db,
+        tg_user_id=111,
+        session_string=_SESSION_A,
+        display_label="@alice",
+        pool_max=_POOL_MAX,
+        source=POOL_SOURCE_AUTO,
+    )
+    active = active_sessions(db)
+    assert len(active) == 1
+    assert active[0].source == POOL_SOURCE_AUTO
+
+
+def test_revive_explicit_source_flips_provenance(db: Session) -> None:
+    """An explicit non-None `source` on a REVIVE sets/flips provenance (TASK-130/134)."""
+    upsert_revive_or_add(
+        db, tg_user_id=111, session_string=_SESSION_A, display_label="@alice", pool_max=_POOL_MAX
+    )
+    revoke(db, tg_user_id=111)
+    upsert_revive_or_add(
+        db,
+        tg_user_id=111,
+        session_string=_SESSION_A2,
+        display_label="@alice2",
+        pool_max=_POOL_MAX,
+        source=POOL_SOURCE_AUTO,
+    )
+    active = active_sessions(db)
+    assert len(active) == 1
+    assert active[0].source == POOL_SOURCE_AUTO
+
+
+def test_qr_revive_preserves_auto_provenance(db: Session) -> None:
+    """A QR revive (source=None) of an `auto` account PRESERVES `auto`, not demote to manual.
+
+    Review fix (TASK-130): an owner re-minting an auto-promoted account via QR (which passes
+    no `source`) must keep its provenance — only the factory (explicit source) flips it.
+    """
+    upsert_revive_or_add(
+        db,
+        tg_user_id=111,
+        session_string=_SESSION_A,
+        display_label="@alice",
+        pool_max=_POOL_MAX,
+        source=POOL_SOURCE_AUTO,
+    )
+    revoke(db, tg_user_id=111)
+    # QR revive: no source kw → must NOT clobber the existing `auto` to `manual`.
+    upsert_revive_or_add(
+        db,
+        tg_user_id=111,
+        session_string=_SESSION_A2,
+        display_label="@alice2",
+        pool_max=_POOL_MAX,
+    )
+    active = active_sessions(db)
+    assert len(active) == 1
+    assert active[0].source == POOL_SOURCE_AUTO
+
+
+def test_find_active_carries_source(db: Session) -> None:
+    """`find_active_by_tg_user_id` threads `source` from the row (TASK-130)."""
+    upsert_revive_or_add(
+        db,
+        tg_user_id=111,
+        session_string=_SESSION_A,
+        display_label="@a",
+        pool_max=_POOL_MAX,
+        source=POOL_SOURCE_AUTO,
+    )
+    found = find_active_by_tg_user_id(db, 111)
+    assert found is not None
+    assert found.source == POOL_SOURCE_AUTO
 
 
 def test_stored_session_repr_hides_secret(db: Session) -> None:

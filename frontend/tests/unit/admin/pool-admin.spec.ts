@@ -32,8 +32,11 @@ import {
   qrLoginPollQueryOptions,
 } from '../../../src/features/pool-admin/queries';
 import {
+  asAccountSource,
   asAccountState,
   asQrLoginStatus,
+  accountSourceBadgeVariant,
+  accountSourceLabel,
   accountStateBadgeVariant,
   accountStateLabel,
   formatCooldown,
@@ -152,6 +155,28 @@ describe('account state helpers', () => {
     expect(accountStateBadgeVariant('healthy')).toBe('success');
     expect(accountStateBadgeVariant('cooling')).toBe('warning');
     expect(accountStateBadgeVariant('quarantined')).toBe('danger');
+  });
+});
+
+// ─── account source provenance (TASK-130) ───────────────────────────────────────
+
+describe('account source helpers', () => {
+  it('narrows known sources, unknown/empty → manual (fail-safe default)', () => {
+    expect(asAccountSource('manual')).toBe('manual');
+    expect(asAccountSource('auto')).toBe('auto');
+    expect(asAccountSource('weird')).toBe('manual');
+    expect(asAccountSource(null)).toBe('manual');
+    expect(asAccountSource(undefined)).toBe('manual');
+  });
+
+  it('labels each source for the badge', () => {
+    expect(accountSourceLabel('manual')).toBe('Manual');
+    expect(accountSourceLabel('auto')).toBe('Auto');
+  });
+
+  it('maps each source to an existing fs-badge variant', () => {
+    expect(accountSourceBadgeVariant('manual')).toBe('neutral');
+    expect(accountSourceBadgeVariant('auto')).toBe('info');
   });
 });
 

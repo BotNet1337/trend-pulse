@@ -257,6 +257,15 @@ SOCKS5_PROXY_TYPE: Final = 2
 # credentials → ENCRYPTED like session_string, NEVER logged or sent via Redis.
 POOL_SESSION_PROXY_MAX: Final = 512
 
+# Provenance of a pool account (TASK-130): how this technical account entered the pool.
+# `manual` — the owner onboarded it via QR (the default for every existing row + QR add);
+# `auto` — the account-factory promoted it (TASK-134). Non-secret: surfaced in the health
+# snapshot + pool-admin UI badge so the owner can tell hand-added accounts from auto ones.
+POOL_SOURCE_MANUAL: Final = "manual"
+POOL_SOURCE_AUTO: Final = "auto"
+# Column width for the `source` string on `pool_sessions` — a short enum-like value.
+POOL_SOURCE_MAX: Final = 16
+
 # --- collect-tick (beat ingest task) — import-cycle-free contract constants. ---
 # Celery task name for the collect tick. Lives here (not in collector.tasks,
 # which imports celery_app) so `scheduler` can reference it without a circular

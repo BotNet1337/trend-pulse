@@ -71,6 +71,38 @@ def test_session_stored_as_ciphertext(db_engine: Engine, session: Session) -> No
         fresh.close()
 
 
+def test_source_defaults_manual_and_explicit_auto_round_trips(
+    db_engine: Engine, session: Session
+) -> None:
+    """TASK-130: an inserted row defaults `source='manual'`; an explicit `auto` round-trips.
+
+    Exercises the real Postgres column + `server_default` via `active_sessions`.
+    """
+    from collector.constants import POOL_SOURCE_AUTO, POOL_SOURCE_MANUAL
+
+    upsert_revive_or_add(
+        session,
+        tg_user_id=900_001,
+        session_string=_SESSION,
+        display_label="@a",
+        pool_max=_POOL_MAX,
+    )
+    upsert_revive_or_add(
+        session,
+        tg_user_id=900_003,
+        session_string="1AbCintegration-session-auto",
+        display_label="@auto",
+        pool_max=_POOL_MAX,
+        source=POOL_SOURCE_AUTO,
+    )
+    session.commit()
+
+    active = active_sessions(session)
+    by_id = {a.tg_user_id: a for a in active}
+    assert by_id[900_001].source == POOL_SOURCE_MANUAL
+    assert by_id[900_003].source == POOL_SOURCE_AUTO
+
+
 def test_revive_then_add_persist(db_engine: Engine, session: Session) -> None:
     r1 = upsert_revive_or_add(
         session, tg_user_id=900_001, session_string=_SESSION, display_label="@a", pool_max=_POOL_MAX
@@ -148,9 +180,9 @@ def test_union_loader_merges_env_and_store(db_engine: Engine, session: Session) 
     session.commit()
 
     env_only = "1AbCenv-only-bootstrap-session"
-    # TASK-129: _union_pool_sessions now returns a 4-tuple (sessions, tg_user_ids,
-    # display_labels, proxies). Unpack accordingly.
-    sessions, tg_user_ids, display_labels, proxies = _union_pool_sessions(
+    # TASK-130: _union_pool_sessions now returns a 5-tuple (sessions, tg_user_ids,
+    # display_labels, proxies, sources). Unpack accordingly.
+    sessions, tg_user_ids, display_labels, proxies, sources = _union_pool_sessions(
         env_sessions=[env_only, _SESSION],  # _SESSION duplicates the DB row
         fingerprint=session_fingerprint,
     )
@@ -168,3 +200,6 @@ def test_union_loader_merges_env_and_store(db_engine: Engine, session: Session) 
     # TASK-129: proxy is None for both (DB row has no proxy set, env slot never has one).
     assert proxies[idx_db] is None
     assert proxies[idx_env] is None
+    # TASK-130: both default to `manual` (DB row server_default + env owner-provisioned).
+    assert sources[idx_db] == "manual"
+    assert sources[idx_env] == "manual"

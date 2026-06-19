@@ -26,6 +26,7 @@ from collector.constants import (
     POOL_FAILING_THRESHOLD,
     POOL_MAX,
     POOL_MIN,
+    POOL_SOURCE_MANUAL,
     QUARANTINE_PERSIST_TTL_SECONDS,
     QUARANTINE_REDIS_KEY,
     SESSION_FINGERPRINT_LEN,
@@ -119,6 +120,10 @@ class _Account:
     # the new client with the SAME egress IP — the account keeps its proxy affinity
     # across a session re-mint.
     proxy: str | None = None
+    # Non-secret provenance (TASK-130): `manual` (owner via QR) vs `auto` (account-factory,
+    # TASK-134). Carried from the DB row through the health snapshot to the pool-admin UI
+    # badge. Env bootstrap slots default to `manual` (owner-provisioned). NEVER a secret.
+    source: str = POOL_SOURCE_MANUAL
 
 
 # Account lifecycle state exposed in the health snapshot (TASK-115; `failing` TASK-118).
@@ -149,6 +154,10 @@ class AccountStatus:
     # failed (e.g. the "wrong session ID"/SecurityError loop), so the owner sees error
     # FREQUENCY, not just the last reason. Never reset by an intermittent success. Non-secret.
     read_failure_count: int = 0
+    # Non-secret provenance (TASK-130): `manual` (owner via QR) vs `auto` (account-factory).
+    # This is what `asdict()` serialises into the snapshot, so the pool-admin UI can badge
+    # each row. Default `manual`. NEVER a secret.
+    source: str = POOL_SOURCE_MANUAL
 
 
 def _backoff_seconds(strikes: int) -> float:
@@ -184,6 +193,7 @@ class AccountPool:
         tg_user_ids: list[int | None] | None = None,
         display_labels: list[str | None] | None = None,
         proxies: list[str | None] | None = None,
+        sources: list[str | None] | None = None,
     ) -> "AccountPool":
         """Build a pool from pool session strings; validates size POOL_MIN..POOL_MAX.
 
@@ -209,6 +219,11 @@ class AccountPool:
         single slot is caught here: the slot is SKIPPED with a WARNING (no secret — only
         the slot index is logged), and the remaining slots build normally. This gives
         per-slot fail-closed isolation: one bad proxy degrades exactly one slot.
+
+        `sources` (TASK-130, optional) is the per-session NON-SECRET provenance (positional
+        with `sessions`): `manual` (owner via QR) or `auto` (account-factory). A None list
+        or a None entry defaults to `manual`. Carried into each slot's `AccountStatus` so the
+        pool-admin UI can badge each row by provenance. Validated like the other lists.
         """
         size = len(sessions)
         if size < POOL_MIN or size > POOL_MAX:
@@ -229,11 +244,16 @@ class AccountPool:
             raise PoolConfigError(
                 f"proxies length ({len(proxy_list)}) must match sessions ({size})"
             )
+        source_list: list[str | None] = sources if sources is not None else [None] * size
+        if len(source_list) != size:
+            raise PoolConfigError(
+                f"sources length ({len(source_list)}) must match sessions ({size})"
+            )
         accounts: list[_Account] = []
         # FIX 4: use enumerate to get the true INPUT position for the skip warning —
         # len(accounts) shifts after an earlier skip, making the log message misleading.
-        for input_index, (session, tg_user_id, display_label, proxy) in enumerate(
-            zip(sessions, ids, labels, proxy_list, strict=True)
+        for input_index, (session, tg_user_id, display_label, proxy, source) in enumerate(
+            zip(sessions, ids, labels, proxy_list, source_list, strict=True)
         ):
             try:
                 client = factory(session, proxy)
@@ -256,6 +276,8 @@ class AccountPool:
                     # to the factory when rebuilding this slot's client after a re-mint.
                     # SECRET — never logged, never in AccountStatus/snapshots/Redis.
                     proxy=proxy,
+                    # TASK-130: non-secret provenance; default `manual` when None.
+                    source=source if source is not None else POOL_SOURCE_MANUAL,
                 )
             )
         # After per-slot skip: the built pool may be smaller than `size`. Validate
@@ -348,6 +370,7 @@ class AccountPool:
                     display_label=account.display_label,
                     tg_user_id=account.tg_user_id,
                     read_failure_count=account.read_failure_count,
+                    source=account.source,
                 )
             )
         return statuses

@@ -14,7 +14,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from collector.base import SourceCollector, SourceKind
-from collector.constants import POOL_MAX
+from collector.constants import POOL_MAX, POOL_SOURCE_MANUAL
 from collector.errors import PoolConfigError
 
 if TYPE_CHECKING:
@@ -124,7 +124,7 @@ def _build_telegram_collector() -> SourceCollector:
     # Store-only by default: env floor is opt-in (active_env_pool_sessions → [] unless
     # telegram_pool_use_env_sessions). The pool is sourced from the encrypted dynamic
     # store; an empty store simply means no pool until a session is QR-onboarded.
-    sessions, tg_user_ids, display_labels, proxies = _union_pool_sessions(
+    sessions, tg_user_ids, display_labels, proxies, sources = _union_pool_sessions(
         env_sessions=active_env_pool_sessions(settings),
         fingerprint=session_fingerprint,
     )
@@ -135,6 +135,7 @@ def _build_telegram_collector() -> SourceCollector:
         tg_user_ids=tg_user_ids,
         display_labels=display_labels,
         proxies=proxies,
+        sources=sources,
     )
     return TelegramCollector(pool, settings=settings, redis=redis)
 
@@ -143,13 +144,15 @@ def _union_pool_sessions(
     *,
     env_sessions: list[str],
     fingerprint: Callable[[str], str],
-) -> tuple[list[str], list[int | None], list[str | None], list[str | None]]:
+) -> tuple[list[str], list[int | None], list[str | None], list[str | None], list[str | None]]:
     """Union env sessions with the active DB-store sessions, de-duped by fingerprint.
 
     The DB store WINS on a fingerprint conflict (its identity `tg_user_id` is carried).
-    Returns positional `(sessions, tg_user_ids, display_labels, proxies)` for
+    Returns positional `(sessions, tg_user_ids, display_labels, proxies, sources)` for
     `AccountPool.from_sessions` (the non-secret `display_label` labels each health row,
-    TASK-120; env slots carry None for labels). `proxies` (TASK-129) carries the
+    TASK-120; env slots carry None for labels). `sources` (TASK-130) is the non-secret
+    provenance per slot: the DB row's `source` (`manual`|`auto`); env bootstrap slots are
+    owner-provisioned → `manual`. `proxies` (TASK-129) carries the
     per-slot SOCKS5 proxy URI from the DB row — it is a SECRET (user:pass), so it is
     decrypted by the EncryptedString TypeDecorator on DB read and passed to the
     factory; env slots always carry None (no proxy configured for env bootstrap slots).
@@ -170,6 +173,7 @@ def _union_pool_sessions(
     tg_user_ids: list[int | None] = []
     display_labels: list[str | None] = []
     proxies: list[str | None] = []
+    sources: list[str | None] = []
     seen: set[str] = set()
 
     db_sessions = _load_db_store_sessions()
@@ -182,6 +186,7 @@ def _union_pool_sessions(
         tg_user_ids.append(stored.tg_user_id)
         display_labels.append(stored.display_label or None)
         proxies.append(stored.proxy)  # TASK-129: proxy is a secret, None for no-proxy
+        sources.append(stored.source)  # TASK-130: non-secret provenance from the DB row
 
     for raw in env_sessions:
         fp = fingerprint(raw)
@@ -192,6 +197,7 @@ def _union_pool_sessions(
         tg_user_ids.append(None)
         display_labels.append(None)
         proxies.append(None)  # env bootstrap slots always have no proxy
+        sources.append(POOL_SOURCE_MANUAL)  # TASK-130: env slots are owner-provisioned
 
     if len(sessions) > POOL_MAX:
         # DB-first truncation: keep the live identity-keyed slots, drop the overflow
@@ -205,8 +211,9 @@ def _union_pool_sessions(
         tg_user_ids = tg_user_ids[:POOL_MAX]
         display_labels = display_labels[:POOL_MAX]
         proxies = proxies[:POOL_MAX]
+        sources = sources[:POOL_MAX]
 
-    return sessions, tg_user_ids, display_labels, proxies
+    return sessions, tg_user_ids, display_labels, proxies, sources
 
 
 def _load_db_store_sessions() -> list["StoredSession"]:

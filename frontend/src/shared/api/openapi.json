@@ -879,6 +879,11 @@
             "title": "Read Failure Count",
             "type": "integer"
           },
+          "source": {
+            "default": "manual",
+            "title": "Source",
+            "type": "string"
+          },
           "state": {
             "title": "State",
             "type": "string"

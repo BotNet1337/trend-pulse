@@ -1241,6 +1241,11 @@ export interface components {
              * @default 0
              */
             read_failure_count: number;
+            /**
+             * Source
+             * @default manual
+             */
+            source: string;
             /** State */
             state: string;
             /** Tg User Id */
