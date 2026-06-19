@@ -16,12 +16,12 @@
  *  - a real sparkline (spark__line) is rendered, not the empty placeholder
  *  - a SCREENSHOT is captured as evidence
  *
- * Runs against a SOURCE-built SPA served by the dev SSR server (`npm run dev`),
- * because the deployed `make up` frontend container can be a stale pre-TASK-096
- * build that lacks the Signal Desk row layout. Point baseURL at that server:
- *   PORT=4010 API_URL=http://localhost/api COOKIE_SECRET=<16+ chars> npm run dev
- * Auth + pack-subscribe are proxied to the real backend; the `signal` payload is
- * injected client-side (the live backend may serve signal-less rows).
+ * Runs against the real SPA at the nginx edge (baseURL from playwright.config.ts
+ * → HTTP_PORT, default :80) — the same `make up` stack as the other watchlist
+ * e2e specs. The frontend image is built from current source (TASK-096/121 are
+ * merged), so no separate dev server is needed. Auth + pack-subscribe are
+ * proxied to the real backend; the `signal` payload is injected client-side (the
+ * live backend may serve signal-less rows).
  */
 
 import { test, expect, type Page } from '@playwright/test';
@@ -30,8 +30,6 @@ const uniqueEmail = (prefix: string) =>
   `${prefix}-${Date.now()}@playwright-t121.example.com`;
 
 // Seeded viral_score scenario (matches the psql-seeded scores row for user 99).
-const DEV_URL = 'http://127.0.0.1:4010';
-test.use({ baseURL: DEV_URL });
 const SEEDED_VIRAL_SCORE = 35; // viral_score (live_score 0-100)
 const SEEDED_VELOCITY = 0.3; // live_velocity (×baseline)
 

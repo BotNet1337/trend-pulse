@@ -3,12 +3,13 @@
  * ("N independent sources") with an HONEST tooltip, and HIDES it when
  * `effective_sources` is null / below MIN_INDEPENDENCE_DISPLAY.
  *
- * Mirrors the TASK-121 viral-score e2e harness: drives the SOURCE-built SPA
- * served by the dev SSR server (`PORT=4010 API_URL=http://localhost/api npm run dev`),
- * because the deployed `make up` frontend container is a stale pre-TASK-126 build.
- * Auth is real (register + UI login, proxied to the live backend); the `/watchlists`
- * list response is intercepted and given rows carrying the exact contract the SPA
- * codes against (gen.types.ts: WatchlistSignal.effective_sources).
+ * Mirrors the TASK-121 viral-score e2e harness: drives the real SPA at the
+ * nginx edge (baseURL from playwright.config.ts → HTTP_PORT, default :80), the
+ * same `make up` stack as the other watchlist e2e specs — the frontend image is
+ * built from current source (TASK-126 is merged), so no separate dev server is
+ * needed. Auth is real (register + UI login, proxied to the live backend); the
+ * `/watchlists` list response is intercepted and given rows carrying the exact
+ * contract the SPA codes against (gen.types.ts: WatchlistSignal.effective_sources).
  *
  * Asserts (TASK-126 AC4 / AC6):
  *  - row with effective_sources=3 → chip text "3 independent sources" visible
@@ -20,10 +21,9 @@
 
 import { test, expect, type Page } from '@playwright/test';
 
-// Dev SSR server origin — MUST be in the backend CSRF allow-list
-// (http://localhost:4000) so real auth/subscribe mutations are accepted.
-const DEV_URL = 'http://localhost:4000';
-test.use({ baseURL: DEV_URL });
+// baseURL comes from playwright.config.ts (the nginx edge, default :80). The
+// config also sets the CSRF Origin header to that same origin so real
+// auth/subscribe mutations are accepted by the backend allow-list.
 
 const uniqueEmail = (prefix: string) =>
   `${prefix}-${Date.now()}@playwright-t126.example.com`;
