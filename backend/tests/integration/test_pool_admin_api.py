@@ -454,6 +454,28 @@ class TestPoolHealth:
         cooling = next(a for a in body["accounts"] if a["state"] == "cooling")
         assert cooling["read_failure_count"] == 0
 
+    def test_snapshot_passes_through_source(self, client: TestClient, db_session: Session) -> None:
+        """A snapshot with `accounts[].source` round-trips through the API (TASK-130)."""
+        snapshot = _fresh_snapshot()
+        snapshot["accounts"][0]["source"] = "auto"
+        _seed_pool_health(snapshot)
+        _login_as_superuser(client, db_session, "pa-health-source@example.com")
+
+        body = client.get(_POOL_HEALTH_PATH).json()
+        auto = next(a for a in body["accounts"] if a["index"] == 0)
+        assert auto["source"] == "auto"
+
+    def test_snapshot_without_source_defaults_manual(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        """A legacy snapshot WITHOUT `source` validates and defaults to `manual` (TASK-130
+        additive, backward-compatible)."""
+        _seed_pool_health(_fresh_snapshot())  # accounts have no `source`
+        _login_as_superuser(client, db_session, "pa-health-source-default@example.com")
+
+        body = client.get(_POOL_HEALTH_PATH).json()
+        assert all(a["source"] == "manual" for a in body["accounts"])
+
     def test_missing_snapshot_is_stale(self, client: TestClient, db_session: Session) -> None:
         # Empty fakeredis (no key) wired as the dependency.
         redis = fakeredis.FakeRedis(decode_responses=True)

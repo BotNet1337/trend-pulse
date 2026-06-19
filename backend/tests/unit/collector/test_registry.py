@@ -59,9 +59,9 @@ def test_union_truncates_to_pool_max_when_db_plus_env_overflow(
     monkeypatch.setattr(registry, "_load_db_store_sessions", lambda: db_rows)
 
     env_only = "1AbCenv-only-unique-bootstrap"
-    # TASK-129: _union_pool_sessions now returns a 4-tuple (sessions, tg_user_ids,
-    # display_labels, proxies).
-    sessions, tg_user_ids, display_labels, proxies = registry._union_pool_sessions(
+    # TASK-130: _union_pool_sessions now returns a 5-tuple (sessions, tg_user_ids,
+    # display_labels, proxies, sources).
+    sessions, tg_user_ids, display_labels, proxies, sources = registry._union_pool_sessions(
         env_sessions=[env_only],
         fingerprint=session_fingerprint,
     )
@@ -71,6 +71,7 @@ def test_union_truncates_to_pool_max_when_db_plus_env_overflow(
     assert len(tg_user_ids) == POOL_MAX
     assert len(display_labels) == POOL_MAX  # positional with sessions (TASK-120)
     assert len(proxies) == POOL_MAX  # TASK-129: proxies list is positional with sessions
+    assert len(sources) == POOL_MAX  # TASK-130: sources list is positional with sessions
     assert env_only not in sessions  # the env overflow slot was dropped (DB-first)
     assert all(tid is not None for tid in tg_user_ids)  # every surviving slot is a DB row
     assert all(label is not None for label in display_labels)  # DB rows carry labels
@@ -92,9 +93,9 @@ def test_from_sessions_builds_at_cap_not_raises_on_overflowing_union(
     ]
     monkeypatch.setattr(registry, "_load_db_store_sessions", lambda: db_rows)
 
-    # TASK-129: _union_pool_sessions now returns a 4-tuple (sessions, tg_user_ids,
-    # display_labels, proxies).
-    sessions, tg_user_ids, display_labels, proxies = registry._union_pool_sessions(
+    # TASK-130: _union_pool_sessions now returns a 5-tuple (sessions, tg_user_ids,
+    # display_labels, proxies, sources).
+    sessions, tg_user_ids, display_labels, proxies, sources = registry._union_pool_sessions(
         env_sessions=["1AbCenv-only-unique-bootstrap"],
         fingerprint=session_fingerprint,
     )
@@ -105,6 +106,7 @@ def test_from_sessions_builds_at_cap_not_raises_on_overflowing_union(
         tg_user_ids=tg_user_ids,
         display_labels=display_labels,
         proxies=proxies,
+        sources=sources,
     )
     assert pool.size == POOL_MAX
 

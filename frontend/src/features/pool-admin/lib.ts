@@ -19,6 +19,41 @@
 export type AccountState = 'healthy' | 'cooling' | 'quarantined' | 'failing';
 
 /**
+ * Per-account provenance (backend `PoolHealthAccount.source`, TASK-130):
+ * `manual` (the owner onboarded it via QR) vs `auto` (the account-factory promoted it).
+ * The OpenAPI schema types it as a plain `string`, so the literal union lives here.
+ */
+export type AccountSource = 'manual' | 'auto';
+
+/** Narrow the backend `string` source to the known union (unknown/absent → 'manual'). */
+export function asAccountSource(raw: string | null | undefined): AccountSource {
+  return raw === 'auto' ? 'auto' : 'manual';
+}
+
+/** Human label for an account source badge. */
+export function accountSourceLabel(source: AccountSource): string {
+  switch (source) {
+    case 'manual':
+      return 'Manual';
+    case 'auto':
+      return 'Auto';
+  }
+}
+
+/**
+ * Badge variant class suffix for a source (maps to existing `fs-badge--*` modifiers):
+ * `auto` → `info` (an accent, machine-added), `manual` → `neutral` (the quiet default).
+ */
+export function accountSourceBadgeVariant(source: AccountSource): 'info' | 'neutral' {
+  switch (source) {
+    case 'auto':
+      return 'info';
+    case 'manual':
+      return 'neutral';
+  }
+}
+
+/**
  * Persistence outcome after a successful QR login (backend
  * `QRLoginPollResponse.outcome`): `revive` re-connected an EXISTING account (the same
  * row flips back to Connected within ~one collect cycle), `add` registered a NEW

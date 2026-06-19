@@ -666,10 +666,13 @@ def test_emit_pool_health_writes_snapshot_to_redis_with_ttl() -> None:
         "display_label",
         "tg_user_id",
         "read_failure_count",
+        "source",
     } == set(cooling.keys())
     assert cooling["display_label"] is None
     assert cooling["tg_user_id"] is None
     assert cooling["read_failure_count"] == 0
+    # TASK-130: an in-memory test pool defaults to `manual` provenance.
+    assert cooling["source"] == "manual"
 
 
 def test_snapshot_carries_read_failure_count() -> None:
@@ -824,3 +827,65 @@ def test_emit_pool_health_redis_write_failure_is_swallowed(
 
     assert result["size"] == 2
     assert any(rec.levelno >= logging.WARNING for rec in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# Pool source provenance (TASK-130) — manual|auto threaded into AccountStatus + snapshot
+# ---------------------------------------------------------------------------
+
+
+def _pool_with_sources(sources: list[str | None] | None) -> AccountPool:
+    """Build a 2-account pool with the given per-slot `sources` (TASK-130)."""
+    clients = [FakeClient(), FakeClient()]
+    factory_iter = iter(clients)
+
+    def factory(_session: str, _proxy: str | None = None) -> FakeClient:
+        return next(factory_iter)
+
+    sessions = [f"session-{i}" for i in range(len(clients))]
+    return AccountPool.from_sessions(sessions=sessions, factory=factory, sources=sources)
+
+
+def test_from_sessions_defaults_source_manual() -> None:
+    """With no `sources`, every account's `source` defaults to `manual` (TASK-130)."""
+    from collector.constants import POOL_SOURCE_MANUAL
+
+    pool = _pool_with_sources(None)
+    statuses = pool.account_statuses()
+    assert [s.source for s in statuses] == [POOL_SOURCE_MANUAL, POOL_SOURCE_MANUAL]
+
+
+def test_from_sessions_explicit_sources_and_none_default_manual() -> None:
+    """`sources=['auto', None]` → first account `auto`, second defaults `manual` (TASK-130)."""
+    from collector.constants import POOL_SOURCE_AUTO, POOL_SOURCE_MANUAL
+
+    pool = _pool_with_sources([POOL_SOURCE_AUTO, None])
+    statuses = pool.account_statuses()
+    assert statuses[0].source == POOL_SOURCE_AUTO
+    assert statuses[1].source == POOL_SOURCE_MANUAL
+
+
+def test_from_sessions_sources_length_mismatch_raises() -> None:
+    """A `sources` list whose length != sessions raises PoolConfigError (TASK-130)."""
+    from collector.errors import PoolConfigError
+
+    with pytest.raises(PoolConfigError):
+        _pool_with_sources(["auto"])  # 1 != 2 sessions
+
+
+def test_snapshot_carries_source() -> None:
+    """The snapshot per-account dict carries `source` via asdict(status) (TASK-130)."""
+    import json
+
+    from collector.constants import POOL_SOURCE_AUTO, POOL_SOURCE_MANUAL
+
+    pool = _pool_with_sources([POOL_SOURCE_AUTO, None])
+    settings = _make_settings(pool_min_healthy=2)
+    mock_redis = MagicMock()
+
+    from observability.pool_health import emit_pool_health
+
+    emit_pool_health(pool, settings, mock_redis)
+    snapshot = json.loads(mock_redis.set.call_args[0][1])
+    assert snapshot["accounts"][0]["source"] == POOL_SOURCE_AUTO
+    assert snapshot["accounts"][1]["source"] == POOL_SOURCE_MANUAL

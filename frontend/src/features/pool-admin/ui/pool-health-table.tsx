@@ -17,8 +17,11 @@ import type { PoolHealthResponse } from '../api';
 import {
   accountErrorExplanation,
   accountLabel,
+  accountSourceBadgeVariant,
+  accountSourceLabel,
   accountStateBadgeVariant,
   accountStateLabel,
+  asAccountSource,
   asAccountState,
   formatCooldown,
 } from '../lib';
@@ -72,6 +75,7 @@ export const PoolHealthTable: React.FC<PoolHealthTableProps> = ({ health }) => {
               <thead>
                 <tr>
                   <th scope="col">Account</th>
+                  <th scope="col">Source</th>
                   <th scope="col">State</th>
                   <th scope="col">Cooldown</th>
                   <th scope="col">Last error</th>
@@ -80,6 +84,7 @@ export const PoolHealthTable: React.FC<PoolHealthTableProps> = ({ health }) => {
               <tbody>
                 {accounts.map((account) => {
                   const state = asAccountState(account.state);
+                  const source = asAccountSource(account.source);
                   const cooldown = formatCooldown(account.cooldown_remaining_seconds);
                   // Surface the recorded error for EVERY account that has one (not only
                   // quarantined/failing) — a healthy-but-intermittently-erroring session
@@ -107,6 +112,14 @@ export const PoolHealthTable: React.FC<PoolHealthTableProps> = ({ health }) => {
                             </span>
                           </>
                         )}
+                      </td>
+                      <td>
+                        <span
+                          className={`fs-badge fs-badge--${accountSourceBadgeVariant(source)}`}
+                          data-testid="pool-account-source"
+                        >
+                          {accountSourceLabel(source)}
+                        </span>
                       </td>
                       <td>
                         <span

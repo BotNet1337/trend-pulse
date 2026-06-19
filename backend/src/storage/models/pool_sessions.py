@@ -27,6 +27,8 @@ from collector.constants import (
     POOL_SESSION_DISPLAY_LABEL_MAX,
     POOL_SESSION_PROXY_MAX,
     POOL_SESSION_STRING_MAX,
+    POOL_SOURCE_MANUAL,
+    POOL_SOURCE_MAX,
 )
 from collector.constants import SESSION_FINGERPRINT_LEN as _FINGERPRINT_LEN
 from storage.encryption import EncryptedString
@@ -84,6 +86,15 @@ class PoolSession(Base):
         EncryptedString(POOL_SESSION_PROXY_MAX),
         nullable=True,
         default=None,
+    )
+    # Non-secret provenance (TASK-130): `manual` (owner via QR) vs `auto` (account-factory,
+    # TASK-134). Default `manual`; `server_default` backfills existing rows. Surfaced in the
+    # health snapshot + pool-admin UI badge — never a secret.
+    source: Mapped[str] = mapped_column(
+        String(POOL_SOURCE_MAX),
+        nullable=False,
+        server_default=POOL_SOURCE_MANUAL,
+        default=POOL_SOURCE_MANUAL,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

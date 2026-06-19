@@ -28,6 +28,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from collector.constants import (
+    POOL_SOURCE_MANUAL,
     QUARANTINE_REDIS_KEY,
     SESSION_FINGERPRINT_LEN,
 )
@@ -70,6 +71,9 @@ class StoredSession:
     session_string: str = field(default="", repr=False)
     # repr=False: the proxy carries user:pass creds — same secret treatment as session.
     proxy: str | None = field(default=None, repr=False)
+    # Non-secret provenance (TASK-130): `manual` (owner via QR) vs `auto` (factory). NOT
+    # repr-suppressed — it is not a secret. Default `manual`.
+    source: str = POOL_SOURCE_MANUAL
 
 
 @dataclass(frozen=True)
@@ -97,6 +101,7 @@ def upsert_revive_or_add(
     display_label: str,
     pool_max: int,
     env_floor_size: int = 0,
+    source: str | None = None,
 ) -> UpsertResult:
     """Persist a minted session keyed by `tg_user_id`: REVIVE if it exists, else ADD.
 
@@ -118,6 +123,13 @@ def upsert_revive_or_add(
     The fingerprint is derived from the session via `session_fingerprint` (sha256[:16],
     non-secret). The session string is written through the model's `EncryptedString`
     column (encrypted at rest); it is never logged here.
+
+    `source` (TASK-130) is the non-secret provenance written on the row: `manual` (the
+    owner onboarded it via QR) or `auto` (the account-factory promotion, TASK-134).
+    When None (the default — QR callers pass no value), an ADD records `manual` and a
+    REVIVE PRESERVES the existing row's provenance (a QR re-mint of an auto-promoted
+    account must NOT silently demote it to `manual`). An explicit non-None `source`
+    (the factory) is written on both an ADD and a REVIVE so a promotion can set/flip it.
     """
     fingerprint = session_fingerprint(session_string)
     existing = session.scalars(
@@ -130,6 +142,10 @@ def upsert_revive_or_add(
         existing.session_string = session_string
         existing.session_fingerprint = fingerprint
         existing.display_label = display_label
+        # Preserve existing provenance on a QR revive (source=None); only an explicit
+        # non-None source (the factory promotion) overwrites it (TASK-130 review fix).
+        if source is not None:
+            existing.source = source
         existing.revoked_at = None
         existing.updated_at = now
         session.flush()
@@ -157,6 +173,8 @@ def upsert_revive_or_add(
         session_string=session_string,
         session_fingerprint=fingerprint,
         display_label=display_label,
+        # source=None (QR add) records `manual`; an explicit value (factory) is kept.
+        source=source if source is not None else POOL_SOURCE_MANUAL,
         created_at=now,
         updated_at=now,
     )
@@ -192,6 +210,7 @@ def active_sessions(session: Session) -> list[StoredSession]:
             display_label=row.display_label,
             session_string=row.session_string,
             proxy=row.proxy,
+            source=row.source,
         )
         for row in rows
     ]
@@ -218,6 +237,7 @@ def find_active_by_tg_user_id(session: Session, tg_user_id: int) -> StoredSessio
         display_label=row.display_label,
         session_string=row.session_string,
         proxy=row.proxy,
+        source=row.source,
     )
 
 

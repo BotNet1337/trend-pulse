@@ -228,6 +228,9 @@ class PoolHealthAccount(BaseModel):
     # failed (e.g. the "wrong session ID"/SecurityError loop), so the owner sees error
     # FREQUENCY. Additive; default 0 so an older snapshot without the field validates.
     read_failure_count: int = 0
+    # NON-SECRET provenance (TASK-130): "manual" (owner via QR) | "auto" (account-factory).
+    # Additive default so an older snapshot without the field still validates (back-compat).
+    source: str = "manual"
 
 
 class PoolHealthResponse(BaseModel):
