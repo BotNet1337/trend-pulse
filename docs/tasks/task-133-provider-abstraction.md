@@ -1,7 +1,7 @@
 ---
 id: TASK-133
 title: SMS provider + Telegram registrar abstraction (SMSPVA + fakes)
-status: planned
+status: done
 owner: backend
 created: 2026-06-19
 updated: 2026-06-19
@@ -79,18 +79,18 @@ API (`docs.smspva.com`): API-key auth, buy number, poll for SMS code, finish/can
 - unit: fake scenarios; smspva request/parse with `respx`/mocked httpx; selection by env; error mapping.
 
 ## Checkpoints
-current_step: 6
+current_step: done
 baseline_commit: 7d1d808
 branch: "gsd/phase-133-provider-abstraction"
-lock: "agent-a14b9d477b61677df"
+lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [x] 3 do (TDD: failing test → minimal code)
 - [x] 4 verify (G2 — fake + mocked-httpx smspva + env selection); REAL balance()=10.0000 live
 - [x] 5 review (auto, adversarial) — pass; MEDIUM aclose() gap FIXED
 - [x] 5.5 security (API-key + session secrets, external HTTP boundary) — pass; LOW `from None` FIXED
-- [ ] 6 ship (PR)
-- [ ] 7 learnings (auto)
+- [x] 6 ship (PR #199 merged --admin; resolved base-conflict via merge of main → ci-fast 1334 passed)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details
