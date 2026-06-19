@@ -115,7 +115,9 @@ async def test_reader_rotates_on_flood_and_completes() -> None:
     collector = TelegramCollector(pool, sleep=fake_sleep)
     from collector.base import SourceKind, SourceRef
 
-    posts = [p async for p in collector.read([SourceRef(SourceKind.TELEGRAM, "@news")], since=None)]
+    # TASK-131: "@ch" → slot 0 for n=1,2,3 (sha256 % healthy_count), so the flooding
+    # account at index 0 is acquired first — preserving the flood→rotate→healthy intent.
+    posts = [p async for p in collector.read([SourceRef(SourceKind.TELEGRAM, "@ch")], since=None)]
 
     assert len(posts) == 1
     assert posts[0].external_id == "7"
@@ -183,7 +185,9 @@ class _FloodOnceClient(FakeClient):
             yield msg
 
 
-_REF = SourceRef(SourceKind.TELEGRAM, "@news")
+# TASK-131: deterministic sharding acquires the mapped slot first; "@ch" → slot 0 for
+# n=1,2,3, so the account at index 0 (flooding/under-test) is acquired first as before.
+_REF = SourceRef(SourceKind.TELEGRAM, "@ch")
 
 
 @pytest.mark.asyncio

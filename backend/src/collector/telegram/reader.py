@@ -355,7 +355,7 @@ class TelegramCollector:
         Auth/ban exceptions (non-flood, non-source-unavailable) trigger a best-effort
         ops self-alert (TASK-035) before re-raising as SourceUnavailableError.
         """
-        client = await self._acquire_ready_client()
+        client = await self._acquire_ready_client(ref.handle)
         try:
             entity = await client.get_entity(ref.handle)
         except Exception as exc:
@@ -451,8 +451,19 @@ class TelegramCollector:
             self._pool.note_read_failure(type(exc).__name__)
             raise SourceUnavailableError(f"failed reading telegram ref {ref.handle}") from exc
 
-    async def _acquire_ready_client(self) -> TelegramClientProtocol:
-        """Acquire an account; short full-pool floods back off, long ones abort.
+    async def _acquire_ready_client(self, handle: str) -> TelegramClientProtocol:
+        """Acquire an account for ``handle`` with deterministic slot affinity (TASK-131).
+
+        Uses ``self._pool.acquire_for_channel(handle)`` so a given channel is
+        preferentially read by a STABLE healthy slot (``pick_slot_for_channel`` =
+        sha256(handle) % healthy_count) — this spreads load across the pool and cuts
+        per-account FLOOD_WAIT instead of every channel contending on one rotation.
+        When the mapped slot is cooling/quarantined ``acquire_for_channel`` FALLS BACK
+        to ``acquire()`` rotation, raising the IDENTICAL ``PoolExhaustedError`` /
+        ``AllAccountsFloodWaitError`` it does today — so rotation, backoff and
+        quarantine semantics are preserved exactly (the affinity only changes WHICH
+        healthy slot is tried first). The ``handle`` is threaded from ``_read_one``
+        via ``ref.handle``.
 
         On AllAccountsFloodWaitError a cooldown within the inline cap is slept
         and retried; a longer cooldown RE-RAISES so the caller skips the ref
@@ -462,7 +473,7 @@ class TelegramCollector:
         """
         while True:
             try:
-                client = self._pool.acquire()
+                client = self._pool.acquire_for_channel(handle)
             except PoolExhaustedError:
                 # Every session is dead/quarantined → ingest is fully stopped. The
                 # per-account `auth_dead:{n}` alert fired ONCE at quarantine time; this

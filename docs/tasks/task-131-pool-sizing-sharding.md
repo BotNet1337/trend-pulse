@@ -1,12 +1,12 @@
 ---
 id: TASK-131
 title: Pool sizing + deterministic channel sharding
-status: planned
+status: review
 owner: backend
 created: 2026-06-19
-updated: 2026-06-19
-baseline_commit: acb9d1ead373ebd99f5dd570dcc75ff0c1625546
-branch: ""
+updated: 2026-06-20
+baseline_commit: 76e569da0a0e02794f05fac3849a9b858f66a960
+branch: "gsd/phase-131-pool-sizing-sharding"
 tags: [telegram, pool, sharding, throughput, floodwait, layer-a]
 ---
 
@@ -72,18 +72,76 @@ rotation, backoff, or quarantine semantics.
 - regression: run existing `test_account_pool_rotation.py` / `test_auth_quarantine.py` green.
 
 ## Checkpoints
-current_step: 3
-baseline_commit: acb9d1ead373ebd99f5dd570dcc75ff0c1625546
-branch: ""
-lock: ""
+current_step: 6
+baseline_commit: 76e569da0a0e02794f05fac3849a9b858f66a960
+branch: "gsd/phase-131-pool-sizing-sharding"
+lock: "agent-a14b9d477b61677df"
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — determinism + fallback + no rotation regression)
-- [ ] 5 review (auto, adversarial)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — determinism + fallback + no rotation regression)
+- [x] 5 review (auto, adversarial — PASS, no CRITICAL/HIGH; NIT assertion strengthened)
+- [x] 5.5 security — N/A (no auth/secrets/input/crypto/public-API; sha256 used only for load distribution, not a security decision)
 - [ ] 6 ship (PR)
 - [ ] 7 learnings (auto)
 debug_runs: []
 
 ## Details
-(initial)
+
+### do (stage 3) — TDD, implemented
+- `collector/constants.py`: `POOL_MAX` 10→20 (+ comment updated to "3..20", TASK-131 note).
+- `config.py`: `_DEFAULT_POOL_MIN_HEALTHY` 3→5 (+ comment updated).
+- `collector/telegram/account_pool.py`:
+  - pure module-level `pick_slot_for_channel(handle, healthy_slots) -> int | None`:
+    `healthy_slots[ int(sha256(handle),16) % len(healthy_slots) ]`; `None` on empty list.
+    Cross-process stable (sha256, NOT builtin `hash()`); no I/O, no randomness, pure.
+  - `AccountPool.acquire_for_channel(handle)`: computes healthy slots
+    (`not quarantined and cooldown_until <= now`), picks via the pure helper, sets
+    `self._index` (so note_read_*/report_flood_wait annotate the right account), and
+    FALLS BACK to `self.acquire()` (identical AllAccountsFloodWaitError/PoolExhaustedError
+    contract) when no healthy slot maps. NEVER mutates cooldown/quarantine/strikes.
+- `collector/telegram/reader.py`: `_acquire_ready_client(self, handle)` now calls
+  `self._pool.acquire_for_channel(handle)` (was `acquire()`); `_read_one` threads
+  `ref.handle`. `validate_ref` left on `acquire()` (read-path sharding only, per scope).
+- New unit test `tests/unit/collector/test_pool_sharding.py` (19 tests):
+  determinism (algorithm pinned to sha256, asserts ≠ builtin hash), load spread (>1 slot),
+  empty→None, n==1 trivial, acquire_for_channel maps to healthy slot, fallback when mapped
+  slot cooling/quarantined (read proceeds, returns live non-cooling/non-quarantined client),
+  all-cooling→AllAccountsFloodWaitError, all-quarantined→PoolExhaustedError.
+
+### Deviation (test-mechanics, intent preserved)
+Wiring `acquire_for_channel` into the reader changed WHICH slot a handle acquires.
+Existing reader regression tests pin the dead/erroring account at index 0 and asserted it
+is acquired first under `@news` — but `@news` → slot 1 (n=2). Changed the shared handles so
+the index-0 account stays the mapped (acquired) slot, preserving each test's
+dead/flood→quarantine/rotate→healthy intent unchanged:
+- `test_auth_quarantine.py` `_REF`: `@news` → `@dead` (slot 0 for n=1,2,3).
+- `test_account_pool_rotation.py` `_REF` + inline read handle: `@news` → `@ch` (slot 0 for n=1,2,3).
+- `test_reader_read_outcome.py` (`@alpha`, all single-slot pools): UNCHANGED (slot 0 trivially).
+No production semantics weakened; only the test handle is chosen so the account-under-test
+is the deterministically-mapped slot.
+
+### verify (stage 4, G2) — PASS
+`make ci-fast` fully green:
+- ruff format --check: 397 files already formatted.
+- ruff check: passed.
+- mypy: Success: no issues found in 189 source files (+ dump_openapi.py).
+- pytest -m 'not integration': **1286 passed, 313 deselected, 23 warnings** (pre-existing).
+Targeted suites: `test_pool_sharding.py` (19) + `test_account_pool_rotation.py` +
+`test_auth_quarantine.py` + `test_reader_read_outcome.py` = 58 passed; full collector
+unit suite 300 passed. Determinism + load-spread + fallback (cooling/quarantined) +
+all-cooling→AllAccountsFloodWaitError + all-quarantined→PoolExhaustedError all asserted.
+No migration/API change → no curl/Playwright required; behavior asserted via unit tests.
+
+### review (stage 5, opus) — PASS, no CRITICAL/HIGH
+Verified: acquire_for_channel never mutates cooldown/quarantine/strikes (only self._index);
+eligibility predicate matches acquire()/cooling_count; fallback preserves exact exception
+contract; sha256 (not builtin hash); self._index makes the mapped slot "current" so
+note_read_*/report_flood_wait/quarantine_current act on the right account; scope clean.
+- NIT (fixed): weak fallback-cooling assertion strengthened to
+  `assert returned_slot != preferred` + `cooldown_until <= now`.
+- LOW (no change, by design): a live-but-`failing` (TASK-118) slot is eligible for sharding,
+  identical to acquire() semantics — acquire() is explicitly UNAFFECTED by `failing`. Keeping
+  the two paths aligned; any "avoid failing slots" policy is a separate task.
+Security stage 5.5: N/A — no auth/authz/secrets/input/crypto/public-API surface; sha256 is a
+load-distribution hash, not a security control.

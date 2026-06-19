@@ -396,9 +396,9 @@ _DEFAULT_FIELD_ENCRYPTION_KEY: str = _make_dev_fernet_key()
 # `pool_min_healthy` is the operational target: fewer healthy accounts = degraded
 # (warn metric + self-alert). POOL_MIN=1 remains the hard floor in collector/constants
 # so dev/tests with a single session still work.
-# Code default is 3; prod sets POOL_MIN_HEALTHY=1 via deploy.env/Ansible while a
-# single session is in use — raise when more sessions are added.
-_DEFAULT_POOL_MIN_HEALTHY = 3
+# Code default is 5 (TASK-131: raised from 3 to align with the enlarged pool
+# ceiling of 20); prod overrides via POOL_MIN_HEALTHY in deploy.env/Ansible.
+_DEFAULT_POOL_MIN_HEALTHY = 5
 # Ops self-alert throttle: at most one Telegram message per reason per window.
 _DEFAULT_OPS_ALERT_THROTTLE_SECONDS = 3600
 # TASK-100 resource alert thresholds (the 300s metric tick fires a throttled ops

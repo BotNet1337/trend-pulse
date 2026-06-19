@@ -45,6 +45,40 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def pick_slot_for_channel(handle: str, healthy_slots: list[int]) -> int | None:
+    """Deterministic channel→slot mapping for read-path sharding (TASK-131).
+
+    Assigns a stable pool slot to a channel handle so that reads for the same
+    channel always land on the same account, spreading FLOOD_WAIT pressure across
+    the pool rather than hammering a single rotating account.
+
+    Algorithm: sha256(handle.encode("utf-8")) as a 256-bit integer, modulo the
+    number of healthy slots. This is cross-process stable because sha256 is
+    deterministic regardless of PYTHONHASHSEED (unlike Python's builtin ``hash()``
+    which is randomised per-process). The result is a value from ``healthy_slots``,
+    not a bare index into the full pool — the caller is responsible for supplying
+    only the currently eligible (non-quarantined, non-cooling) slot indices.
+
+    Pure: no I/O, no randomness, no side effects. Returns the same value for the
+    same inputs across any number of calls or processes.
+
+    Args:
+        handle: The channel handle string (e.g. ``"@cryptonews"``). Any stable
+            string representation is accepted; normalisation is the caller's
+            responsibility if consistency across representations matters.
+        healthy_slots: List of pool indices currently eligible (live, not
+            quarantined, not cooling). Computed by the caller.
+
+    Returns:
+        A slot index from ``healthy_slots`` if the list is non-empty; ``None``
+        when ``healthy_slots`` is empty (signals the caller to fall back).
+    """
+    if not healthy_slots:
+        return None
+    digest = int(hashlib.sha256(handle.encode("utf-8")).hexdigest(), 16)
+    return healthy_slots[digest % len(healthy_slots)]
+
+
 def session_fingerprint(session: str) -> str:
     """Non-secret, stable fingerprint of a pool session string (TASK-102).
 
@@ -468,6 +502,49 @@ class AccountPool:
                 "every pool account is quarantined (dead sessions) — re-mint sessions"
             )
         raise AllAccountsFloodWaitError("all pool accounts are cooling down under FLOOD_WAIT")
+
+    def acquire_for_channel(self, handle: str) -> TelegramClientProtocol:
+        """Return the client for a channel with deterministic slot affinity (TASK-131).
+
+        Computes the list of healthy slot indices (not quarantined AND not cooling)
+        and uses ``pick_slot_for_channel`` to select a stable slot for ``handle``.
+        Sets ``self._index`` to the chosen slot before returning its client, so
+        ``note_read_success`` / ``note_read_failure`` / ``report_flood_wait`` all
+        annotate the correct account (they key off ``self._index``).
+
+        If the preferred slot is unavailable (cooling or quarantined) the healthy
+        slot list excludes it and ``pick_slot_for_channel`` picks a different live
+        slot from the healthy subset. If the healthy list is empty (all slots
+        cooling or all quarantined), falls back to ``self.acquire()`` which raises
+        ``AllAccountsFloodWaitError`` or ``PoolExhaustedError`` exactly as today —
+        the error contract is unchanged on the fallback path.
+
+        Invariant: this method NEVER mutates cooldown, quarantine, or strike counts.
+        It only sets ``self._index`` to the chosen slot (identical to what
+        ``acquire()`` does on success). All other state transitions remain the
+        responsibility of the caller (``report_flood_wait``, ``quarantine_current``,
+        ``report_success``, etc.).
+
+        Raises:
+            PoolConfigError: pool is empty (propagated from ``acquire()`` fallback).
+            AllAccountsFloodWaitError: every live account is cooling (fallback).
+            PoolExhaustedError: every account is quarantined (fallback).
+        """
+        if not self._accounts:
+            raise PoolConfigError("account pool is empty")
+        now = self._clock()
+        healthy_slots = [
+            i
+            for i, account in enumerate(self._accounts)
+            if not account.quarantined and account.cooldown_until <= now
+        ]
+        slot = pick_slot_for_channel(handle, healthy_slots)
+        if slot is not None:
+            self._index = slot
+            return self._accounts[slot].client
+        # No healthy slot for this handle — fall back to the standard rotation
+        # which raises AllAccountsFloodWaitError or PoolExhaustedError as appropriate.
+        return self.acquire()
 
     def quarantine_current(self) -> int:
         """Permanently evict the current account (dead session) and rotate.
