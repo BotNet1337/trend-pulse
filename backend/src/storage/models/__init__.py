@@ -13,6 +13,7 @@ from storage.models.business_metrics import BusinessMetricsDaily
 from storage.models.channels import Channel, SourceKind
 from storage.models.cluster_feature_snapshots import ClusterFeatureSnapshot
 from storage.models.clusters import EMBEDDING_DIM, Cluster
+from storage.models.factory_accounts import FactoryAccount
 from storage.models.pool_sessions import PoolSession
 from storage.models.posts import Post
 from storage.models.referral_rewards import ReferralReward
@@ -34,6 +35,7 @@ __all__ = [
     "Channel",
     "Cluster",
     "ClusterFeatureSnapshot",
+    "FactoryAccount",
     "OAuthAccount",
     "PoolSession",
     "Post",

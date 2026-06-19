@@ -30,6 +30,7 @@ _EXPECTED_TABLES = {
     "billing_payments",
     "cluster_feature_snapshots",  # TASK-109 (0023): forward feature-snapshot capture
     "pool_sessions",  # TASK-119 (0024): dynamic encrypted pool session store
+    "factory_accounts",  # TASK-132 (0028): account-factory provisioning lifecycle
 }
 
 
@@ -172,6 +173,40 @@ def test_pool_sessions_migration_up_down() -> None:
         assert "uq_pool_sessions_tg_user_id" in uniques
 
         command.downgrade(_alembic_config(), "0023")
+        assert not _has_table(engine)
+
+        command.upgrade(_alembic_config(), "head")
+        assert _has_table(engine)
+    finally:
+        engine.dispose()
+
+
+def test_factory_accounts_migration_up_down() -> None:
+    """0028 (TASK-132): upgrade creates `factory_accounts` with the `state` and
+    `probation_until` indexes, downgrade drops it cleanly, and re-upgrade restores it."""
+    from alembic import command
+
+    def _has_table(engine_: object) -> bool:
+        return "factory_accounts" in inspect(engine_).get_table_names()
+
+    engine = create_engine(get_settings().database_url)
+    try:
+        with engine.begin() as conn:
+            tables = (
+                conn.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'"))
+                .scalars()
+                .all()
+            )
+            for table in tables:
+                conn.execute(text(f'DROP TABLE IF EXISTS "{table}" CASCADE'))
+
+        command.upgrade(_alembic_config(), "head")
+        assert _has_table(engine)
+        indexes = {ix["name"] for ix in inspect(engine).get_indexes("factory_accounts")}
+        assert "ix_factory_accounts_state" in indexes
+        assert "ix_factory_accounts_probation_until" in indexes
+
+        command.downgrade(_alembic_config(), "0027")
         assert not _has_table(engine)
 
         command.upgrade(_alembic_config(), "head")
