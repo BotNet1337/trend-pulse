@@ -52,7 +52,9 @@ class _FailingRegistrar:
 async def test_provision_releases_number_when_registration_fails() -> None:
     provider = _RecordingProvider()
     with pytest.raises(RegistrarBannedError):
-        await _provision(provider, _FailingRegistrar(), country="RU", proxy=None)
+        await _provision(
+            provider, _FailingRegistrar(), proxy_provider=None, country="RU", static_proxy=None
+        )
     # The bought number was RELEASED (refund), not leaked; finish was NOT called.
     assert provider.cancelled == ["o1"]
     assert provider.finished == []
@@ -68,7 +70,10 @@ class _OkRegistrar:
 
 async def test_provision_finishes_number_on_success() -> None:
     provider = _RecordingProvider()
-    purchased, registered = await _provision(provider, _OkRegistrar(), country="RU", proxy=None)
+    purchased, registered, lease = await _provision(
+        provider, _OkRegistrar(), proxy_provider=None, country="RU", static_proxy=None
+    )
+    assert lease is None
     assert purchased.order_id == "o1"
     assert registered.tg_user_id == 42
     assert provider.finished == ["o1"]  # order closed as used

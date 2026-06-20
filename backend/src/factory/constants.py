@@ -78,6 +78,9 @@ FACTORY_PROXY_MAX: Final = 512
 FACTORY_SESSION_STRING_MAX: Final = 1024
 # The `state` string — a short enum-like value from FACTORY_STATES.
 FACTORY_STATE_MAX: Final = 16
+# Dynamic-proxy lease id (the provider's opaque port id) — NON-secret, plain VARCHAR.
+# Generous cap for an opaque token (mobileproxy port ids are short numeric strings).
+FACTORY_PROXY_LEASE_ID_MAX: Final = 128
 # Last-error diagnostic message (non-secret) recorded on a failed/banned transition.
 FACTORY_LAST_ERROR_MAX: Final = 512
 
@@ -229,6 +232,12 @@ FACTORY_TICK_INTERVAL_SECONDS_DEFAULT: Final = 3600
 # stamps `cost_usd` with this configured value — the figure the budget hard-cap checks
 # and `total_spent_usd` accumulates. Env-overridable via ACCOUNT_FACTORY_PRICE_USD.
 ACCOUNT_FACTORY_PRICE_USD_DEFAULT: Final = "1.00"
+
+# Default budgeted cost per dynamically-allocated proxy lease (USD). Added to the row's
+# `cost_usd` (number_price + proxy_price) ONLY when a proxy was allocated/assigned, so the
+# budget hard-cap stays exact with no new counter. Default $0 → no budget change for the
+# static-pool / no-provider paths. Env-overridable via ACCOUNT_FACTORY_PROXY_PRICE_USD.
+ACCOUNT_FACTORY_PROXY_PRICE_USD_DEFAULT: Final = "0"
 
 # Default country for the factory's buy_number calls — reuses the SMSPVA default (RU).
 ACCOUNT_FACTORY_COUNTRY_DEFAULT: Final = SMSPVA_DEFAULT_COUNTRY

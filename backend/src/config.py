@@ -17,6 +17,7 @@ from factory.constants import (
     ACCOUNT_FACTORY_PRICE_USD_DEFAULT,
     ACCOUNT_FACTORY_PROBATION_DAYS_DEFAULT,
     ACCOUNT_FACTORY_PROVIDER_FAKE,
+    ACCOUNT_FACTORY_PROXY_PRICE_USD_DEFAULT,
     FACTORY_TICK_INTERVAL_SECONDS_DEFAULT,
 )
 
@@ -416,6 +417,9 @@ _DEFAULT_POOL_MIN_HEALTHY = 5
 # `factory.constants` (no magic literals).
 _DEFAULT_ACCOUNT_FACTORY_BUDGET_USD = Decimal("0")
 _DEFAULT_ACCOUNT_FACTORY_PRICE_USD = Decimal(ACCOUNT_FACTORY_PRICE_USD_DEFAULT)
+# Per-proxy lease cost (Decimal, never float). Default $0 → no budget change for the
+# static-pool / no-provider paths; added to a row's cost_usd only when a proxy is used.
+_DEFAULT_ACCOUNT_FACTORY_PROXY_PRICE_USD = Decimal(ACCOUNT_FACTORY_PROXY_PRICE_USD_DEFAULT)
 # Ops self-alert throttle: at most one Telegram message per reason per window.
 _DEFAULT_OPS_ALERT_THROTTLE_SECONDS = 3600
 # TASK-100 resource alert thresholds (the 300s metric tick fires a throttled ops
@@ -595,6 +599,11 @@ class Settings(BaseSettings):
     # Budgeted cost per provisioned number (Decimal). Stamped as the row's `cost_usd` and
     # checked by the budget hard-cap (the provider surface carries no per-number price).
     account_factory_price_usd: Decimal = _DEFAULT_ACCOUNT_FACTORY_PRICE_USD
+    # Budgeted cost per dynamically-allocated proxy lease (Decimal). Added to a row's
+    # cost_usd (number+proxy) ONLY when a proxy is allocated/assigned, so the budget
+    # hard-cap stays exact. Default $0 → no budget change for static-pool/no-provider.
+    # Env ACCOUNT_FACTORY_PROXY_PRICE_USD.
+    account_factory_proxy_price_usd: Decimal = _DEFAULT_ACCOUNT_FACTORY_PROXY_PRICE_USD
     # Warm-up window (days) a registered account holds on probation before promotion.
     account_factory_probation_days: int = ACCOUNT_FACTORY_PROBATION_DAYS_DEFAULT
     # Comma-separated SOCKS5 proxy URIs the factory assigns to fresh registrations. Each

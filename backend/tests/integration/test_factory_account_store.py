@@ -83,6 +83,48 @@ def test_session_stored_as_ciphertext(db_engine: Engine, session: Session) -> No
         fresh.close()
 
 
+def test_proxy_lease_id_round_trips(db_engine: Engine, session: Session) -> None:
+    """`create_purchased` persists the non-secret `proxy_lease_id`; it reads back intact."""
+    record = create_purchased(
+        session,
+        phone_masked=_PHONE_MASKED,
+        provider=_PROVIDER,
+        provider_order_id=_ORDER_ID,
+        cost_usd=Decimal("1.50"),
+        proxy="socks5://user:pass@10.0.0.1:1080",
+        proxy_lease_id="lease-xyz-42",
+    )
+    assert record.proxy_lease_id == "lease-xyz-42"
+    session.commit()
+
+    fresh = sessionmaker(bind=db_engine, autoflush=False, expire_on_commit=False)()
+    try:
+        fetched = get(fresh, record.id)
+        assert fetched is not None
+        assert fetched.proxy_lease_id == "lease-xyz-42"
+        # The lease id is NON-secret → stored as PLAIN VARCHAR (not a Fernet token).
+        with db_engine.connect() as conn:
+            raw = conn.execute(
+                text("SELECT proxy_lease_id FROM factory_accounts WHERE id = :id"),
+                {"id": record.id},
+            ).scalar()
+        assert raw == "lease-xyz-42"
+    finally:
+        fresh.close()
+
+
+def test_proxy_lease_id_defaults_null(db_engine: Engine, session: Session) -> None:
+    """No `proxy_lease_id` given → NULL (static-pool / no-proxy rows)."""
+    record = create_purchased(
+        session,
+        phone_masked=_PHONE_MASKED,
+        provider=_PROVIDER,
+        provider_order_id=_ORDER_ID,
+        cost_usd=Decimal("1.00"),
+    )
+    assert record.proxy_lease_id is None
+
+
 def test_total_spent_usd_sums_on_postgres(db_engine: Engine, session: Session) -> None:
     create_purchased(
         session,

@@ -32,6 +32,7 @@ import asyncio
 import json
 import logging
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import TYPE_CHECKING, cast
 
 from sqlalchemy import update
@@ -69,6 +70,8 @@ from factory.errors import (
 )
 from factory.providers.base import PurchasedNumber, SmsProvider
 from factory.providers.factory import get_registrar, get_sms_provider
+from factory.proxy.base import ProxyLease, ProxyProvider
+from factory.proxy.factory import get_proxy_provider
 from factory.registrar.base import RegisteredSession, TelegramRegistrar
 from factory.service import assign_proxy, can_afford, is_promotable, needs_topup
 from storage import factory_account_store, pool_session_store
@@ -80,6 +83,9 @@ if TYPE_CHECKING:
     from redis import Redis
 
 logger = logging.getLogger(__name__)
+
+# Decimal zero for "no proxy cost" (no proxy allocated/assigned) — never float.
+_ZERO_USD = Decimal("0")
 
 # Non-terminal states whose proxies are already in use (a fresh registration must not
 # reuse a proxy bound to an in-flight / promoted-eligible factory account).
@@ -147,20 +153,53 @@ def _used_proxies(session: Session) -> frozenset[str]:
     return frozenset(used)
 
 
+async def _release_lease(proxy_provider: ProxyProvider, lease: ProxyLease) -> None:
+    """Best-effort release of a leased proxy port — NEVER raises (mirrors `cancel`, #213).
+
+    Releasing a port must never mask the surrounding registration outcome, so any
+    transport blip is swallowed (logged without the secret `uri`). The provider's own
+    `release` is best-effort too; this wrapper is belt-and-braces around the await.
+    """
+    try:
+        await proxy_provider.release(lease.lease_id)
+    except Exception as exc:
+        logger.warning(
+            "factory_tick: proxy release failed (best-effort — original outcome kept)",
+            extra={"exc_type": type(exc).__name__, "lease_id": lease.lease_id},
+        )
+
+
 async def _provision(
     provider: SmsProvider,
     registrar: TelegramRegistrar,
     *,
+    proxy_provider: ProxyProvider | None,
     country: str,
-    proxy: str | None,
-) -> tuple[PurchasedNumber, RegisteredSession]:
-    """Buy → poll code → register over `proxy`; finish the order on success.
+    static_proxy: str | None,
+) -> tuple[PurchasedNumber, RegisteredSession, ProxyLease | None]:
+    """Buy → (allocate proxy) → poll code → register; finish + return the lease on success.
 
-    Always closes the provider transport. Typed provider/registrar errors propagate to
-    the caller (which maps them to the failed/banned off-ramps).
+    When `proxy_provider` is set, a fresh sticky proxy is allocated AFTER the number is
+    secured (never hold a proxy without a number) and registration runs over `lease.uri`;
+    the lease is returned so the caller persists `proxy`/`proxy_lease_id`. When it is
+    `None`, registration runs over `static_proxy` and the returned lease is `None`
+    (byte-for-byte the static path). Always closes the provider transport. Typed
+    provider/registrar errors propagate to the caller (mapped to the off-ramps); on any
+    failure after a lease is held the port is released best-effort (never masks the error).
     """
     try:
         purchased = await provider.buy_number(country=country, service=SMSPVA_DEFAULT_SERVICE)
+
+        lease: ProxyLease | None = None
+        if proxy_provider is not None:
+            try:
+                lease = await proxy_provider.allocate(country=country)
+            except Exception:
+                # Allocation failed AFTER a number was bought → release the number so we
+                # never hold a number without a proxy; propagate the original error.
+                await provider.cancel(purchased.order_id)
+                raise
+        register_proxy = lease.uri if lease is not None else static_proxy
 
         async def code_cb() -> str:
             return await provider.poll_code(
@@ -169,23 +208,31 @@ async def _provision(
 
         try:
             registered = await registrar.register(
-                phone=purchased.phone, code_cb=code_cb, proxy=proxy
+                phone=purchased.phone, code_cb=code_cb, proxy=register_proxy
             )
         except Exception:
             # Registration failed AFTER a number was bought (e.g. Telegram rejects the
             # SMS number — PhoneNumberInvalid/Banned — the COMMON case). RELEASE the
-            # number so its cost is refunded, not leaked, then propagate the original
-            # error. `cancel` is best-effort and never raises, so it can't mask it.
+            # number AND (if dynamically leased) the proxy port so neither cost leaks,
+            # then propagate the original error. Both releases are best-effort and never
+            # raise, so they can't mask the original error.
             await provider.cancel(purchased.order_id)
+            if lease is not None:
+                await _release_lease(proxy_provider, lease)
             raise
         await provider.finish(purchased.order_id)
-        return purchased, registered
+        return purchased, registered, lease
     finally:
         await provider.aclose()
 
 
 def _buy_phase(redis: Redis, session: Session, settings: Settings, now: datetime) -> None:
-    """Buy → register → probation when the pool is under target and the budget allows."""
+    """Buy → register → probation when the pool is under target and the budget allows.
+
+    A dynamic `ProxyProvider` (when `get_proxy_provider` returns one) is XOR with the
+    static pool: if present, the static pool is IGNORED and a fresh sticky proxy is
+    allocated inside `_provision`; otherwise today's static-pool path runs byte-for-byte.
+    """
     healthy, target = _read_pool_health(redis, fallback_target=settings.pool_min_healthy)
     if not needs_topup(healthy, target):
         return
@@ -196,32 +243,47 @@ def _buy_phase(redis: Redis, session: Session, settings: Settings, now: datetime
         logger.info("factory_tick: budget hard-cap reached — skipping buy this tick")
         return
 
-    pool = account_factory_proxy_pool_list(settings)
-    proxy = assign_proxy(pool, _used_proxies(session))
-    if pool and proxy is None:
-        logger.info("factory_tick: proxy pool exhausted — skipping buy this tick")
-        return
+    proxy_provider = get_proxy_provider(settings)
+    if proxy_provider is not None:
+        # DYNAMIC path: the proxy is allocated per-buy inside `_provision`; the static
+        # pool + `_used_proxies` exhaustion guard do NOT apply.
+        static_proxy: str | None = None
+    else:
+        # STATIC path (byte-for-byte): assign a free proxy from the configured pool.
+        pool = account_factory_proxy_pool_list(settings)
+        static_proxy = assign_proxy(pool, _used_proxies(session))
+        if pool and static_proxy is None:
+            logger.info("factory_tick: proxy pool exhausted — skipping buy this tick")
+            return
 
     provider = get_sms_provider(settings)
     registrar = get_registrar(settings)
     try:
-        purchased, registered = asyncio.run(
-            _provision(provider, registrar, country=settings.account_factory_country, proxy=proxy)
+        purchased, registered, lease = asyncio.run(
+            _provision(
+                provider,
+                registrar,
+                proxy_provider=proxy_provider,
+                country=settings.account_factory_country,
+                static_proxy=static_proxy,
+            )
         )
     except SmsNumberUnavailableError:
         # No number bought → NO row, budget untouched (the simplest correct off-ramp).
+        # No proxy was allocated (allocate happens only after a number is in hand).
         logger.warning("factory_tick: no number available — skipping buy (budget untouched)")
         return
     except SmsCodeTimeoutError:
-        # Number was bought (budget would be spent) but the code never arrived. Record a
-        # `failed` row carrying the price so the budget reflects the real spend.
+        # Number was bought (budget would be spent) but the code never arrived. Any
+        # dynamically-leased proxy was already released inside `_provision` (refunded),
+        # so this failed row carries the number price only.
         record = factory_account_store.create_purchased(
             session,
             phone_masked=_MASK_UNKNOWN,
             provider=settings.account_factory_provider,
             provider_order_id=_UNKNOWN_ORDER_ID,
             cost_usd=price,
-            proxy=proxy,
+            proxy=static_proxy,
         )
         factory_account_store.transition(
             session, record.id, FACTORY_STATE_FAILED, last_error="sms code timeout"
@@ -229,13 +291,19 @@ def _buy_phase(redis: Redis, session: Session, settings: Settings, now: datetime
         logger.warning("factory_tick: SMS code timeout — account recorded failed")
         return
 
+    # The proxy bound to this account (dynamic lease uri, or the static-pool uri) + its
+    # cost. A proxy_price is charged ONLY when a proxy was actually allocated/assigned.
+    proxy_uri = lease.uri if lease is not None else static_proxy
+    proxy_lease_id = lease.lease_id if lease is not None else None
+    proxy_cost = settings.account_factory_proxy_price_usd if proxy_uri is not None else _ZERO_USD
     record = factory_account_store.create_purchased(
         session,
         phone_masked=_mask_phone(purchased.phone),
         provider=settings.account_factory_provider,
         provider_order_id=purchased.order_id,
-        cost_usd=price,
-        proxy=proxy,
+        cost_usd=price + proxy_cost,
+        proxy=proxy_uri,
+        proxy_lease_id=proxy_lease_id,
     )
     try:
         factory_account_store.transition(
@@ -247,6 +315,9 @@ def _buy_phase(redis: Redis, session: Session, settings: Settings, now: datetime
         )
     except (RegistrarBannedError, RegistrarPasswordNeededError) as exc:
         # Defensive: registration banned/2FA after the buy → terminal `banned`, budget spent.
+        # Release the leased proxy port best-effort (a banned account keeps no proxy).
+        if lease is not None and proxy_provider is not None:
+            asyncio.run(_release_lease(proxy_provider, lease))
         factory_account_store.transition(
             session, record.id, FACTORY_STATE_BANNED, last_error=type(exc).__name__
         )

@@ -134,14 +134,14 @@ When `get_proxy_provider` is `None` → EXACT current static-pool behavior (no r
 - store: `create_purchased` round-trips `proxy_lease_id`.
 
 ## Checkpoints
-current_step: 3
+current_step: 5
 baseline_commit: 9251a0471369f3bda60eeda44be544267ee22b33
-branch: ""
+branch: "gsd/epic-proxy-autoprovision"
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + runtime + real behavior)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + runtime + real behavior)
 - [ ] 5 review (auto, adversarial)
 - [ ] 5.5 security (touches secrets + migration → YES)
 - [ ] 6 ship (confirm plan done → PR)
@@ -149,4 +149,49 @@ lock: ""
 debug_runs: []
 
 ## Details
-(initial)
+
+### Implementation (step 3 — do, TDD RED→GREEN)
+- **mig `0029_factory_proxy_lease_id.py`** — additive nullable `proxy_lease_id VARCHAR(128)`
+  on `factory_accounts` (PLAIN String, non-secret; NOT EncryptedString). `down_revision='0028'`
+  (confirmed head via `alembic heads` → was 0028, now 0029). Downgrade drops the column.
+- **`factory/constants.py`** — `FACTORY_PROXY_LEASE_ID_MAX: Final = 128` +
+  `ACCOUNT_FACTORY_PROXY_PRICE_USD_DEFAULT: Final = "0"`.
+- **`storage/models/factory_accounts.py`** — `proxy_lease_id: Mapped[str | None]` (plain String).
+- **`storage/factory_account_store.py`** — threaded `proxy_lease_id: str | None = None` through
+  `create_purchased` + added to `FactoryAccountRecord` (NON-secret → not repr-suppressed) + `_to_record`.
+- **`config.py`** — `account_factory_proxy_price_usd: Decimal = Decimal("0")` (named default
+  `_DEFAULT_ACCOUNT_FACTORY_PROXY_PRICE_USD`, mirrors the price setting style).
+- **`factory/tasks.py`** — KEY wiring:
+  - `_buy_phase`: `proxy_provider = get_proxy_provider(settings)`. Provider XOR static pool —
+    if a provider is configured the static pool + `_used_proxies` guard are SKIPPED
+    (`static_proxy=None`); else today's static path runs byte-for-byte.
+  - `_provision(provider, registrar, *, proxy_provider, country, static_proxy)` now returns
+    `(PurchasedNumber, RegisteredSession, ProxyLease | None)`. Allocates the lease AFTER
+    `buy_number` (never a proxy without a number). Allocate-fail → `provider.cancel(number)` +
+    re-raise. Registers over `lease.uri` (or `static_proxy`). Register-fail → cancel number +
+    `_release_lease` (best-effort, never masks) + re-raise.
+  - Success persists `proxy=lease.uri`/`proxy_lease_id=lease.lease_id` (or static_proxy /
+    lease_id=None) with `cost_usd = number_price + proxy_price` (proxy_price charged only when
+    a proxy was allocated/assigned; default $0 → no budget change for static/no-provider).
+  - Banned-on-transition off-ramp releases a held lease best-effort. Timeout off-ramp: the lease
+    was already released inside `_provision`, so the failed row carries number price only.
+  - `_promote_phase` UNCHANGED (proxy already carried to the pool row; sticky for life, NO release).
+  - `_release_lease` helper added (mirrors number `cancel`/#213 — never raises, logs without uri).
+- **Tests** (RED first, then GREEN): new unit `tests/unit/factory/test_provision_proxy.py`
+  (allocate+register-through+sticky, register-fail→release+cancel, allocate-fail→cancel,
+  static→lease=None); updated `test_provision_cleanup.py` for the new signature; extended
+  `test_factory_tick.py` (dynamic buy persists lease + cost=$1.50, promote carries proxy,
+  register-fail releases, banned-transition releases) and `test_factory_account_store.py`
+  (`proxy_lease_id` round-trip + plain-VARCHAR-not-Fernet + NULL default).
+
+### Verification (step 4 — G2)
+- `make ci-fast` GREEN: ruff format-check + ruff lint + mypy (strict, both targets) +
+  1398 unit passed / 343 deselected.
+- All factory unit tests: 93 passed.
+- Integration (real pgvector on a `pgvector/pgvector:pg16` test container, env per
+  full-system-test.md): `test_factory_tick.py` + `test_factory_account_store.py` → 13 passed.
+  Existing static-pool tests pass UNMODIFIED (provider-unset path byte-for-byte: default
+  `account_factory_proxy_price_usd=0` → `cost_usd=price` exactly as before).
+- Migration cycle on the test DB: `alembic upgrade head` (0028→0029 adds the col),
+  `downgrade -1` (drops it, back to 0028), `upgrade head` (restores). Column verified as
+  `character varying(128)` NULL. `alembic heads` → `0029 (head)`. Clean + reversible.
