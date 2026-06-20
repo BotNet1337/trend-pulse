@@ -19,6 +19,8 @@ from factory.constants import (
     ACCOUNT_FACTORY_PROVIDER_FAKE,
     ACCOUNT_FACTORY_PROXY_PRICE_USD_DEFAULT,
     FACTORY_TICK_INTERVAL_SECONDS_DEFAULT,
+    RENT_DCOUNT_DEFAULT,
+    RENT_DTYPE_DEFAULT,
 )
 
 # Hosts that are allowed to use plain http:// for public_base_url — dev G2 runs
@@ -576,6 +578,12 @@ class Settings(BaseSettings):
     # or logged. Empty default so the app boots without it (mirrors nowpayments_api_key);
     # `get_sms_provider` fails fast if `account_factory_provider=smspva` and this is empty.
     smspva_api_key: str = ""
+    # --- SMSPVA RENTAL lease shape (TASK-143). Used ONLY when
+    # ACCOUNT_FACTORY_PROVIDER=smspva_rent (the same `smspva_api_key` authenticates).
+    # week x1 = 7 days (the cheapest legal lease; min 7 / max 90). Env-overridable via
+    # ACCOUNT_FACTORY_RENT_DTYPE / ACCOUNT_FACTORY_RENT_DCOUNT.
+    account_factory_rent_dtype: str = RENT_DTYPE_DEFAULT
+    account_factory_rent_dcount: int = RENT_DCOUNT_DEFAULT
 
     # --- Dynamic proxy provider (TASK-139, Layer B-proxy). Selects the ProxyProvider
     # impl. Unset/empty (default) → `get_proxy_provider` returns None = "no dynamic

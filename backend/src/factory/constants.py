@@ -88,6 +88,10 @@ FACTORY_LAST_ERROR_MAX: Final = 512
 # from env `ACCOUNT_FACTORY_PROVIDER`; default `fake` keeps CI/this env network-free. ---
 ACCOUNT_FACTORY_PROVIDER_FAKE: Final = "fake"
 ACCOUNT_FACTORY_PROVIDER_SMSPVA: Final = "smspva"
+# SMSPVA Rental path (TASK-143) — long-lived REAL-SIM numbers (Telegram service opt29)
+# that Telegram accepts; the Activation path (`smspva`, opt1) was live-proven to yield
+# PhoneNumberInvalid numbers. Selected like `smspva` but builds `SmsPvaRentProvider`.
+ACCOUNT_FACTORY_PROVIDER_SMSPVA_RENT: Final = "smspva_rent"
 
 # --- SMSPVA REST API (TASK-133). All calls are GET to {base}{path} with JSON bodies;
 # the API-key is a query param (`apikey`) — a SECRET, never logged. ---
@@ -142,6 +146,96 @@ SMS_CODE_POLL_INTERVAL_SECONDS: Final = 20
 # httpx 2xx success band (mirrors collector/twitter/client._HTTP_OK_*).
 SMSPVA_HTTP_OK_FLOOR: Final = 200
 SMSPVA_HTTP_OK_CEIL: Final = 300
+
+# --- SMSPVA RENTAL REST API (TASK-143). A SEPARATE endpoint (`/api/rent.php`, GET) that
+# leases long-lived REAL-SIM numbers (Telegram service `opt29`) which Telegram accepts —
+# unlike the Activation numbers (opt1, get_number) that were live-proven to be rejected
+# (PhoneNumberInvalid). Implemented EXACTLY against the official rent.php OpenAPI schema.
+# The api_key is a QUERY param (`apikey`) — a SECRET, never logged. ---
+RENT_BASE_PATH: Final = "/api/rent.php"
+
+# `method` query values — one per operation in the create→activate→poll→delete flow.
+RENT_METOD_CREATE: Final = "create"
+RENT_METOD_ACTIVATE: Final = "activate"
+RENT_METOD_ORDERS: Final = "orders"
+RENT_METOD_SMS: Final = "sms"
+RENT_METOD_DELETE: Final = "delete"
+RENT_METOD_GETDATA: Final = "getdataWithProviders"
+
+# Query param names (no magic literals in smspva_rent.py).
+RENT_PARAM_METHOD: Final = "method"
+RENT_PARAM_APIKEY: Final = "apikey"
+RENT_PARAM_DTYPE: Final = "dtype"
+RENT_PARAM_DCOUNT: Final = "dcount"
+RENT_PARAM_COUNTRY: Final = "country"
+RENT_PARAM_SERVICE: Final = "service"
+RENT_PARAM_ID: Final = "id"
+RENT_PARAM_PROVIDER: Final = "provider"
+
+# Telegram rental service slug. Rentals use THIS service for `create` — the SmsProvider
+# `service` arg (the activation slug `opt1`) does NOT apply to rentals (documented in code).
+RENT_SVC_TELEGRAM: Final = "opt29"
+
+# Rent duration types. Min 7 / max 90 days → `dtype=week, dcount=1` (=7 days) is the
+# smallest legal lease.
+RENT_DTYPE_DAY: Final = "day"
+RENT_DTYPE_WEEK: Final = "week"
+RENT_DTYPE_MONTH: Final = "month"
+
+# Envelope status — an INTEGER 1 (success) / 0 (failure, with a `msg` reason).
+RENT_STATUS_OK: Final = 1
+RENT_STATUS_FAIL: Final = 0
+
+# Order `state` values (from the `orders` listing): poll until ACTIVE before SMS.
+RENT_STATE_NOT_ACTIVE: Final = 0
+RENT_STATE_ACTIVE: Final = 1
+RENT_STATE_ACTIVATING: Final = 2
+RENT_STATE_NOT_IN_SYSTEM: Final = -1
+
+# Response JSON field names read by the provider.
+RENT_FIELD_STATUS: Final = "status"
+RENT_FIELD_MSG: Final = "msg"
+RENT_FIELD_DATA: Final = "data"
+RENT_FIELD_ID: Final = "id"
+RENT_FIELD_PNUMBER: Final = "pnumber"
+RENT_FIELD_CCODE: Final = "ccode"
+RENT_FIELD_UNTIL: Final = "until"
+RENT_FIELD_STATE: Final = "state"
+RENT_FIELD_HASNEWSMS: Final = "hasnewsms"
+RENT_FIELD_SMSLIST: Final = "SmsList"
+RENT_FIELD_OTHERSMS: Final = "OtherSms"
+RENT_FIELD_TEXT: Final = "text"
+RENT_FIELD_DATE: Final = "date"
+RENT_FIELD_SENDER: Final = "sender"
+RENT_FIELD_SERVICES: Final = "services"
+RENT_FIELD_PRICE_DAY: Final = "price_day"
+
+# Failure-`msg` substrings (lower-cased match) → typed error mapping. The upstream `msg`
+# is free text; we match documented fragments and fall back to a response error.
+RENT_MSG_INSUFFICIENT_BALANCE: Final = "insufficient balance"
+RENT_MSG_NO_STOCK_FRAGMENTS: Final = ("no number", "not available", "out of stock", "no stock")
+RENT_MSG_BAD_ID_FRAGMENTS: Final = ("incorrect order id", "order not found", "incorrect order")
+
+# Telegram code extractor — the SMS `text` is free text (e.g. "Telegram code: 12345");
+# the code is a 4-7 digit run. Named so it is not a magic literal.
+RENT_CODE_REGEX: Final = r"\d{4,7}"
+
+# Bound for waiting on a created rental to reach state==1 (active) after `activate`
+# (SECONDS, named — no magic literals): the whole wait + per-poll sleep interval.
+RENT_ACTIVATION_WAIT_TIMEOUT_SECONDS: Final = 120
+RENT_ACTIVATION_POLL_INTERVAL_SECONDS: Final = 5
+
+# SMS-code polling per-attempt sleep (SECONDS). The overall budget is passed by the
+# caller (`poll_code(timeout_seconds=...)`); this is the gap between `sms` polls.
+RENT_SMS_POLL_INTERVAL_SECONDS: Final = 10
+
+# Default lease shape for a factory rental (env-overridable via config). week x1 = 7 days
+# — the cheapest legal lease, enough to register + probation re-login.
+RENT_DTYPE_DEFAULT: Final = RENT_DTYPE_WEEK
+RENT_DCOUNT_DEFAULT: Final = 1
+
+# httpx client timeout for SMSPVA rent calls (seconds) — mirrors SMSPVA.
+RENT_HTTP_TIMEOUT_SECONDS: Final = 15.0
 
 # --- Proxy provider selection (TASK-139, Layer B-proxy). Chooses the ProxyProvider impl
 # from env `ACCOUNT_FACTORY_PROXY_PROVIDER`; unset/empty/unknown → None (static-pool

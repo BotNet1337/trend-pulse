@@ -10,11 +10,15 @@ exercised against SMSPVA without a real registration path configured).
 from __future__ import annotations
 
 from config import Settings
-from factory.constants import ACCOUNT_FACTORY_PROVIDER_SMSPVA
+from factory.constants import (
+    ACCOUNT_FACTORY_PROVIDER_SMSPVA,
+    ACCOUNT_FACTORY_PROVIDER_SMSPVA_RENT,
+)
 from factory.errors import FactoryError
 from factory.providers.base import SmsProvider
 from factory.providers.fake import FakeSmsProvider
 from factory.providers.smspva import build_smspva_provider
+from factory.providers.smspva_rent import build_smspva_rent_provider
 from factory.registrar.base import TelegramRegistrar
 from factory.registrar.fake import FakeRegistrar
 from factory.registrar.telethon import TelethonRegistrar
@@ -23,7 +27,8 @@ from factory.registrar.telethon import TelethonRegistrar
 def get_sms_provider(settings: Settings) -> SmsProvider:
     """Return the SMS provider selected by `settings.account_factory_provider`.
 
-    `smspva` requires a non-empty `smspva_api_key` — an empty key raises
+    `smspva` (Activation) and `smspva_rent` (Rental, TASK-143 — real-SIM opt29 numbers
+    Telegram accepts) both require a non-empty `smspva_api_key` — an empty key raises
     `FactoryError` rather than silently degrading to the fake (which would mask a
     misconfiguration). Any other value (including the default `fake`) → `FakeSmsProvider`.
     """
@@ -31,6 +36,14 @@ def get_sms_provider(settings: Settings) -> SmsProvider:
         if not settings.smspva_api_key:
             raise FactoryError("ACCOUNT_FACTORY_PROVIDER=smspva but SMSPVA_API_KEY is empty")
         return build_smspva_provider(api_key=settings.smspva_api_key)
+    if settings.account_factory_provider == ACCOUNT_FACTORY_PROVIDER_SMSPVA_RENT:
+        if not settings.smspva_api_key:
+            raise FactoryError("ACCOUNT_FACTORY_PROVIDER=smspva_rent but SMSPVA_API_KEY is empty")
+        return build_smspva_rent_provider(
+            api_key=settings.smspva_api_key,
+            dtype=settings.account_factory_rent_dtype,
+            dcount=settings.account_factory_rent_dcount,
+        )
     return FakeSmsProvider()
 
 

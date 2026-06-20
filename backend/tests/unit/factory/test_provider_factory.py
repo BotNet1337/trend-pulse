@@ -13,11 +13,13 @@ from config import Settings
 from factory.constants import (
     ACCOUNT_FACTORY_PROVIDER_FAKE,
     ACCOUNT_FACTORY_PROVIDER_SMSPVA,
+    ACCOUNT_FACTORY_PROVIDER_SMSPVA_RENT,
 )
 from factory.errors import FactoryError
 from factory.providers.factory import get_registrar, get_sms_provider
 from factory.providers.fake import FakeSmsProvider
 from factory.providers.smspva import SmsPvaProvider
+from factory.providers.smspva_rent import SmsPvaRentProvider
 from factory.registrar.fake import FakeRegistrar
 from factory.registrar.telethon import TelethonRegistrar
 
@@ -50,6 +52,23 @@ def test_smspva_provider_selected_when_key_set() -> None:
 def test_smspva_without_key_raises() -> None:
     settings = _settings(
         account_factory_provider=ACCOUNT_FACTORY_PROVIDER_SMSPVA,
+        smspva_api_key="",
+    )
+    with pytest.raises(FactoryError):
+        get_sms_provider(settings)
+
+
+def test_smspva_rent_provider_selected_when_key_set() -> None:
+    settings = _settings(
+        account_factory_provider=ACCOUNT_FACTORY_PROVIDER_SMSPVA_RENT,
+        smspva_api_key="real-key",
+    )
+    assert isinstance(get_sms_provider(settings), SmsPvaRentProvider)
+
+
+def test_smspva_rent_without_key_raises() -> None:
+    settings = _settings(
+        account_factory_provider=ACCOUNT_FACTORY_PROVIDER_SMSPVA_RENT,
         smspva_api_key="",
     )
     with pytest.raises(FactoryError):
