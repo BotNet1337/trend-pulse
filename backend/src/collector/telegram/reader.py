@@ -13,6 +13,7 @@ must not crash collection).
 import asyncio
 import json
 import logging
+import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import datetime
 from typing import TYPE_CHECKING, cast
@@ -25,6 +26,8 @@ from collector.constants import (
     INTER_REQUEST_SLEEP_SECONDS,
     MAX_MESSAGES_PER_TICK,
     POOL_REVIVE_SIGNAL_REDIS_KEY,
+    READ_REF_FAILURE_SKIP_THRESHOLD,
+    READ_REF_SKIP_TTL_SECONDS,
     SESSION_FINGERPRINT_LEN,
 )
 from collector.errors import (
@@ -93,14 +96,25 @@ class TelegramCollector:
         sleep: _AsyncSleep | None = None,
         settings: "Settings | None" = None,
         redis: "Redis | None" = None,
+        clock: Callable[[], float] | None = None,
     ) -> None:
         self._pool = pool
         # Injectable async sleep keeps unit tests instant (no real backoff waits).
         self._sleep: _AsyncSleep = sleep if sleep is not None else asyncio.sleep
+        # Injectable monotonic clock for testability (TASK-138).  Defaults to
+        # time.monotonic so prod behaviour is unchanged; tests inject a fake.
+        self._clock: Callable[[], float] = clock if clock is not None else time.monotonic
         # Optional: settings + redis for pool health self-observation (TASK-035).
         # When None, health calls are skipped — unit tests and backwards-compat.
         self._settings = settings
         self._redis = redis
+        # Per-ref consecutive-failure tracking + skip-until deadlines (TASK-138).
+        # Keyed by the NORMALIZED handle so the same channel across tenants shares
+        # one counter (consistent with unique_refs dedup).
+        # `_ref_consecutive_failures`: counts consecutive transient read failures.
+        # `_ref_skip_until`: monotonic deadline; ref is skipped until clock() > deadline.
+        self._ref_consecutive_failures: dict[str, int] = {}
+        self._ref_skip_until: dict[str, float] = {}
 
     def _emit_health_best_effort(
         self,
@@ -321,6 +335,27 @@ class TelegramCollector:
             return False
         return True
 
+    def _increment_ref_failure(self, handle_key: str, raw_handle: str) -> None:
+        """Increment the per-ref consecutive failure counter (TASK-138).
+
+        When the counter REACHES READ_REF_FAILURE_SKIP_THRESHOLD, set the skip-until
+        deadline and emit a SINGLE skip-tripped warning (not one per skipped tick).
+        Call ONLY from the non-permanent (transient) catch branch — permanent-auth
+        errors quarantine the ACCOUNT and must NOT touch this ref counter.
+        """
+        count = self._ref_consecutive_failures.get(handle_key, 0) + 1
+        self._ref_consecutive_failures[handle_key] = count
+        if count == READ_REF_FAILURE_SKIP_THRESHOLD:
+            deadline = self._clock() + READ_REF_SKIP_TTL_SECONDS
+            self._ref_skip_until[handle_key] = deadline
+            logger.warning(
+                "ref skip tripped: handle=%s consecutive_failures=%d "
+                "skip_ttl_seconds=%d — ref will be skipped until TTL elapses",
+                raw_handle,
+                count,
+                READ_REF_SKIP_TTL_SECONDS,
+            )
+
     async def read(self, refs: list[SourceRef], since: datetime | None) -> AsyncIterator[RawPost]:
         """Yield `RawPost`s for the unique union of `refs` newer than `since` (AC5).
 
@@ -354,7 +389,21 @@ class TelegramCollector:
 
         Auth/ban exceptions (non-flood, non-source-unavailable) trigger a best-effort
         ops self-alert (TASK-035) before re-raising as SourceUnavailableError.
+
+        Per-ref skip (TASK-138): if this ref has accumulated ≥ READ_REF_FAILURE_SKIP_THRESHOLD
+        consecutive transient failures, it is SKIPPED until the TTL deadline elapses —
+        a clean no-op return so OTHER refs in the read() loop are unaffected.
         """
+        # --- TASK-138: per-ref TTL skip guard -----------------------------------
+        # Check if the ref is within its skip window BEFORE acquiring a client.
+        # A permanently-failing ref must not waste an account slot every tick.
+        _handle_key = normalize_handle(ref.handle, ref.kind)
+        _deadline = self._ref_skip_until.get(_handle_key, 0.0)
+        if self._clock() < _deadline:
+            # Ref is still in skip window — clean no-op (does not raise).
+            return
+        # -----------------------------------------------------------------------
+
         client = await self._acquire_ready_client(ref.handle)
         try:
             entity = await client.get_entity(ref.handle)
@@ -382,12 +431,22 @@ class TelegramCollector:
             # surfaced as `failing` instead of staying `healthy` forever. The reason is
             # the error CLASS NAME, never a session string. Then notify ops (throttled)
             # and keep the account (it may recover next tick) — rotation UNCHANGED.
+            # TASK-138: make the culprit visible — log handle (NON-secret) + class name.
+            logger.warning(
+                "transient read failure on entity resolve: handle=%s exc=%s",
+                ref.handle,
+                type(exc).__name__,
+            )
             self._pool.note_read_failure(type(exc).__name__)
             self._emit_health_best_effort(
                 notify_reason="auth_error",
                 notify_text=(f"TG pool: account error on entity resolve ({type(exc).__name__})"),
                 emit_metric=False,
             )
+            # TASK-138: per-ref consecutive-failure tracking. Increment AFTER the
+            # permanent-auth check (that path quarantines the account and must NOT
+            # increment this ref counter — it is a different mechanism).
+            self._increment_ref_failure(_handle_key, ref.handle)
             raise SourceUnavailableError(f"cannot resolve telegram ref {ref.handle}") from exc
 
         try:
@@ -427,6 +486,10 @@ class TelegramCollector:
             # consecutive-failure counter + stamps last_read_ok_at so a recovered account
             # leaves `failing`. Annotation only — no rotation/cooldown change.
             self._pool.note_read_success()
+            # TASK-138: clean read → reset per-ref consecutive failure counter and
+            # clear any skip deadline so a recovered channel is not stuck in skip.
+            self._ref_consecutive_failures.pop(_handle_key, None)
+            self._ref_skip_until.pop(_handle_key, None)
         except Exception as exc:
             if (wait := _flood_wait_seconds(exc)) is not None:
                 # Record the reason on the CURRENT account before report_flood_wait
@@ -448,7 +511,16 @@ class TelegramCollector:
             # Non-flood TRANSIENT error mid-iteration (the swallowed "wrong session ID"
             # class can surface here too) — record a READ FAILURE on the current account
             # (TASK-118), class name only, then skip the ref. Rotation UNCHANGED.
+            # TASK-138: make the culprit visible — log handle (NON-secret) + class name.
+            logger.warning(
+                "transient read failure mid-iteration: handle=%s exc=%s",
+                ref.handle,
+                type(exc).__name__,
+            )
             self._pool.note_read_failure(type(exc).__name__)
+            # TASK-138: per-ref consecutive-failure tracking. Increment AFTER the
+            # permanent-auth check (that path quarantines and must NOT set this counter).
+            self._increment_ref_failure(_handle_key, ref.handle)
             raise SourceUnavailableError(f"failed reading telegram ref {ref.handle}") from exc
 
     async def _acquire_ready_client(self, handle: str) -> TelegramClientProtocol:

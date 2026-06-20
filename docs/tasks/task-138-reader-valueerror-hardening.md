@@ -1,12 +1,12 @@
 ---
 id: TASK-138
 title: TG read-path ValueError hardening — one bad ref can't blackhole an account; culprit visible
-status: planned
+status: review
 owner: backend
 created: 2026-06-20
 updated: 2026-06-20
 baseline_commit: e1d4992
-branch: ""
+branch: "gsd/phase-138-reader-valueerror-hardening"
 tags: [collector, reader, reliability, valueerror, pool-health]
 ---
 
@@ -76,15 +76,16 @@ A single bad ref/message must NOT blackhole an account or recur silently 104×:
   after threshold; other refs unaffected; recovery resets; permanent-auth still quarantines.
 
 ## Checkpoints
-current_step: 3
+current_step: 6
 baseline_commit: e1d4992
-branch: ""
-lock: ""
+branch: "gsd/phase-138-reader-valueerror-hardening"
+lock: "executor-run-138-opus"
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — ValueError hardening + no rotation/quarantine regression)
-- [ ] 5 review (auto, adversarial)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — ValueError hardening + no rotation/quarantine regression)
+- [x] 5 review (auto, adversarial — 0 blocking, invariants hold, secret-safe)
+- [x] 5.5 security (N/A — collector-internal, non-secret logging + in-memory dicts only)
 - [ ] 6 ship (PR)
 - [ ] 7 learnings (auto)
 debug_runs: []
@@ -96,3 +97,19 @@ exact `ValueError` (which field/handle) is a FOLLOW-UP once the owner pulls the 
 traceback (`make logs` on host / SSH — agent has no prod access). Takes prod effect only after a
 **deploy** (owner-gated, vault-guard).
 (initial)
+
+### Execution (2026-06-20)
+**Changed files (scope-exact):**
+- `backend/src/collector/constants.py` — `READ_REF_FAILURE_SKIP_THRESHOLD=5`, `READ_REF_SKIP_TTL_SECONDS=600` (named `Final`, Why+bound comments).
+- `backend/src/collector/telegram/reader.py` — injectable `clock` param (defaults `time.monotonic`); per-ref `_ref_consecutive_failures: dict[str,int]` + `_ref_skip_until: dict[str,float]` keyed by NORMALIZED handle; `_increment_ref_failure` helper (trips skip + single warning at `count == THRESHOLD`); skip-guard at top of `_read_one` (clean no-op `return` before client acquire while within TTL); `logger.warning(handle + exc class)` at BOTH transient catch sites; counter increment in both transient branches AFTER the permanent-auth check; counter+deadline reset on clean read.
+- `backend/tests/unit/collector/test_reader_ref_skip.py` — NEW, 6 tests (handle logged on ValueError mid-iter + entity-resolve; ref skipped after threshold; good ref unaffected; recovery after TTL resets; permanent-auth quarantines without touching skip counter).
+
+**Verify (G2):** `make ci-fast` GREEN → `1361 passed, 338 deselected, 23 warnings`; ruff format+check + mypy clean. New behaviours all confirmed (a/b/c/d). Guardrails green: `test_account_pool_rotation.py` + `test_auth_quarantine.py` + `test_reader_read_outcome.py` (39 passed). Secret-safety: logs only `ref.handle` (non-secret) + `type(exc).__name__` + int constants — never session/proxy/tg_user_id.
+
+**Review (opus, adversarial):** PASS, 0 blocking. Invariants held: one-bad-ref-isolated (skip = clean return, not raise), permanent-auth-unchanged (quarantine before increment; FLOOD_WAIT not counted), threshold has no off-by-one (`==` trips, guard prevents blow-past), recovery bounded. 2 LOW cosmetic notes (underscore locals; bounded stale-entry growth ~108 refs/tick) — left as-is to keep diff surgical.
+
+**Security:** N/A — collector-internal, non-secret logging + in-memory dicts only; no auth/input/secret/public-API surface touched.
+
+**Decision:** per-ref skip-state lives in the reader (in-memory, per-worker), NOT the pool — the pool tracks per-ACCOUNT outcome (TASK-118); per-REF skip is a distinct mechanism that must isolate a ref without touching account rotation/quarantine. Named TTL + threshold (no randomness) → deterministic, owner-tunable.
+
+**Prod effect requires a deploy (owner-gated, vault-guard).** The EXACT `ValueError` root-cause (which field/handle) remains a FOLLOW-UP needing the prod worker traceback (`make logs` on host) — this task is the trace-independent defensive fix that makes the symptom self-heal.

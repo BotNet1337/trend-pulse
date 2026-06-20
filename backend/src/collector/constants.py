@@ -267,6 +267,24 @@ POOL_SOURCE_AUTO: Final = "auto"
 # Column width for the `source` string on `pool_sessions` — a short enum-like value.
 POOL_SOURCE_MAX: Final = 16
 
+# --- per-ref consecutive-failure tracking + TTL skip (TASK-138) ----------------
+# A single deterministically-failing ref (e.g. a channel with a bad peer ID that
+# raises ValueError on EVERY collect tick) wastes the whole account every cycle.
+# After this many CONSECUTIVE transient read failures on the SAME ref, that ref is
+# SKIPPED for a TTL window — other refs on the account keep reading normally.
+#
+# `READ_REF_FAILURE_SKIP_THRESHOLD`: consecutive transient failures before skip.
+#   Kept small (5 = matches POOL_FAILING_THRESHOLD for internal consistency) so a
+#   deterministically-bad ref is retired quickly. A FLOOD_WAIT does NOT count
+#   (it retries via recursion, a different code path). A permanent-auth error does
+#   NOT count (it quarantines the ACCOUNT; the ref counter is irrelevant).
+# `READ_REF_SKIP_TTL_SECONDS`: once tripped, how long the ref is skipped before
+#   it is retried.  10 minutes (600s) is long enough to avoid repeated waste across
+#   many ticks yet short enough to auto-recover if the issue was transient.
+READ_REF_FAILURE_SKIP_THRESHOLD: Final = 5
+_READ_REF_SKIP_TTL_MINUTES: Final = 10
+READ_REF_SKIP_TTL_SECONDS: Final = _READ_REF_SKIP_TTL_MINUTES * 60  # 600
+
 # --- collect-tick (beat ingest task) — import-cycle-free contract constants. ---
 # Celery task name for the collect tick. Lives here (not in collector.tasks,
 # which imports celery_app) so `scheduler` can reference it without a circular
