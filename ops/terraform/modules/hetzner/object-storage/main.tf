@@ -13,6 +13,10 @@ terraform {
 
 resource "minio_s3_bucket" "this" {
   bucket = var.bucket_name
+  # Teardown (adr-account-autoprovision-verdict): allow `terraform destroy` to delete the
+  # bucket even when it still holds backup objects (otherwise destroy blocks on a non-empty
+  # bucket). The infra is being decommissioned; backups are intentionally discarded.
+  force_destroy = true
 }
 
 # Versioning — enables point-in-time restore of backup objects without
