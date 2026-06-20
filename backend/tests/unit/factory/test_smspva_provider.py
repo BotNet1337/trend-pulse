@@ -69,6 +69,21 @@ async def test_buy_number_parses_number_and_order_id() -> None:
     assert number.phone == "9871234567"
 
 
+async def test_buy_number_coerces_integer_number_and_id() -> None:
+    # SMSPVA returns `number`/`id` as JSON INTEGERS for some countries (observed live:
+    # ID/PH). They are valid identifiers → the provider must coerce, not raise
+    # "unexpected shape" (which would make the factory skip a country that has stock).
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"response": "1", "number": 84931234567, "id": 25623})
+
+    provider = _provider_with(handler)
+    number = await provider.buy_number(
+        country=SMSPVA_DEFAULT_COUNTRY, service=SMSPVA_DEFAULT_SERVICE
+    )
+    assert number.order_id == "25623"
+    assert number.phone == "84931234567"
+
+
 async def test_buy_number_unavailable_raises_typed_error() -> None:
     provider = _provider_with(lambda req: httpx.Response(200, json={"response": "2"}))
     with pytest.raises(SmsNumberUnavailableError):
