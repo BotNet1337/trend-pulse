@@ -167,7 +167,17 @@ async def _provision(
                 purchased.order_id, timeout_seconds=SMS_CODE_POLL_TIMEOUT_SECONDS
             )
 
-        registered = await registrar.register(phone=purchased.phone, code_cb=code_cb, proxy=proxy)
+        try:
+            registered = await registrar.register(
+                phone=purchased.phone, code_cb=code_cb, proxy=proxy
+            )
+        except Exception:
+            # Registration failed AFTER a number was bought (e.g. Telegram rejects the
+            # SMS number — PhoneNumberInvalid/Banned — the COMMON case). RELEASE the
+            # number so its cost is refunded, not leaked, then propagate the original
+            # error. `cancel` is best-effort and never raises, so it can't mask it.
+            await provider.cancel(purchased.order_id)
+            raise
         await provider.finish(purchased.order_id)
         return purchased, registered
     finally:

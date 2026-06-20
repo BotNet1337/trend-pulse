@@ -10,6 +10,7 @@ metod/status only and NEVER echo the body, params, or the api_key (secret).
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from decimal import Decimal, InvalidOperation
 
@@ -47,9 +48,12 @@ from factory.errors import (
     SmsCodeTimeoutError,
     SmsNumberUnavailableError,
     SmsProviderAuthError,
+    SmsProviderError,
     SmsProviderResponseError,
 )
 from factory.providers.base import PurchasedNumber
+
+logger = logging.getLogger(__name__)
 
 
 def _coerce_scalar(value: object) -> str | None:
@@ -140,12 +144,23 @@ class SmsPvaProvider:
             await asyncio.sleep(SMS_CODE_POLL_INTERVAL_SECONDS)
 
     async def finish(self, order_id: str) -> None:
-        body = await self._call(SMSPVA_METOD_BAN, id=order_id)
-        self._require_ok(body, metod=SMSPVA_METOD_BAN)
+        # BEST-EFFORT cleanup: closing an order as used must never raise. Live evidence:
+        # a consumed/expired order replies response=3 ("Invalid params"), which is fine
+        # for cleanup — the order is already gone. Issuing the request is what releases it
+        # server-side; the reply is only confirmation. A raise here would mask the real
+        # outcome of the surrounding flow (e.g. a registration result).
+        try:
+            await self._call(SMSPVA_METOD_BAN, id=order_id)
+        except SmsProviderError:
+            logger.warning("smspva finish best-effort failed (metod=%s)", SMSPVA_METOD_BAN)
 
     async def cancel(self, order_id: str) -> None:
-        body = await self._call(SMSPVA_METOD_DENIAL, id=order_id)
-        self._require_ok(body, metod=SMSPVA_METOD_DENIAL)
+        # BEST-EFFORT release (same rationale as `finish`) — used to refund a number whose
+        # registration failed; must NOT raise (the order may already be expired/invalid).
+        try:
+            await self._call(SMSPVA_METOD_DENIAL, id=order_id)
+        except SmsProviderError:
+            logger.warning("smspva cancel best-effort failed (metod=%s)", SMSPVA_METOD_DENIAL)
 
     async def aclose(self) -> None:
         """Release transport resources (best-effort)."""
