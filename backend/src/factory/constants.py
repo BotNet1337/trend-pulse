@@ -172,3 +172,23 @@ FACTORY_PHONE_MASK_MIN_LEN: Final = 6
 
 # Display-label prefix for a promoted factory session in `pool_sessions` (non-secret).
 FACTORY_POOL_LABEL_PREFIX: Final = "factory-"
+
+# --- New-account sign_up profile (TASK-133 follow-up). A freshly-bought number is NOT
+# yet a Telegram account → `sign_in` raises PhoneNumberUnoccupied and the registrar must
+# `sign_up` with a first name. Names are cosmetic (owner: "не суть важно"); picked
+# DETERMINISTICALLY from the phone so a retry of the same number is stable. ---
+FACTORY_SIGNUP_FIRST_NAMES: Final = (
+    "Alex",
+    "Sam",
+    "Jordan",
+    "Casey",
+    "Riley",
+    "Jamie",
+    "Taylor",
+    "Morgan",
+    "Robin",
+    "Quinn",
+)
+# Last name kept empty — a single given name is a valid Telegram profile and minimises
+# fingerprint surface across the pool.
+FACTORY_SIGNUP_LAST_NAME: Final = ""

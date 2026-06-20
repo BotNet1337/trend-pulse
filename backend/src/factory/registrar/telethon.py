@@ -1,8 +1,10 @@
 """Real Telethon-backed `TelegramRegistrar` (TASK-133, config-gated).
 
 This is the production registration path: connect → `send_code_request` → fetch the
-SMS code via `code_cb` → `sign_in`, returning the new account's `StringSession` +
-`tg_user_id`. It is selected ONLY when telegram api creds are configured and never
+SMS code via `code_cb` → `sign_in`; if the number has no account yet
+(`PhoneNumberUnoccupied`, the expected case for a freshly-bought number) → `sign_up`
+to CREATE the account. Returns the new account's `StringSession` + `tg_user_id`. It is
+selected ONLY when telegram api creds are configured and never
 runs in CI/this env (no telethon-network test). telethon is imported lazily inside
 `register` so importing this module never requires telethon.
 
@@ -13,8 +15,19 @@ from __future__ import annotations
 
 from typing import Protocol, cast
 
+from factory.constants import FACTORY_SIGNUP_FIRST_NAMES, FACTORY_SIGNUP_LAST_NAME
 from factory.errors import RegistrarBannedError, RegistrarPasswordNeededError
 from factory.registrar.base import CodeCallback, RegisteredSession
+
+
+def pick_signup_first_name(phone: str) -> str:
+    """Deterministically pick a cosmetic first name for a NEW-account sign_up.
+
+    Indexed by the number's digits so a retry of the SAME phone yields the SAME name
+    (no randomness — stable across processes). Names are cosmetic per the owner.
+    """
+    digits = sum(int(c) for c in phone if c.isdigit())
+    return FACTORY_SIGNUP_FIRST_NAMES[digits % len(FACTORY_SIGNUP_FIRST_NAMES)]
 
 
 class _TelethonClientProtocol(Protocol):
@@ -27,6 +40,8 @@ class _TelethonClientProtocol(Protocol):
     async def send_code_request(self, phone: str) -> object: ...
 
     async def sign_in(self, phone: str, code: str) -> object: ...
+
+    async def sign_up(self, code: str, first_name: str, last_name: str) -> object: ...
 
     async def get_me(self) -> _MeProtocol: ...
 
@@ -49,7 +64,11 @@ class TelethonRegistrar:
     ) -> RegisteredSession:
         # Lazy imports — keep telethon off the import path for pure-unit contexts.
         from telethon import TelegramClient
-        from telethon.errors import PhoneNumberBannedError, SessionPasswordNeededError
+        from telethon.errors import (
+            PhoneNumberBannedError,
+            PhoneNumberUnoccupiedError,
+            SessionPasswordNeededError,
+        )
         from telethon.sessions import StringSession
 
         # Reuse the collector's proxy-parse seam (public fn) so SOCKS5 handling is
@@ -73,6 +92,11 @@ class TelethonRegistrar:
             code = await code_cb()
             try:
                 await client.sign_in(phone, code)
+            except PhoneNumberUnoccupiedError:
+                # The number has no account yet (the expected path for a freshly-bought
+                # number) → CREATE a new account. This is what makes the factory actually
+                # REGISTER (not just log in). Name is cosmetic + deterministic per phone.
+                await client.sign_up(code, pick_signup_first_name(phone), FACTORY_SIGNUP_LAST_NAME)
             except SessionPasswordNeededError as exc:
                 raise RegistrarPasswordNeededError(
                     "telegram requires 2FA password (SESSION_PASSWORD_NEEDED)"
