@@ -1,7 +1,7 @@
 ---
 id: TASK-141
 title: Honest pre-promote health-probe (read public channel through session+proxy) + warming
-status: planned
+status: done
 owner: backend
 created: 2026-06-20
 updated: 2026-06-20

@@ -1,7 +1,7 @@
 ---
 id: TASK-140
 title: Wire dynamic ProxyProvider into factory_tick — allocate/release/budget + mig 0029
-status: planned
+status: done
 owner: backend
 created: 2026-06-20
 updated: 2026-06-20

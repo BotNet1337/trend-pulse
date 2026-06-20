@@ -1,7 +1,7 @@
 ---
 id: EPIC-PROXY-AUTOPROVISION
 title: Auto residential/mobile SOCKS5 proxy per factory account (proxy-as-a-service)
-status: planned
+status: done
 owner: backend+infra
 created: 2026-06-20
 updated: 2026-06-20

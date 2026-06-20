@@ -1,7 +1,7 @@
 ---
 id: TASK-142
 title: Proxy infra — MOBILEPROXY_API_TOKEN via vault, compose dev+release, ops/ansible, docs, ADR
-status: planned
+status: done
 owner: infra
 created: 2026-06-20
 updated: 2026-06-20
