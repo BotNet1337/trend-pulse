@@ -1,10 +1,10 @@
 ---
 id: TASK-135
 title: account-factory REST API (/factory) — superuser
-status: review
+status: done
 owner: backend
 created: 2026-06-19
-updated: 2026-06-19
+updated: 2026-06-20
 baseline_commit: acb9d1ead373ebd99f5dd570dcc75ff0c1625546
 branch: ""
 tags: [account-factory, api, fastapi, superuser, layer-b]
@@ -66,18 +66,18 @@ Pydantic response models; secrets (session) never returned; registered in `api/m
 - integration: route auth (superuser/403), trigger→registered (fake), budget math, relogin, no-secret assert.
 
 ## Checkpoints
-current_step: 6
+current_step: done
 baseline_commit: f74515d82185c4321d417cbc9576df734b01cb37
 branch: "gsd/phase-135-factory-api"
-lock: "executor-135-run1"
+lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [x] 3 do (TDD: failing test → minimal code)
 - [x] 4 verify (G2 — TestClient all 4 endpoints + openapi regenerated)
 - [x] 5 review (auto, adversarial — PASS, 0 CRITICAL/HIGH)
 - [x] 5.5 security (superuser authz, no secret leakage — PASS, 0 CRITICAL/HIGH)
-- [ ] 6 ship (PR)
-- [ ] 7 learnings (auto)
+- [x] 6 ship (PR)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details
