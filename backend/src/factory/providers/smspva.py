@@ -52,6 +52,20 @@ from factory.errors import (
 from factory.providers.base import PurchasedNumber
 
 
+def _coerce_scalar(value: object) -> str | None:
+    """Normalise a JSON scalar (`str` or `int`) to `str`; everything else → `None`.
+
+    SMSPVA returns `number`/`id` as a string for most countries but as a JSON integer
+    for some — both are valid identifiers, so coerce instead of rejecting. `bool` is a
+    subclass of `int` and is NOT a valid id, so it is excluded.
+    """
+    if isinstance(value, str):
+        return value
+    if isinstance(value, int) and not isinstance(value, bool):
+        return str(value)
+    return None
+
+
 class SmsPvaProvider:
     """Production SMSPVA client over httpx (structurally satisfies `SmsProvider`)."""
 
@@ -87,9 +101,13 @@ class SmsPvaProvider:
                 f"smspva no number available (metod={SMSPVA_METOD_NUMBER})"
             )
         self._require_ok(body, metod=SMSPVA_METOD_NUMBER)
-        number = body.get(SMSPVA_FIELD_NUMBER)
-        order_id = body.get(SMSPVA_FIELD_ID)
-        if not isinstance(number, str) or not isinstance(order_id, str):
+        # SMSPVA returns `number`/`id` as a STRING for most countries but as a JSON
+        # INTEGER for some (observed live: ID/PH) — coerce int|str → str so a real,
+        # buyable number is NOT discarded as an "unexpected shape" (which would make the
+        # factory skip a country that actually has stock). Reject only None/other types.
+        number = _coerce_scalar(body.get(SMSPVA_FIELD_NUMBER))
+        order_id = _coerce_scalar(body.get(SMSPVA_FIELD_ID))
+        if number is None or order_id is None:
             raise SmsProviderResponseError(
                 f"smspva unexpected number shape (metod={SMSPVA_METOD_NUMBER})"
             )
