@@ -1,7 +1,7 @@
 ---
 id: TASK-134
 title: account-factory core — buy→register→probation→promote + budget cap + probation gate
-status: review
+status: done
 owner: backend
 created: 2026-06-19
 updated: 2026-06-19
@@ -93,18 +93,18 @@ no-op when `ACCOUNT_FACTORY_PROVIDER` is unset/empty; `fake` → active with fak
   `pool_sessions` row `source='auto'`; budget hard-cap; banned scenario.
 
 ## Checkpoints
-current_step: 6
+current_step: done
 baseline_commit: 0b5cfced630466a6f3116023539af922ef74957e
 branch: "gsd/phase-134-account-factory-core"
-lock: "exec-134-2026-06-20"
+lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [x] 3 do (TDD: failing test → minimal code)
 - [x] 4 verify (G2 — full fake tick: register→probation→promote→pool source=auto; budget cap)
 - [x] 5 review (auto, adversarial)
 - [x] 5.5 security (handles sessions, proxy creds, money, external registration)
-- [ ] 6 ship (PR)
-- [ ] 7 learnings (auto)
+- [x] 6 ship (PR #201 merged --admin; ci-fast 1349 passed, integration 6/6)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details
