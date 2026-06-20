@@ -12,6 +12,41 @@ flows through Ansible → built image tags (`trendpulse-*:vX.Y.Z`) → `RELEASE`
 
 ---
 
+## Unreleased — proxy auto-provisioning (Layer B-proxy, TASK-142)
+
+Proxy-провайдер для account-factory включён в стек compose (dev + release), но
+**является no-op по умолчанию** — `ACCOUNT_FACTORY_PROXY_PROVIDER` пустой в prod.
+Никаких реальных выделений proxy не происходит без трёх шагов активации:
+
+1. В `ops/ansible/inventory/group_vars/prod.yml` выставить:
+   ```yaml
+   account_factory_proxy_provider: "mobileproxy"
+   account_factory_proxy_price_usd: "33.00"   # guard: стоимость одного мобильного IP
+   account_factory_health_probe_channel: "@telegram"
+   ```
+2. Добавить Bearer API-токен Mobileproxy.space в vault:
+   ```bash
+   ansible-vault edit ops/ansible/vault/sensitive.vault.yml
+   # добавить: vault_mobileproxy_api_token: "<токен>"
+   ```
+3. Задеплоить: `make deploy`.
+
+> **Rotate-after-exposure**: если `vault_mobileproxy_api_token` скомпрометирован —
+> немедленно отозвать токен в личном кабинете Mobileproxy.space, создать новый,
+> обновить vault, передеплоить.
+
+Взаимодействие с бюджетом: `ACCOUNT_FACTORY_PROXY_PRICE_USD` — guard на стоимость
+одного прокси-слота. `"0.00"` отклоняет каждое выделение даже при включённом
+провайдере (двойная защита от случайных расходов).
+
+Misconfig fail-fast: если провайдер = `mobileproxy`, но токен не задан → `FactoryError`
+при первом тике. Это ожидаемый сигнал неправильной конфигурации, не краш.
+
+До активации сервис стартует и работает в статическом-pool режиме (TASK-141 заменяет
+stub на реальный health-probe через session+proxy только при включённом провайдере).
+
+---
+
 ## Unreleased — account-factory (Layer B, TASK-137)
 
 Сервис `account-factory` включён в стек (development + release compose), но

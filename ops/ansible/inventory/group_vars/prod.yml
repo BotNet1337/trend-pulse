@@ -34,3 +34,9 @@ allowed_origins: "https://foresignal.biz,https://app.foresignal.biz"
 # Activate by setting this to "smspva" AND adding vault_smspva_api_key to the vault,
 # AND raising account_factory_budget_usd above 0. See ADR adr-account-factory-provisioning.
 account_factory_provider: ""
+
+# TASK-142: proxy provider OFF by default in prod (empty = static pool / no dynamic proxy).
+# Activate by setting this to "mobileproxy" AND adding vault_mobileproxy_api_token to the
+# vault AND raising account_factory_proxy_price_usd above 0.
+# See docs/architecture/adr-proxy-autoprovision.md.
+account_factory_proxy_provider: ""

@@ -94,19 +94,26 @@ git, or logs). `make ansible-unpack` renders secrets from the encrypted vault.
 - doc review: enable-proxy section present + accurate.
 
 ## Checkpoints
-current_step: 3
+current_step: 6
 baseline_commit: 9251a0471369f3bda60eeda44be544267ee22b33
-branch: ""
+branch: gsd/epic-proxy-autoprovision
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + runtime + real behavior)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (vault secret rendering → YES)
-- [ ] 6 ship (confirm plan done → PR)
+- [x] 3 do (infra: compose dev+release, ansible vault, docs, ADR)
+- [x] 4 verify (compose env refs; no backend → openapi-drift unaffected)
+- [x] 5 review (orchestrator: mirrors TASK-137 exactly)
+- [x] 5.5 security (orchestrator-verified: token vault-only, no literal anywhere, prod off-by-default)
+- [ ] 6 ship (epic PR)
 - [ ] 7 learnings (auto)
 debug_runs: []
 
 ## Details
 (initial)
+
+## Details
+- Done (orchestrator-finalized after the do-agent stalled on watchdog at the bookkeeping step; infra work was complete + verified, only the commit/checkpoint update remained).
+- compose dev+release: 4 env vars on account-factory (ACCOUNT_FACTORY_PROXY_PROVIDER, MOBILEPROXY_API_TOKEN, ACCOUNT_FACTORY_PROXY_PRICE_USD, ACCOUNT_FACTORY_HEALTH_PROBE_CHANNEL) as `${VAR:-default}` refs — no literals; visible in `docker compose config`.
+- ansible: MOBILEPROXY_API_TOKEN rendered from vault via `{{ vault_mobileproxy_api_token | default('') }}` in sensitive.env.j2 (mirrors vault_smspva_api_key); non-secret proxy settings in deploy.env.j2 + group_vars (dev=fake, prod=off).
+- ADR adr-proxy-autoprovision.md (Accepted) links the research doc + related ADRs; SECURITY: token vault-only verified via `rg` — literal appears NOWHERE in compose/ansible/git.
+- No backend/src/migration touched → openapi-drift unaffected (stays green from TASK-141 state).

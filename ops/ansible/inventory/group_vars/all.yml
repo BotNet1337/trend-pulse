@@ -72,3 +72,12 @@ account_factory_country: "RU"
 account_factory_price_usd: "1.00"
 account_factory_tick_interval_seconds: "3600"
 account_factory_proxy_pool: ""
+
+# TASK-142: proxy provider (Layer B-proxy) non-secret defaults.
+# MOBILEPROXY_API_TOKEN is secret (vault → vault_mobileproxy_api_token).
+# Dev = `fake` proxy provider (network-free, 0 spend); prod overrides to "" (off) in prod.yml.
+# proxy_price_usd "0.00" = hard cap that refuses every allocation even if provider is set.
+# health_probe_channel: public TG channel for pre-promote probe. Empty = skip (fake default).
+account_factory_proxy_provider: "fake"
+account_factory_proxy_price_usd: "0.00"
+account_factory_health_probe_channel: ""
