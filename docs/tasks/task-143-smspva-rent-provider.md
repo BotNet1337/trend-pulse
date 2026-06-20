@@ -80,3 +80,11 @@ current_step: 6
 - **[LOW] Auth-message matching (`smspva_rent.py`):** dropped the bare `"auth"`/`"apikey"`
   fragments (false-positive prone); kept specific `"invalid apikey"`, `"api key"`,
   `"unauthorized"`, `"invalid key"`. Existing auth test ("Invalid apikey") stays green.
+
+## LIVE VERIFICATION (2026-06-20) — SMSPVA verified NON-VIABLE for fresh TG registration
+Ran the real chain (owner test proxy + key). Honest, multi-sample result:
+- **Rental RO real-SIM (opt29, $4.2/wk, rented live):** Telegram ACCEPTED the number (no `PhoneNumberInvalid`, unlike activation) BUT it was a **recycled/dirty** number → `send_code` returned **`SentCodeTypeApp`, next_type=None** (code delivered to the prior owner's app session, NO SMS fallback) → impossible to register. `method=sms` returned empty `SmsList` (no parser bug — no SMS ever sent).
+- **Activation scout (12 countries, refundable):** KE/ID/US/UK/ES/RO/NL/FR → `PhoneNumberInvalid` (Telegram blocks the range); PH/KZ/UA → no stock; DE → `SentCodeTypeApp` (dirty). **No clean `SentCodeTypeSms` number found.**
+- **Conclusion:** SMSPVA numbers (BOTH activation and rental) do not work for fresh Telegram accounts — either format-rejected (`PhoneNumberInvalid`) or recycled/dirty (`SentCodeTypeApp`, no SMS). Neither a proxy nor rental fixes this; root cause = **SMSPVA's Telegram number inventory quality**.
+- **Code note (unmerged):** the rent provider's `create` parsing surfaced an "empty create data" bug — the real `create` charged + created the rental but returned empty `data`; the number is retrievable via `method=orders` (item has `pnumber` with CC inline, `ccode` empty for RO). Fixing needs the real `create` response shape (costs ~$4/capture) — NOT worth it for a non-viable provider. **Spend this session: ~$4.20 (one dirty rental, no refund); all activation probes refunded.**
+- **Decision: NOT merged, NOT deployed.** Per the owner gate ("deploy only after verify OK"), verify did NOT pass. Recommended: a different number source with CLEAN, never-used-on-Telegram numbers (the real blocker), plus a registrar `SentCode`-type check (fail-fast on App/Call → release+retry) for whatever source is chosen.
