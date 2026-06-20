@@ -38,7 +38,7 @@ PROD_INVENTORY := $(ANSIBLE_DIR)/inventory/prod.yml
 
 .PHONY: help up dev-up dev-infra-up down build logs logs-once ps restart sh migrate \
         ansible-unpack tf-validate ansible-lint ansible-check \
-        deploy smoke vault-guard \
+        deploy smoke vault-guard destroy destroy-org \
         lint fmt typecheck test test-cov test-integration test-integration-smoke ci ci-fast \
         gen-openapi gen-types openapi-drift-check \
         backup backup-restore-check \
@@ -70,6 +70,9 @@ help:
 	@echo "  Prod deploy (TASK-057 — needs ops/ansible/inventory/prod.yml):"
 	@echo "    deploy           provision→TLS→swarm stack→migrations→showcase-init→smoke (one command)"
 	@echo "    smoke HOST=…     run the post-deploy smoke scenario against HOST"
+	@echo "  Teardown (DANGER — irreversible; app dev PAUSED, see adr-account-autoprovision-verdict):"
+	@echo "    destroy          terraform destroy PROD: server + app + DNS records + backup bucket"
+	@echo "    destroy-org      terraform destroy ORG: Cloudflare zone + email routing + Sentry"
 	@echo "  Dev / CI (uv run in backend/):"
 	@echo "    fmt              ruff format"
 	@echo "    lint             ruff check"
@@ -198,6 +201,29 @@ deploy: vault-guard
 # /ready→/trending). Usage: make smoke HOST=https://foresignal.biz
 smoke:
 	HOST='$(HOST)' bash release/scripts/smoke.sh
+
+# --- Teardown (DANGER — irreversible) — app development PAUSED ---
+# Automated Telegram-account provisioning is technically infeasible with available number
+# sources (verdict: docs/architecture/adr-account-autoprovision-verdict.md), so the prod
+# infra is being torn down. `destroy` runs `terraform destroy` over the LOCAL state in
+# environments/prod and removes the Hetzner SERVER (incl. its DB + ingested corpus), the
+# Cloudflare DNS records, and the backup S3 bucket. IRREVERSIBLE — back up first (`make backup`).
+# Two gates protect it: a typed confirmation here + terraform's own "Enter a value: yes" prompt.
+destroy:
+	@echo "⚠️  DESTROY prod — Hetzner server (DB + ingested data), Cloudflare DNS records, backup S3 bucket."
+	@echo "    State: $(TF_DIR)/environments/prod/terraform.tfstate (local). IRREVERSIBLE. Back up first (make backup)."
+	@printf 'Type "destroy-prod" to proceed: ' && read ans && [ "$$ans" = "destroy-prod" ] || { echo "aborted."; exit 1; }
+	terraform -chdir=$(TF_DIR)/environments/prod init
+	terraform -chdir=$(TF_DIR)/environments/prod destroy
+	@echo "prod destroyed. If terraform blocked on a non-empty backup bucket, empty it then re-run."
+
+# Account-level teardown — run AFTER `destroy` ONLY if you also want to release the domain
+# zone. Removes the Cloudflare DNS ZONE + email routing + the Sentry project. IRREVERSIBLE.
+destroy-org:
+	@echo "⚠️  DESTROY org — Cloudflare DNS ZONE + email routing + Sentry project. IRREVERSIBLE."
+	@printf 'Type "destroy-org" to proceed: ' && read ans && [ "$$ans" = "destroy-org" ] || { echo "aborted."; exit 1; }
+	terraform -chdir=$(TF_DIR)/environments/org init
+	terraform -chdir=$(TF_DIR)/environments/org destroy
 
 # --- Dev / CI ---
 fmt:
