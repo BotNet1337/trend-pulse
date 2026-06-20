@@ -1,12 +1,12 @@
 ---
 id: TASK-136
 title: account-factory UI on /admin/pool — factory panel + source badge + manual trigger
-status: planned
+status: done
 owner: frontend
 created: 2026-06-19
-updated: 2026-06-19
+updated: 2026-06-20
 baseline_commit: acb9d1ead373ebd99f5dd570dcc75ff0c1625546
-branch: ""
+branch: "gsd/phase-136-factory-ui"
 tags: [account-factory, frontend, ui, admin-pool, layer-b]
 ---
 
@@ -68,18 +68,18 @@ tags: [account-factory, frontend, ui, admin-pool, layer-b]
   state correct, budget shown. (Backend seeded via fake-provider trigger + forced promote in verify.)
 
 ## Checkpoints
-current_step: 6
+current_step: done
 baseline_commit: acb9d1ead373ebd99f5dd570dcc75ff0c1625546
-branch: ""
-lock: "exec-136"
+branch: "gsd/phase-136-factory-ui"
+lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [x] 3 do (TDD: failing test → minimal code) — 23 new tests RED→GREEN; vitest 363/363; tsc clean; real FACTORY_STATES used
 - [x] 4 verify (G2) — ci-fast GREEN (be 1349, fe tsc 0, vitest 43/43 pool-admin); e2e factory-panel.spec.ts authored+typechecks; live Playwright DEFERRED (Docker network exhausted)
 - [x] 5 review (opus, adversarial) — PASS, 0 CRITICAL/HIGH; 1 MEDIUM (trigger mutateAsync unhandled rejection) FIXED → mutate()+onError surface+isPending gate; 2 LOW (1 fixed via pending/error UX; 1 deferred e2e render-case, documented)
 - [x] 5.5 security — N/A (read-only superuser-gated panel + trigger on already-gated endpoint; no auth/secrets/input/crypto touched)
-- [ ] 6 ship (PR)
-- [ ] 7 learnings (auto)
+- [x] 6 ship (PR #205, squash-merged 2026-06-20; depsec-only red, allowed)
+- [x] 7 learnings (docs/learnings.md 2026-06-20 block)
 debug_runs: []
 
 ## Details
