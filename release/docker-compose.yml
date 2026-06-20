@@ -26,6 +26,7 @@ include:
   - provisioning/migration_runner/docker-compose.yml
   - compose/api.yml
   - compose/worker.yml
+  - compose/account-factory.yml  # TASK-137: dedicated factory worker (provider-gated no-op until ACCOUNT_FACTORY_PROVIDER=smspva)
   - compose/beat.yml
   - compose/frontend.yml
   - compose/landing.yml

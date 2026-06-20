@@ -1,12 +1,12 @@
 ---
 id: TASK-137
 title: account-factory infra — compose + ansible + docs
-status: planned
+status: review
 owner: infra
 created: 2026-06-19
-updated: 2026-06-19
+updated: 2026-06-20
 baseline_commit: acb9d1ead373ebd99f5dd570dcc75ff0c1625546
-branch: ""
+branch: gsd/phase-137-factory-infra-docs
 tags: [account-factory, infra, compose, ansible, docs, layer-b]
 ---
 
@@ -85,19 +85,45 @@ env templates `roles/env/templates/*.j2`, group_vars). The factory service runs
   templates + no clear secret; service boots no-op locally.
 
 ## Checkpoints
-current_step: 3
+current_step: 6
 baseline_commit: acb9d1ead373ebd99f5dd570dcc75ff0c1625546
-branch: ""
-lock: ""
+branch: gsd/phase-137-factory-infra-docs
+lock: "executor-task-137"
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (compose + ansible + docs)
-- [ ] 4 verify (G2 — compose validates dev+release; no-op boot; no clear secret)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (vault secret handling, egress surface)
+- [x] 3 do (compose + ansible + docs)
+- [x] 4 verify (G2 — compose validates dev+release; no-op boot; no clear secret)
+- [x] 5 review (auto, adversarial — PASS, no blocking; 1 LOW ADR-wording fixed)
+- [x] 5.5 security (vault secret handling, egress surface — PASS, key 0× in history)
 - [ ] 6 ship (PR)
 - [ ] 7 learnings (auto)
 debug_runs: []
 
 ## Details
-(initial)
+
+### do (2026-06-20)
+New: `development/compose/account-factory.yml`, `release/compose/account-factory.yml`,
+`development/README.md`, `docs/architecture/adr-account-factory-provisioning.md`.
+Edited: `development/docker-compose.yml` + `release/docker-compose.yml` (include after worker),
+`ops/ansible/roles/env/templates/deploy.env.j2` (7 ACCOUNT_FACTORY_* vars),
+`sensitive.env.j2` (SMSPVA_API_KEY via `vault_smspva_api_key|default('')`),
+`group_vars/all.yml` (dev defaults: provider=fake, budget=0.00, probation=14, country=RU,
+price=1.00, tick=3600, proxy_pool=""), `group_vars/prod.yml` (provider="" off),
+`development/env/deploy.env` (gitignored literal dev block), `release/RELEASE.md` (activation steps).
+Service = dedicated celery worker `-Q celery` (factory_tick is unrouted → default queue;
+no backend routing change). Egress for SMSPVA+MTProto. No-op until provider=smspva.
+
+### vault (executor, 2026-06-20)
+Migrated `SMSPVA_API_KEY` from gitignored `.env` into encrypted vault as `vault_smspva_api_key`
+via decrypt→append→`ansible-vault encrypt`. Vault committed in `$ANSIBLE_VAULT;1.1;AES256` form.
+
+### verify G2 (2026-06-20) — PASS
+- `make ci-fast`: 1349 passed, 338 deselected (no python regression).
+- dev `docker compose ... -f development/docker-compose.yml config`: EXIT=0; services include
+  `account-factory`; rendered env has `ACCOUNT_FACTORY_PROVIDER: fake`.
+- release `docker compose ... -f release/docker-compose.yml config`: EXIT=0; services include
+  `account-factory`; `ACCOUNT_FACTORY_PROVIDER: fake` rendered. (temp release/env copied+removed.)
+- `make ansible-check` (syntax): EXIT=0 (ok=4). `make ansible-lint`: EXIT=2 PRE-EXISTING
+  (deploy.yml/provision.yml — NOT in TASK-137 diff; target lacks --vault-password-file).
+- vault round-trip: `ansible-vault view ... | grep vault_smspva_api_key` → present (key NAME).
+- clear-key `git grep` count = 0; `.env` tracked count = 0; `.env` not in git status.

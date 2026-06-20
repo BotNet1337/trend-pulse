@@ -61,3 +61,14 @@ public_base_url: ""
 
 # TASK-032 CSRF allow-list (origins permitted on cookie-auth mutations). Dev default.
 allowed_origins: "http://localhost,http://localhost:3000,http://localhost:4000"
+
+# TASK-137: account-factory (Layer B) non-secret defaults. SMSPVA_API_KEY is secret (vault).
+# Dev = `fake` provider (network-free); prod overrides provider to "" (off) in prod.yml.
+# Budget "0.00" = a hard cap that refuses every buy → safe even if a provider is set.
+account_factory_provider: "fake"
+account_factory_budget_usd: "0.00"
+account_factory_probation_days: "14"
+account_factory_country: "RU"
+account_factory_price_usd: "1.00"
+account_factory_tick_interval_seconds: "3600"
+account_factory_proxy_pool: ""

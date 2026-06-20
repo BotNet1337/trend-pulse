@@ -1,0 +1,63 @@
+# TASK-137: account-factory (prod swarm) — dedicated, independently-scalable
+# Celery worker for hourly provisioning ticks (factory.tasks.factory_tick).
+# Shares the default `celery` queue with the main worker (no routing change);
+# Celery dispatches each task to exactly one consumer → no duplication.
+#
+# Needs `egress` for: SMSPVA HTTPS (phone-number rental) + Telegram MTProto
+# (account registration). NOT in `edge`; NO published ports.
+#
+# Provider-gated: ACCOUNT_FACTORY_PROVIDER empty in prod = safe no-op tick.
+# Set to `smspva` + add vault_smspva_api_key + raise budget to activate.
+services:
+  account-factory:
+    image: ${APP_IMAGE_ML}
+    build:
+      context: ../../backend
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION}
+        UV_VERSION: ${UV_VERSION}
+        INSTALL_ML: "true"
+    # Consume the default `celery` queue (factory_tick is unrouted → lands here).
+    command: celery -A celery_app worker -Q celery -l info
+    env_file:
+      - ../env/deploy.env
+      - ../env/sensitive.env
+    networks:
+      - postgres_net
+      - redis_net
+      - egress
+    # Factory is light (hourly tick, no embed batches) — tight grace is fine.
+    stop_grace_period: 60s
+    # No healthcheck: factory_tick fires hourly; celery inspect ping would require
+    # $$HOSTNAME nuance identical to worker. restart_policy `any` covers liveness.
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1024M
+      update_config:
+        order: stop-first
+        failure_action: rollback
+        delay: 5s
+      rollback_config:
+        order: stop-first
+      restart_policy:
+        # `any` (not on-failure): daemon restart sends SIGTERM, graceful exit 0
+        # must still trigger a reschedule so the hourly tick isn't lost.
+        condition: any
+        delay: 5s
+        max_attempts: 0
+
+networks:
+  postgres_net:
+    driver: overlay
+    attachable: true
+    internal: true
+  redis_net:
+    driver: overlay
+    attachable: true
+    internal: true
+  egress:
+    driver: overlay
+    attachable: true

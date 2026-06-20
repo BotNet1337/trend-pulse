@@ -1,0 +1,51 @@
+# TASK-137: account-factory — dedicated, independently-scalable Celery worker
+# that handles hourly provisioning ticks (factory.tasks.factory_tick). Shares
+# the default `celery` queue with the main worker (no routing change needed);
+# Celery dispatches each task to exactly one consumer, so no duplication.
+#
+# Needs `egress` for: SMSPVA HTTPS (phone-number rental) + Telegram MTProto
+# (account registration). NOT in `edge`; NO published ports.
+#
+# Provider-gated: ACCOUNT_FACTORY_PROVIDER unset/empty in prod = safe no-op tick
+# (factory_tick returns immediately without any SMSPVA calls). Set to `smspva`
+# (+ SMSPVA_API_KEY in vault) to activate real provisioning.
+# `fake` provider (dev default) runs the tick logic network-free — no real buys.
+services:
+  account-factory:
+    # ml image (same as worker): registrar uses telethon for TG account setup;
+    # ml-enabled image keeps the dependency surface consistent with worker.
+    image: ${APP_IMAGE_ML}
+    build:
+      context: ../../backend
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION}
+        UV_VERSION: ${UV_VERSION}
+        INSTALL_ML: "true"
+    # Consume the default `celery` queue (factory_tick is unrouted → lands here).
+    # No additional queues needed — factory work is light (hourly tick, no embeds).
+    command: celery -A celery_app worker -Q celery -l info
+    restart: unless-stopped
+    env_file:
+      - ../env/deploy.env
+      - ../env/sensitive.env
+    networks:
+      - postgres_net
+      - redis_net
+      - egress
+    depends_on:
+      redis:
+        condition: service_healthy
+      pg_vector_provisioner:
+        condition: service_completed_successfully
+      migration_runner:
+        condition: service_completed_successfully
+
+networks:
+  postgres_net:
+    driver: bridge
+    internal: true
+  redis_net:
+    driver: bridge
+    internal: true
+  egress:
+    driver: bridge

@@ -12,6 +12,34 @@ flows through Ansible → built image tags (`trendpulse-*:vX.Y.Z`) → `RELEASE`
 
 ---
 
+## Unreleased — account-factory (Layer B, TASK-137)
+
+Сервис `account-factory` включён в стек (development + release compose), но
+**является no-op по умолчанию** — никаких реальных покупок не происходит пока не
+выполнены все три шага активации:
+
+1. В `ops/ansible/inventory/group_vars/prod.yml` выставить:
+   ```yaml
+   account_factory_provider: "smspva"
+   account_factory_budget_usd: "5.00"   # или нужный лимит
+   ```
+2. Добавить SMSPVA API-ключ в vault:
+   ```bash
+   ansible-vault edit ops/ansible/vault/sensitive.vault.yml
+   # добавить: vault_smspva_api_key: "<ключ>"
+   ```
+3. Задеплоить: `make deploy` (или через CD-пайплайн).
+
+> **Rotate-after-exposure**: если `vault_smspva_api_key` был скомпрометирован —
+> немедленно сгенерировать новый ключ в личном кабинете SMSPVA, обновить vault,
+> передеплоить. Старый ключ деактивировать.
+
+До активации сервис стартует, потребляет очередь `celery`, но `factory_tick`
+завершается мгновенно (пустой провайдер = no-op). Бюджет `"0.00"` в dev — дополнительная
+защита: даже при случайно выставленном провайдере покупок не будет.
+
+---
+
 ## v0.1.0 — initial production launch
 
 First deploy of the `release/` bundle on Docker Swarm. One-time owner steps
