@@ -39,6 +39,7 @@ from api.routes.pool_admin import (
 )
 from collector.constants import (
     POOL_HEALTH_REDIS_KEY,
+    POOL_MAX,
     POOL_RELOAD_SIGNAL_REDIS_KEY,
     POOL_REVIVE_SIGNAL_REDIS_KEY,
     QUARANTINE_REDIS_KEY,
@@ -648,14 +649,16 @@ class TestQRLoginPersistOnSuccess:
     def test_over_capacity_add_returns_409_but_keeps_session_copy_field(
         self, client: TestClient, db_session: Session
     ) -> None:
-        # Fill the pool to POOL_MAX so the next ADD trips the cap.
-        for i in range(10):
+        # Fill the pool to POOL_MAX (the real cap the route enforces) so the next ADD
+        # trips the cap — capacity-agnostic so a POOL_MAX bump (TASK-131: 10→20) can't
+        # silently break this assertion again.
+        for i in range(POOL_MAX):
             upsert_revive_or_add(
                 db_session,
                 tg_user_id=910_000 + i,
                 session_string=f"1AbCfull-pool-session-{i}",
                 display_label=f"@full{i}",
-                pool_max=10,
+                pool_max=POOL_MAX,
             )
         db_session.commit()
 
