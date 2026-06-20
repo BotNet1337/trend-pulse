@@ -177,6 +177,15 @@ MOBILEPROXY_FIELD_PASSWORD: Final = "proxy_pass"
 MOBILEPROXY_FIELD_EXPIRES_AT: Final = "expires_at"
 MOBILEPROXY_FIELD_BALANCE: Final = "balance"
 
+# Out-of-stock signal on a 200 buyProxy body: the provider reports no port is
+# currently available (transient → map to ProxyUnavailableError, caller backs off, no
+# failed row). The exact wire value is partly unverified publicly (confirmed on the free
+# 2h trial at the final gate, like the other MOBILEPROXY_FIELD_* below) — a documented
+# guess: a `status` field equal to `"no_proxy_available"`. Named so the trial can adjust
+# it without touching mobileproxy.py. Mirrors SMSPVA's get_number response=2 (out of stock).
+MOBILEPROXY_STATUS_FIELD: Final = "status"
+MOBILEPROXY_STATUS_NO_STOCK: Final = "no_proxy_available"
+
 # The proxy URI scheme — SOCKS5 (Telethon/MTProto-over-SOCKS5; see research).
 MOBILEPROXY_PROXY_SCHEME: Final = "socks5"
 

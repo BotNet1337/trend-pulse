@@ -141,7 +141,7 @@ No network in CI.
   mobileproxy+empty→FactoryError.
 
 ## Checkpoints
-current_step: 5
+current_step: 6
 baseline_commit: 9251a0471369f3bda60eeda44be544267ee22b33
 branch: gsd/epic-proxy-autoprovision
 lock: ""
@@ -149,8 +149,8 @@ lock: ""
 - [x] 2 plan (G1 — minimal, approved)
 - [x] 3 do (TDD: failing test → minimal code)
 - [x] 4 verify (G2 — tests + runtime + real behavior)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (touches secrets/proxy creds → YES)
+- [x] 5 review (auto, adversarial)
+- [x] 5.5 security (touches secrets/proxy creds → YES)
 - [ ] 6 ship (confirm plan done → PR)
 - [ ] 7 learnings (auto)
 debug_runs: []
@@ -183,3 +183,28 @@ debug_runs: []
   ruff check + mypy strict (no Any / no type:ignore) + mypy openapi + 1385 unit pass / 338
   deselected. Default-None invariant verified at runtime (`get_proxy_provider(default)`→None
   → zero runtime behavior change; provider unused until TASK-140).
+
+### review + security (2026-06-20)
+Addressed review + security findings (strictly in-scope to `factory/proxy/` + constants/tests):
+- **[MEDIUM] dead `ProxyUnavailableError` → real out-of-stock signal.** Added named
+  constants `MOBILEPROXY_STATUS_FIELD="status"` / `MOBILEPROXY_STATUS_NO_STOCK=
+  "no_proxy_available"` (documented guess, confirmed at the trial gate like the other
+  unverified fields). `MobileProxyProvider._build_lease` now detects this on a 200
+  buyProxy body and raises `ProxyUnavailableError` (transient — caller backs off, no
+  failed row), mirroring SMSPVA get_number response=2. New test
+  `test_allocate_out_of_stock_maps_to_unavailable` drives the constant → typed error.
+- **[SECURITY LOW] `ProxyLease` auto-repr leaked the secret uri.** Added an explicit
+  `__repr__` to the frozen dataclass that masks `uri` to `scheme://***` (never echoes
+  host or user:pass) while keeping `lease_id`/`country`/`expires_at` visible. New test
+  `test_proxy_lease_repr_masks_creds` asserts `repr`/`str` of a
+  `socks5://u-secret:p-secret@host:1080` lease contains neither cred.
+- **[LOW redaction proof] hardened the incomplete-body leak test.** The missing-host
+  case now keeps partial creds (`login=u-secret`/`password=p-secret`) and asserts both
+  are absent from `str(exc)` (the load-bearing secret path).
+- **[LOW coverage] cheap missing tests:** country query param sent for `allocate("KE")`
+  and omitted for `allocate(None)`; `expires_at` valid-ISO → `datetime`, invalid/missing
+  → `None`; 200 JSON list body → `ProxyProviderResponseError`; bool balance →
+  `ProxyProviderResponseError`.
+- VERIFY: targeted `pytest tests/unit/factory/test_{fake_proxy,mobileproxy,proxy_provider_factory}*`
+  → 39 passed; `make ci-fast` GREEN (ruff format-check + ruff check + mypy strict no
+  Any/no type:ignore + mypy openapi + 1394 unit pass / 338 deselected).

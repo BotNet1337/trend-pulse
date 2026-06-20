@@ -30,6 +30,21 @@ class ProxyLease:
     country: str | None
     expires_at: datetime | None
 
+    def __repr__(self) -> str:
+        """Mask the secret `uri` (user:pass creds) in any repr/str/log output.
+
+        The dataclass auto-`__repr__` would echo the full `socks5://user:pass@host:port`
+        — a creds leak the moment a `ProxyLease` lands in a log line or an exception repr.
+        We show ONLY the scheme (everything after `://` is masked, so neither host nor
+        user:pass appears); `lease_id`/`country`/`expires_at` stay visible (non-secret).
+        """
+        scheme, sep, _ = self.uri.partition("://")
+        masked_uri = f"{scheme}://***" if sep else "***"
+        return (
+            f"ProxyLease(lease_id={self.lease_id!r}, uri={masked_uri!r}, "
+            f"country={self.country!r}, expires_at={self.expires_at!r})"
+        )
+
 
 @runtime_checkable
 class ProxyProvider(Protocol):

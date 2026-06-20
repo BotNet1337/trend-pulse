@@ -42,11 +42,14 @@ from factory.constants import (
     MOBILEPROXY_PARAM_COUNTRY,
     MOBILEPROXY_PARAM_PROXY_ID,
     MOBILEPROXY_PROXY_SCHEME,
+    MOBILEPROXY_STATUS_FIELD,
+    MOBILEPROXY_STATUS_NO_STOCK,
 )
 from factory.errors import (
     ProxyProviderAuthError,
     ProxyProviderError,
     ProxyProviderResponseError,
+    ProxyUnavailableError,
 )
 from factory.proxy.base import ProxyLease
 
@@ -125,6 +128,14 @@ class MobileProxyProvider:
 
     def _build_lease(self, body: dict[str, object], *, country: str | None) -> ProxyLease:
         """Build a `ProxyLease` from a buyProxy body — never leak a secret on failure."""
+        # Out-of-stock: a 200 body that reports no port is available is a TRANSIENT signal
+        # (caller backs off / falls back to the static pool, no failed row) → typed
+        # ProxyUnavailableError, mirroring SMSPVA's get_number response=2. The exact wire
+        # value is confirmed on the free 2h trial at the final gate (like every field below).
+        if body.get(MOBILEPROXY_STATUS_FIELD) == MOBILEPROXY_STATUS_NO_STOCK:
+            raise ProxyUnavailableError(
+                f"mobileproxy no proxy available (endpoint={MOBILEPROXY_ENDPOINT_BUY})"
+            )
         lease_id = _coerce_scalar(body.get(MOBILEPROXY_FIELD_ID))
         host = _coerce_scalar(body.get(MOBILEPROXY_FIELD_HOST))
         port = _coerce_scalar(body.get(MOBILEPROXY_FIELD_PORT_SOCKS))
