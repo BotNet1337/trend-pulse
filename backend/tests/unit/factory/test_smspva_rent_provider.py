@@ -197,6 +197,32 @@ async def test_poll_code_extracts_telegram_code_from_smslist() -> None:
     assert await provider.poll_code("40370", timeout_seconds=60) == "54321"
 
 
+async def test_poll_code_skips_long_digit_run_and_extracts_real_code() -> None:
+    # An SMS body that contains BOTH a long numeric run (a phone number) AND the real
+    # 5-digit login code. The tightened regex must NOT partially match the long run — it
+    # must extract the standalone 5-digit code.
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "status": 1,
+                "data": {
+                    "SmsList": [
+                        {
+                            "text": "From +79091234567: Telegram code: 54321",
+                            "sender": "Telegram",
+                            "date": 1,
+                        }
+                    ],
+                    "OtherSms": [],
+                },
+            },
+        )
+
+    provider = _provider_with(handler)
+    assert await provider.poll_code("40370", timeout_seconds=60) == "54321"
+
+
 async def test_poll_code_retries_until_sms_arrives(monkeypatch: pytest.MonkeyPatch) -> None:
     _no_sleep(monkeypatch)
     calls = {"n": 0}
@@ -226,11 +252,11 @@ async def test_poll_code_tolerates_missing_smslist(monkeypatch: pytest.MonkeyPat
         if calls["n"] < 2:
             return httpx.Response(200, json={"status": 1, "data": {}})
         return httpx.Response(
-            200, json={"status": 1, "data": {"SmsList": [{"text": "Your code: 4455", "date": 1}]}}
+            200, json={"status": 1, "data": {"SmsList": [{"text": "Your code: 44551", "date": 1}]}}
         )
 
     provider = _provider_with(handler)
-    assert await provider.poll_code("40370", timeout_seconds=60) == "4455"
+    assert await provider.poll_code("40370", timeout_seconds=60) == "44551"
 
 
 async def test_poll_code_times_out(monkeypatch: pytest.MonkeyPatch) -> None:

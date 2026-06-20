@@ -51,13 +51,32 @@ the Rental create→activate→state-poll→sms flow onto the `SmsProvider` inte
   `__cause__` (which carries the apikey-bearing URL).
 
 ## Checkpoints
-current_step: 5
+current_step: 6
 
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [x] 3 do (TDD: failing test → minimal code)
 - [x] 4 verify (G2 — make ci-fast green: ruff format/check, mypy, 1436 tests pass; 25 new/factory tests)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (apikey/secret redaction in the new provider → YES)
+- [x] 5 review (auto, adversarial — fixes applied, see Details)
+- [x] 5.5 security (apikey/secret redaction in the new provider → YES)
 - [ ] 6 ship (confirm plan done → PR)
 - [ ] 7 learnings (auto)
+
+## Details
+
+### Review fixes (2026-06-20)
+- **[HIGH] Registrar gate (`factory.py`):** `get_registrar` previously wired the real
+  `TelethonRegistrar` only for `smspva` (Activation), so `smspva_rent` fell through to
+  `FakeRegistrar` even with telegram creds present — it would lease a real SIM then
+  "register" against the fake, burning rental money with NO real Telegram account created.
+  Fixed: the gate now accepts BOTH `ACCOUNT_FACTORY_PROVIDER_SMSPVA` and
+  `ACCOUNT_FACTORY_PROVIDER_SMSPVA_RENT` (creds still required; absent → `FakeRegistrar`).
+  Docstring updated; two new tests in `test_provider_factory.py` (rent+creds → Telethon,
+  rent w/o creds → Fake).
+- **[LOW] Code-extraction regex (`constants.py`):** `RENT_CODE_REGEX` tightened from
+  `\d{4,7}` to `(?<!\d)\d{5,6}(?!\d)` so it can't partially match a longer digit run (e.g.
+  a phone number in the SMS body); Telegram login codes are 5-6 digits. Bounded → ReDoS-safe.
+  New test feeds a body with both a 10-digit phone number and the real 5-digit code.
+- **[LOW] Auth-message matching (`smspva_rent.py`):** dropped the bare `"auth"`/`"apikey"`
+  fragments (false-positive prone); kept specific `"invalid apikey"`, `"api key"`,
+  `"unauthorized"`, `"invalid key"`. Existing auth test ("Invalid apikey") stays green.

@@ -50,12 +50,16 @@ def get_sms_provider(settings: Settings) -> SmsProvider:
 def get_registrar(settings: Settings) -> TelegramRegistrar:
     """Return the Telegram registrar for the selected provider.
 
-    The real `TelethonRegistrar` is used ONLY when the SMSPVA provider is selected AND
-    the telegram api creds (`telegram_api_id`/`telegram_api_hash`) are present;
-    otherwise the deterministic `FakeRegistrar` is returned.
+    The real `TelethonRegistrar` is used ONLY when an SMSPVA provider is selected — either
+    Activation (`smspva`) OR Rental (`smspva_rent`, TASK-143) — AND the telegram api creds
+    (`telegram_api_id`/`telegram_api_hash`) are present; otherwise the deterministic
+    `FakeRegistrar` is returned. The rental path MUST get the real registrar: it leases a
+    real SIM, so registering against the fake would burn rental money with no real Telegram
+    account created.
     """
     if (
-        settings.account_factory_provider == ACCOUNT_FACTORY_PROVIDER_SMSPVA
+        settings.account_factory_provider
+        in (ACCOUNT_FACTORY_PROVIDER_SMSPVA, ACCOUNT_FACTORY_PROVIDER_SMSPVA_RENT)
         and settings.telegram_api_id is not None
         and settings.telegram_api_hash is not None
     ):

@@ -89,7 +89,7 @@ logger = logging.getLogger(__name__)
 
 # Auth-failure `msg` fragments (lower-cased match) → SmsProviderAuthError. A bad/expired
 # key is reported in free text by rent.php; documented fragments are matched here.
-_AUTH_MSG_FRAGMENTS = ("apikey", "api key", "unauthorized", "invalid key", "auth")
+_AUTH_MSG_FRAGMENTS = ("invalid apikey", "api key", "unauthorized", "invalid key")
 
 _CODE_RE = re.compile(RENT_CODE_REGEX)
 
@@ -263,8 +263,9 @@ class SmsPvaRentProvider:
         """Extract the Telegram code from the max-`date` SmsList entry, or None if none yet.
 
         Tolerates `data` missing/empty/non-object and an absent/empty `SmsList` as "not
-        yet". Picks the newest message (max `date`) and regexes a 4-7 digit run from its
-        `text`.
+        yet". Picks the newest message (max `date`) and regexes a 5-6 digit login code
+        (not embedded in a longer digit run, so a phone number cannot be partially matched)
+        from its `text`.
         """
         data = body.get(RENT_FIELD_DATA)
         if not isinstance(data, dict):

@@ -217,8 +217,10 @@ RENT_MSG_NO_STOCK_FRAGMENTS: Final = ("no number", "not available", "out of stoc
 RENT_MSG_BAD_ID_FRAGMENTS: Final = ("incorrect order id", "order not found", "incorrect order")
 
 # Telegram code extractor — the SMS `text` is free text (e.g. "Telegram code: 12345");
-# the code is a 4-7 digit run. Named so it is not a magic literal.
-RENT_CODE_REGEX: Final = r"\d{4,7}"
+# the login code is 5-6 digits. The lookarounds require the run to NOT be embedded in a
+# longer digit sequence (so a phone number in the body cannot be partially matched).
+# Bounded (5-6) → ReDoS-safe. Named so it is not a magic literal.
+RENT_CODE_REGEX: Final = r"(?<!\d)\d{5,6}(?!\d)"
 
 # Bound for waiting on a created rental to reach state==1 (active) after `activate`
 # (SECONDS, named — no magic literals): the whole wait + per-poll sleep interval.

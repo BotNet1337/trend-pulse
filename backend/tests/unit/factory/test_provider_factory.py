@@ -93,3 +93,25 @@ def test_registrar_falls_back_to_fake_without_api_creds() -> None:
         telegram_api_hash=None,
     )
     assert isinstance(get_registrar(settings), FakeRegistrar)
+
+
+def test_real_registrar_selected_for_rent_when_api_creds_present() -> None:
+    # The rental path leases a real SIM — it MUST get the real registrar (registering
+    # against the fake would burn rental money with no real Telegram account created).
+    settings = _settings(
+        account_factory_provider=ACCOUNT_FACTORY_PROVIDER_SMSPVA_RENT,
+        smspva_api_key="real-key",
+        telegram_api_id=12345,
+        telegram_api_hash="hash",
+    )
+    assert isinstance(get_registrar(settings), TelethonRegistrar)
+
+
+def test_rent_registrar_falls_back_to_fake_without_api_creds() -> None:
+    settings = _settings(
+        account_factory_provider=ACCOUNT_FACTORY_PROVIDER_SMSPVA_RENT,
+        smspva_api_key="real-key",
+        telegram_api_id=None,
+        telegram_api_hash=None,
+    )
+    assert isinstance(get_registrar(settings), FakeRegistrar)
