@@ -614,6 +614,11 @@ class Settings(BaseSettings):
     account_factory_country: str = ACCOUNT_FACTORY_COUNTRY_DEFAULT
     # Beat interval (seconds) for the factory tick (named default — no magic literal).
     account_factory_tick_interval_seconds: int = FACTORY_TICK_INTERVAL_SECONDS_DEFAULT
+    # Public channel handle the pre-promote health probe reads through each account's own
+    # session+proxy (TASK-141). EMPTY (default) → the probe is a deterministic fake-pass
+    # (no network) so a misconfig can't blackhole promotion; set e.g. `@telegram` (with
+    # telegram api creds + a real provider) to enable the honest can-read gate.
+    account_factory_health_probe_channel: str = ""
 
     # --- Twitter/X source (TASK-031, ADR-001). Optional: app boots without it
     # (collector unregistered → ingest no-op for TWITTER refs, like an empty TG

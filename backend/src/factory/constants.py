@@ -271,3 +271,13 @@ FACTORY_SIGNUP_FIRST_NAMES: Final = (
 # Last name kept empty — a single given name is a valid Telegram profile and minimises
 # fingerprint surface across the pool.
 FACTORY_SIGNUP_LAST_NAME: Final = ""
+
+# --- Pre-promote health probe (TASK-141, Layer B-proxy). The honest gate reads a public
+# channel through the account's OWN session+proxy before promotion. ---
+# Number of messages the probe fetches from the public channel; ≥1 read → healthy. One
+# message is the minimal honest "can-read" proof (a gentle warm-up touch over the proxy).
+FACTORY_HEALTH_READ_LIMIT: Final = 1
+# A well-known public channel handle, documented as an opt-in default for
+# `account_factory_health_probe_channel` (the config default stays EMPTY → fake-pass, so
+# a misconfig can't blackhole promotion; an operator sets the env to enable the real read).
+FACTORY_HEALTH_PROBE_CHANNEL_SUGGESTED: Final = "@telegram"

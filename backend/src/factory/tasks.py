@@ -68,6 +68,8 @@ from factory.errors import (
     SmsCodeTimeoutError,
     SmsNumberUnavailableError,
 )
+from factory.health.base import HealthProbe
+from factory.health.factory import get_health_probe
 from factory.providers.base import PurchasedNumber, SmsProvider
 from factory.providers.factory import get_registrar, get_sms_provider
 from factory.proxy.base import ProxyLease, ProxyProvider
@@ -334,31 +336,64 @@ def _buy_phase(redis: Redis, session: Session, settings: Settings, now: datetime
     )
 
 
-def _health_check_ok(record: factory_account_store.FactoryAccountRecord) -> bool:
-    """Minimal honest health gate before promotion.
+def _health_check_ok(
+    record: factory_account_store.FactoryAccountRecord, probe: HealthProbe
+) -> bool:
+    """Honest health gate before promotion: read a public channel over session+proxy.
 
-    For the fake path this is a deterministic "the account is registered and not banned"
-    check (it holds a session + a tg_user_id). A richer can-read-a-public-channel probe
-    is a follow-up (out of TASK-134 scope) and would slot in here.
+    Precondition (no network): a row with no `session_string`/`tg_user_id` is not
+    probeable → not ok (the registered transition sets both). Otherwise run the injected
+    `probe` (fake-deterministic in CI; real Telethon read at the live gate) via
+    `asyncio.run` — the factory builds short-lived clients per beat, so a fresh loop is
+    correct here. Returns the probe's `.ok`; the probe never raises and never logs the
+    session/proxy.
     """
-    return record.session_string is not None and record.tg_user_id is not None
+    if record.session_string is None or record.tg_user_id is None:
+        return False
+    result = asyncio.run(probe.check(session_string=record.session_string, proxy=record.proxy))
+    return result.ok
 
 
-def _promote_phase(redis: Redis, session: Session, now: datetime) -> None:
-    """Promote each probation row past its gate that passes the health check.
+def _release_record_proxy(
+    settings: Settings, record: factory_account_store.FactoryAccountRecord
+) -> None:
+    """Best-effort release of a rejected row's dynamically-leased proxy (140 path).
+
+    A health-rejected account must free its proxy. Only acts when the row carries a
+    `proxy_lease_id` AND a dynamic provider is configured (static-pool rows have no
+    lease to release). Reconstructs the minimal `ProxyLease` the release helper needs
+    (only `lease_id` is used) — never raises (mirrors the registration off-ramps).
+    """
+    if record.proxy_lease_id is None:
+        return
+    proxy_provider = get_proxy_provider(settings)
+    if proxy_provider is None:
+        return
+    lease = ProxyLease(
+        lease_id=record.proxy_lease_id, uri=record.proxy or "", country=None, expires_at=None
+    )
+    asyncio.run(_release_lease(proxy_provider, lease))
+
+
+def _promote_phase(redis: Redis, session: Session, settings: Settings, now: datetime) -> None:
+    """Promote each probation row past its gate that passes the health probe.
 
     Store-write + reload-signal ONLY — the session is never connected here (no
-    AuthKeyDuplicated). `upsert_revive_or_add` is idempotent and sets `source='auto'`;
-    the account's proxy is carried onto the pool row.
+    AuthKeyDuplicated; the probe uses the factory row's own not-yet-live session).
+    `upsert_revive_or_add` is idempotent and sets `source='auto'`; the account's proxy
+    is carried onto the pool row. A probe-rejected row → `failed` + its proxy released.
     """
+    probe = get_health_probe(settings)
     promoted_any = False
     for record in factory_account_store.list_by_state(session, FACTORY_STATE_PROBATION):
         if not is_promotable(record.probation_until, now):
             continue
-        if not _health_check_ok(record):
+        if not _health_check_ok(record, probe):
             factory_account_store.transition(
-                session, record.id, FACTORY_STATE_FAILED, last_error="health check failed"
+                session, record.id, FACTORY_STATE_FAILED, last_error="health probe failed"
             )
+            # A rejected account must free its proxy (best-effort; never crashes the tick).
+            _release_record_proxy(settings, record)
             continue
         if record.tg_user_id is None or record.session_string is None:
             continue  # guarded by the health check; satisfies the type narrowing.
@@ -422,7 +457,7 @@ def run_factory_tick(
 
     with get_session() as session:
         _buy_phase(redis, session, settings, now)
-        _promote_phase(redis, session, now)
+        _promote_phase(redis, session, settings, now)
         # `get_session` commits on clean exit / rolls back on error.
 
 

@@ -317,6 +317,109 @@ def test_dynamic_proxy_release_best_effort_records_banned(
     assert len(proxy_provider.released_ids) == 1
 
 
+def test_promote_blocked_when_health_probe_fails(
+    db_engine: Engine, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Probe NOT ok → row `failed` (not promoted), no pool row; static-pool path."""
+    from factory.health.fake import FakeHealthProbe
+
+    monkeypatch.setattr(
+        "factory.tasks.get_health_probe", lambda settings: FakeHealthProbe(ok=False)
+    )
+
+    redis = _fake_redis_with_health()
+    settings = _settings_with(
+        account_factory_provider="fake",
+        account_factory_budget_usd=Decimal("10"),
+        account_factory_price_usd=Decimal("1"),
+        account_factory_proxy_pool=_PROXY,
+    )
+    run_factory_tick(redis, settings=settings)
+    with db_engine.begin() as conn:
+        conn.execute(
+            update(FactoryAccount).values(probation_until=datetime.now(UTC) - timedelta(days=1))
+        )
+    run_factory_tick(redis, settings=settings)
+
+    session.expire_all()
+    from factory.constants import FACTORY_STATE_FAILED
+
+    assert len(list_by_state(session, FACTORY_STATE_PROMOTED)) == 0
+    failed = list_by_state(session, FACTORY_STATE_FAILED)
+    assert len(failed) == 1
+    assert failed[0].last_error is not None
+    assert session.scalar(select(PoolSession.id)) is None
+
+
+def test_promote_ok_when_health_probe_passes(
+    db_engine: Engine, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Probe ok → promoted (happy path unchanged) under an explicit FakeHealthProbe."""
+    from factory.health.fake import FakeHealthProbe
+
+    monkeypatch.setattr("factory.tasks.get_health_probe", lambda settings: FakeHealthProbe(ok=True))
+
+    redis = _fake_redis_with_health()
+    settings = _settings_with(
+        account_factory_provider="fake",
+        account_factory_budget_usd=Decimal("10"),
+        account_factory_price_usd=Decimal("1"),
+        account_factory_proxy_pool=_PROXY,
+    )
+    run_factory_tick(redis, settings=settings)
+    with db_engine.begin() as conn:
+        conn.execute(
+            update(FactoryAccount).values(probation_until=datetime.now(UTC) - timedelta(days=1))
+        )
+    run_factory_tick(redis, settings=settings)
+
+    session.expire_all()
+    assert len(list_by_state(session, FACTORY_STATE_PROMOTED)) == 1
+    pool_row = session.scalars(
+        select(PoolSession).where(PoolSession.tg_user_id == FAKE_TG_USER_ID)
+    ).one()
+    assert pool_row.proxy == _PROXY
+
+
+def test_promote_health_fail_releases_dynamic_proxy(
+    db_engine: Engine, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Probe NOT ok on a dynamic-proxy row → failed AND the lease is released (140 path)."""
+    from factory.health.fake import FakeHealthProbe
+
+    proxy_provider = FakeProxyProvider()
+    monkeypatch.setattr("factory.tasks.get_proxy_provider", lambda settings: proxy_provider)
+    monkeypatch.setattr(
+        "factory.tasks.get_health_probe", lambda settings: FakeHealthProbe(ok=False)
+    )
+
+    redis = _fake_redis_with_health()
+    settings = _settings_with(
+        account_factory_provider="fake",
+        account_factory_proxy_provider="fake",
+        account_factory_budget_usd=Decimal("10"),
+        account_factory_price_usd=Decimal("1"),
+        account_factory_proxy_price_usd=Decimal("0.50"),
+    )
+    # Tick 1: buy → allocate dynamic proxy → probation (lease NOT released yet).
+    run_factory_tick(redis, settings=settings)
+    assert proxy_provider.released_ids == set()
+
+    with db_engine.begin() as conn:
+        conn.execute(
+            update(FactoryAccount).values(probation_until=datetime.now(UTC) - timedelta(days=1))
+        )
+    # Tick 2: probe fails → row failed → the held lease is released.
+    run_factory_tick(redis, settings=settings)
+
+    session.expire_all()
+    from factory.constants import FACTORY_STATE_FAILED
+
+    assert len(list_by_state(session, FACTORY_STATE_PROMOTED)) == 0
+    assert len(list_by_state(session, FACTORY_STATE_FAILED)) == 1
+    assert len(proxy_provider.released_ids) == 1
+
+
 def test_manual_source_unaffected(db_engine: Engine, session: Session) -> None:
     """A manually-added pool row keeps source='manual' (no regression — AC6)."""
     from storage.pool_session_store import upsert_revive_or_add

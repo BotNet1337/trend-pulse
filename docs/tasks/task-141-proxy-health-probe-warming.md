@@ -116,14 +116,14 @@ registrar path stays a deterministic pass.
   `failed` + proxy released; provider-unset path unaffected.
 
 ## Checkpoints
-current_step: 3
+current_step: 5
 baseline_commit: 9251a0471369f3bda60eeda44be544267ee22b33
-branch: ""
+branch: gsd/epic-proxy-autoprovision
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + runtime + real behavior)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + runtime + real behavior)
 - [ ] 5 review (auto, adversarial)
 - [ ] 5.5 security (session/proxy secrets in probe → YES)
 - [ ] 6 ship (confirm plan done → PR)
@@ -131,4 +131,55 @@ lock: ""
 debug_runs: []
 
 ## Details
-(initial)
+
+### What shipped (TDD, RED→GREEN)
+New package `backend/src/factory/health/` (mirrors `registrar/` split):
+- `base.py` — `@dataclass(frozen=True) HealthResult(ok, reason)` + `@runtime_checkable
+  HealthProbe` Protocol (`async check(*, session_string, proxy) -> HealthResult`). The
+  `reason` is documented secret-free (an exception class name only).
+- `fake.py` — `FakeHealthProbe(ok=True)`: deterministic, no network, no session/proxy read.
+- `telethon.py` — `TelethonHealthProbe(api_id, api_hash, channel, read_limit)`: lazy
+  telethon import; `TelegramClient(StringSession(session), api_id, api_hash,
+  proxy=parse_socks5_proxy(proxy) if proxy else None)`; `connect → get_entity(channel)
+  → get_messages(channel, read_limit)`; `ok` iff ≥1 message; ALWAYS disconnects
+  (best-effort, `contextlib.suppress`); maps any exception → `reason=type(exc).__name__`
+  (no `str(exc)` → no wrapped-transport secret leak). The `Any` telethon boundary is
+  pinned to `_TelethonClientProtocol` (no bare `Any`, no `type: ignore` in prod).
+- `factory.py` — `get_health_probe(settings)`: real `TelethonHealthProbe` ONLY when
+  `account_factory_provider == smspva` AND telegram creds present AND a non-empty
+  `account_factory_health_probe_channel`; else `FakeHealthProbe()` (mirrors `get_registrar`).
+
+Wiring (`factory/tasks.py`):
+- `_health_check_ok(record, probe)`: keeps the "must have session+tg_user_id" precondition
+  (a None session is unprobeable → not ok, no network), else `asyncio.run(probe.check(...))`
+  and returns `.ok`.
+- `_promote_phase(redis, session, settings, now)`: builds `probe = get_health_probe(settings)`
+  once; on probe NOT ok → existing `failed` transition (`last_error="health probe failed"`)
+  + `_release_record_proxy` (reconstructs a minimal `ProxyLease` from
+  `record.proxy_lease_id`/`record.proxy` and reuses the 140 `_release_lease` /
+  `get_proxy_provider` path — only acts when a lease id + a dynamic provider exist).
+- `constants.py`: `FACTORY_HEALTH_READ_LIMIT: Final = 1`,
+  `FACTORY_HEALTH_PROBE_CHANNEL_SUGGESTED: Final = "@telegram"` (opt-in doc default).
+- `config.py`: `account_factory_health_probe_channel: str = ""` (empty → fake-pass, so a
+  misconfig can't blackhole promotion).
+
+### Warming
+The authenticated channel read over the sticky proxy IS the warm-up (one gentle action).
+A richer multi-day warming scheduler is intentionally OUT of scope — **follow-up**: a
+dedicated warming phase (periodic small reads/joins over several days before the probation
+gate) would slot in as a separate task; this task keeps the touch surgical.
+
+### Verify (G2)
+- `make ci-fast` equivalent GREEN: `ruff format --check` (443 files), `ruff check`
+  (all passed), `mypy` (192 src files, 0 issues), `mypy scripts/dump_openapi.py` (0),
+  `pytest -m 'not integration'` → **1410 passed**. New unit `test_health_probe.py` → 12 passed
+  (Fake ok/fail; Telethon read≥1→ok, zero→fail, raise→fail+exc-class reason, disconnect
+  always called, session+proxy ABSENT from caplog and reason; `get_health_probe` gating).
+- Integration `tests/integration/test_factory_tick.py` against a throwaway
+  `pgvector/pgvector:pg16` on :55432 → **12 passed** (9 prior + 3 new: probe-ok→promoted,
+  probe-fail→`failed`+no pool row, probe-fail on a dynamic-proxy row→`failed`+lease released
+  once; provider-unset/static paths unaffected). Container removed after.
+- Offline/deterministic: the `fake` provider selects `FakeHealthProbe(ok=True)`; no network
+  in CI; the real probe is exercised only at the live gate. Secret-safe: probe never logs or
+  echoes the session string / proxy URI (asserted).
+- No `Any` / `type: ignore` in prod; the telethon boundary is a structural Protocol.
