@@ -141,10 +141,12 @@ async def test_finish_uses_ban_metod_and_accepts_responce_key() -> None:
     assert await provider.finish("25623") is None
 
 
-async def test_finish_failure_raises_response_error() -> None:
-    provider = _provider_with(lambda req: httpx.Response(200, json={"responce": "2"}))
-    with pytest.raises(SmsProviderResponseError):
-        await provider.finish("25623")
+async def test_finish_is_best_effort_on_non_ok_response() -> None:
+    # Cleanup verbs must NOT raise — a consumed/expired order replies non-OK (live: 3
+    # "Invalid params"); the request still releases it server-side. Raising here would
+    # mask the surrounding flow's real outcome.
+    provider = _provider_with(lambda req: httpx.Response(200, json={"response": "3"}))
+    assert await provider.finish("25623") is None
 
 
 async def test_cancel_uses_denial_metod() -> None:
@@ -153,6 +155,13 @@ async def test_cancel_uses_denial_metod() -> None:
         return httpx.Response(200, json={"responce": "1", "id": "25623"})
 
     provider = _provider_with(handler)
+    assert await provider.cancel("25623") is None
+
+
+async def test_cancel_is_best_effort_on_non_ok_response() -> None:
+    # cancel() releases a number whose registration failed → must never raise even when
+    # the order is already gone (response=3) or the transport hiccups.
+    provider = _provider_with(lambda req: httpx.Response(200, json={"response": "3"}))
     assert await provider.cancel("25623") is None
 
 
