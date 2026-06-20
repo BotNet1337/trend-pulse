@@ -1,7 +1,7 @@
 ---
 id: TASK-138
 title: TG read-path ValueError hardening — one bad ref can't blackhole an account; culprit visible
-status: review
+status: done
 owner: backend
 created: 2026-06-20
 updated: 2026-06-20
@@ -76,18 +76,18 @@ A single bad ref/message must NOT blackhole an account or recur silently 104×:
   after threshold; other refs unaffected; recovery resets; permanent-auth still quarantines.
 
 ## Checkpoints
-current_step: 6
+current_step: done
 baseline_commit: e1d4992
 branch: "gsd/phase-138-reader-valueerror-hardening"
-lock: "executor-run-138-opus"
+lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [x] 3 do (TDD: failing test → minimal code)
 - [x] 4 verify (G2 — ValueError hardening + no rotation/quarantine regression)
 - [x] 5 review (auto, adversarial — 0 blocking, invariants hold, secret-safe)
 - [x] 5.5 security (N/A — collector-internal, non-secret logging + in-memory dicts only)
-- [ ] 6 ship (PR)
-- [ ] 7 learnings (auto)
+- [x] 6 ship (PR #215 merged --admin; ci-fast 1361 passed)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details
