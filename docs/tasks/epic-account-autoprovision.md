@@ -1,10 +1,10 @@
 ---
 id: EPIC-ACCOUNT-AUTOPROVISION
 title: Account auto-provisioning + pool durability (Layer A + account-factory service)
-status: planned
+status: done
 owner: backend+frontend+infra
 created: 2026-06-19
-updated: 2026-06-19
+updated: 2026-06-20
 baseline_commit: acb9d1ead373ebd99f5dd570dcc75ff0c1625546
 branch: ""
 tags: [telegram, pool, account-factory, sms-provider, proxy, probation, source, reliability, autonomy]

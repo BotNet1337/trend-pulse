@@ -1,7 +1,7 @@
 ---
 id: TASK-137
 title: account-factory infra — compose + ansible + docs
-status: review
+status: done
 owner: infra
 created: 2026-06-19
 updated: 2026-06-20
@@ -85,18 +85,18 @@ env templates `roles/env/templates/*.j2`, group_vars). The factory service runs
   templates + no clear secret; service boots no-op locally.
 
 ## Checkpoints
-current_step: 6
+current_step: done
 baseline_commit: acb9d1ead373ebd99f5dd570dcc75ff0c1625546
 branch: gsd/phase-137-factory-infra-docs
-lock: "executor-task-137"
+lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
 - [x] 3 do (compose + ansible + docs)
 - [x] 4 verify (G2 — compose validates dev+release; no-op boot; no clear secret)
 - [x] 5 review (auto, adversarial — PASS, no blocking; 1 LOW ADR-wording fixed)
 - [x] 5.5 security (vault secret handling, egress surface — PASS, key 0× in history)
-- [ ] 6 ship (PR)
-- [ ] 7 learnings (auto)
+- [x] 6 ship (PR #207 merged --admin; SMSPVA key in encrypted vault, 0× clear in history)
+- [x] 7 learnings (auto)
 debug_runs: []
 
 ## Details
