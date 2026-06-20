@@ -1,7 +1,7 @@
 ---
 id: TASK-139
 title: ProxyProvider abstraction (base + Fake + Mobileproxy.space + env-select)
-status: planned
+status: done
 owner: backend
 created: 2026-06-20
 updated: 2026-06-20
