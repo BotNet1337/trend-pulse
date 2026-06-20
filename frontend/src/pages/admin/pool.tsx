@@ -1,9 +1,10 @@
 /**
- * AdminPoolPage — /admin/pool (TASK-117, superuser only).
+ * AdminPoolPage — /admin/pool (TASK-117, TASK-136, superuser only).
  *
  * TG pool admin: a connection-status dashboard (per-account state + disconnect
  * reason, over GET /pool-admin/pool-health) plus an "Add account" QR-login flow
- * (start → QR → poll → reveal session string).
+ * (start → QR → poll → reveal session string), plus the account-factory panel
+ * (factory accounts list + budget summary + "Register account" trigger button).
  *
  * Access UX mirrors /admin/metrics: a regular authenticated user sees the SAME
  * markup as a real 404 (no existence leak); the request is not sent for
@@ -14,10 +15,16 @@
 import React from 'react';
 import { useCurrentUser } from '@/entities/viewer/model';
 import {
+  FactoryAccountsPanel,
   PoolHealthTable,
   QrLoginDialog,
+  factoryRegisterDisabledTooltip,
+  isFactoryRegisterDisabled,
   shouldShowPoolAdminNotFound,
+  useFactoryAccounts,
+  useFactoryBudget,
   usePoolHealth,
+  useTriggerFactory,
 } from '@/features/pool-admin';
 import { Button } from '@/shared/components/button';
 import { RefreshCw } from '@/shared/images';
@@ -36,8 +43,15 @@ export const AdminPoolPage: React.FC = () => {
     refetch,
   } = usePoolHealth(isSuperuser);
 
+  const { data: factoryBudget } = useFactoryBudget(isSuperuser);
+  const { data: factoryAccounts } = useFactoryAccounts(isSuperuser);
+  const triggerFactory = useTriggerFactory();
+
   const errorStatus = (error as { response?: { status?: number } } | null)?.response
     ?.status;
+  const triggerStatus = (
+    triggerFactory.error as { response?: { status?: number } } | null
+  )?.response?.status;
 
   if (shouldShowPoolAdminNotFound(user, errorStatus)) {
     return <NotFoundPage />;
@@ -45,6 +59,12 @@ export const AdminPoolPage: React.FC = () => {
 
   const isLoading = isUserLoading || (isSuperuser && isHealthLoading);
   const isUnconfigured = errorStatus === 503;
+
+  const registerDisabled =
+    !isSuperuser || isFactoryRegisterDisabled(factoryBudget) || triggerFactory.isPending;
+  const registerTooltip = factoryBudget && !factoryBudget.enabled
+    ? factoryRegisterDisabledTooltip()
+    : undefined;
 
   return (
     <main className="fs-main">
@@ -66,6 +86,17 @@ export const AdminPoolPage: React.FC = () => {
             </Button>
             <Button type="button" onClick={() => setDialogOpen(true)} disabled={!isSuperuser}>
               Add / re-connect account
+            </Button>
+            <Button
+              type="button"
+              data-testid="factory-register-button"
+              disabled={registerDisabled}
+              title={registerTooltip}
+              // `mutate` (not `mutateAsync`) so a rejected request lands in the mutation's
+              // error state below instead of becoming an unhandled promise rejection.
+              onClick={() => triggerFactory.mutate(undefined)}
+            >
+              {triggerFactory.isPending ? 'Registering…' : 'Register account'}
             </Button>
           </div>
         </div>
@@ -90,6 +121,21 @@ export const AdminPoolPage: React.FC = () => {
         )}
 
         {!isLoading && health && <PoolHealthTable health={health} />}
+
+        {triggerFactory.isError && (
+          <p role="alert" className="fs-error" data-testid="factory-register-error">
+            {triggerStatus === 503
+              ? 'Account factory is disabled (no provider configured).'
+              : 'Failed to trigger the account factory. Please try again.'}
+          </p>
+        )}
+
+        {isSuperuser && factoryBudget && (
+          <FactoryAccountsPanel
+            accounts={factoryAccounts ?? []}
+            budget={factoryBudget}
+          />
+        )}
       </div>
 
       <QrLoginDialog open={dialogOpen} onClose={() => setDialogOpen(false)} />

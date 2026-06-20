@@ -253,6 +253,133 @@ export function formatCooldown(seconds: number | null | undefined): string | nul
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
+// ─── TASK-136: Account-factory view-model helpers ─────────────────────────────
+
+/**
+ * Per-account factory lifecycle state (backend `FACTORY_STATES` from factory/constants.py).
+ *
+ * States: purchased → registered → probation → promoted (happy path)
+ *         failed / banned (terminal off-ramps, reachable from any non-terminal state)
+ *
+ * The backend `state` field is a plain string; this union + narrowing function
+ * are the single source of truth on the frontend.
+ */
+export type FactoryAccountState =
+  | 'purchased'
+  | 'registered'
+  | 'probation'
+  | 'promoted'
+  | 'failed'
+  | 'banned';
+
+/** Narrow the backend `string` state to the known union (unknown → 'failed', fail-safe). */
+export function asFactoryAccountState(raw: string): FactoryAccountState {
+  switch (raw) {
+    case 'purchased':
+    case 'registered':
+    case 'probation':
+    case 'promoted':
+    case 'failed':
+    case 'banned':
+      return raw;
+    default:
+      return 'failed';
+  }
+}
+
+/** Human label for a factory account state badge. */
+export function factoryStateLabel(state: FactoryAccountState): string {
+  switch (state) {
+    case 'purchased':
+      return 'Purchased';
+    case 'registered':
+      return 'Registered';
+    case 'probation':
+      return 'Probation';
+    case 'promoted':
+      return 'Promoted';
+    case 'failed':
+      return 'Failed';
+    case 'banned':
+      return 'Banned';
+  }
+}
+
+/**
+ * Badge variant class suffix for a factory account state (maps to existing `fs-badge--*` modifiers):
+ * - promoted → success (happy terminal)
+ * - probation → info (waiting/warmup)
+ * - failed / banned → danger (terminal failure)
+ * - purchased / registered → warning (in-progress, not yet stable)
+ */
+export function factoryStateBadgeVariant(
+  state: FactoryAccountState,
+): 'success' | 'warning' | 'danger' | 'info' {
+  switch (state) {
+    case 'promoted':
+      return 'success';
+    case 'probation':
+      return 'info';
+    case 'failed':
+    case 'banned':
+      return 'danger';
+    case 'purchased':
+    case 'registered':
+      return 'warning';
+  }
+}
+
+/**
+ * Human probation countdown from an ISO timestamp to a human string like `"3d 4h"`, `"5h 30m"`,
+ * or `"42m"`. Returns `null` when `probationUntil` is null or already elapsed.
+ *
+ * `now` is injectable for deterministic unit tests; defaults to `new Date()`.
+ */
+export function formatProbationCountdown(
+  probationUntil: string | null,
+  now: Date = new Date(),
+): string | null {
+  if (!probationUntil) return null;
+
+  const untilMs = new Date(probationUntil).getTime();
+  const diffMs = untilMs - now.getTime();
+
+  if (diffMs <= 0) return null;
+
+  const totalMinutes = Math.floor(diffMs / (60 * 1000));
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+  const minutes = totalMinutes % 60;
+
+  if (days > 0) {
+    return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+  }
+  if (hours > 0) {
+    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  }
+  return `${minutes}m`;
+}
+
+// ─── TASK-136: Register-button decision helpers ────────────────────────────────
+
+/**
+ * Pure helper: should the "Register account" factory button be disabled?
+ * True when budget is not yet loaded (undefined) OR the factory provider is not configured
+ * (enabled === false). The mutating endpoints return 503 when provider is unset.
+ */
+export function isFactoryRegisterDisabled(budget: { enabled: boolean } | undefined): boolean {
+  if (budget === undefined) return true;
+  return !budget.enabled;
+}
+
+/**
+ * Tooltip text for the disabled "Register account" button.
+ * Rendered as the `title` attribute on the button element.
+ */
+export function factoryRegisterDisabledTooltip(): string {
+  return 'Account factory is disabled (no provider configured)';
+}
+
 /** Minimal slice of CurrentUser the page's superuser gate needs. */
 export interface PoolAdminGuardUser {
   is_superuser: boolean;
