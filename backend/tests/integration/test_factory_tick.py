@@ -29,11 +29,17 @@ from collector.constants import POOL_HEALTH_REDIS_KEY, POOL_SOURCE_AUTO, POOL_SO
 from config import Settings, get_settings
 from factory.constants import (
     FACTORY_PHONE_MASK_CHAR,
+    FACTORY_STATE_BANNED,
     FACTORY_STATE_PROBATION,
     FACTORY_STATE_PROMOTED,
+    FACTORY_STATE_REGISTERED,
 )
+from factory.errors import RegistrarBannedError
+from factory.proxy.fake import FakeProxyProvider
+from factory.registrar.base import RegisteredSession
 from factory.registrar.fake import FAKE_TG_USER_ID
 from factory.tasks import run_factory_tick
+from storage import factory_account_store
 from storage.factory_account_store import list_by_state, total_spent_usd
 from storage.models.factory_accounts import FactoryAccount
 from storage.models.pool_sessions import PoolSession
@@ -174,6 +180,244 @@ def test_provider_unset_is_noop(db_engine: Engine, session: Session) -> None:
     session.expire_all()
     assert session.scalar(select(FactoryAccount.id)) is None
     assert session.scalar(select(PoolSession.id)) is None
+
+
+_FAKE_PROXY_URI = "socks5://fake-user:fake-pass@127.0.0.1:1080"
+_FAKE_LEASE_PREFIX = "fake-proxy-"
+
+
+def test_dynamic_proxy_buy_persists_lease_and_promotes(
+    db_engine: Engine, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Provider set → allocate per-buy, persist lease + uri, carry proxy to the pool row."""
+    proxy_provider = FakeProxyProvider()
+    monkeypatch.setattr("factory.tasks.get_proxy_provider", lambda settings: proxy_provider)
+
+    redis = _fake_redis_with_health()
+    settings = _settings_with(
+        account_factory_provider="fake",
+        account_factory_proxy_provider="fake",
+        account_factory_budget_usd=Decimal("10"),
+        account_factory_price_usd=Decimal("1"),
+        account_factory_proxy_price_usd=Decimal("0.50"),
+        account_factory_country="DE",
+        # A static pool is configured but MUST be ignored when a provider is set.
+        account_factory_proxy_pool=_PROXY,
+    )
+    before = total_spent_usd(session)
+
+    # Tick 1: buy → allocate dynamic proxy → probation.
+    run_factory_tick(redis, settings=settings)
+    session.expire_all()
+    rows = list_by_state(session, FACTORY_STATE_PROBATION)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.proxy == _FAKE_PROXY_URI  # dynamic lease uri, NOT the static pool entry
+    assert row.proxy_lease_id is not None
+    assert row.proxy_lease_id.startswith(_FAKE_LEASE_PREFIX)
+    # cost = number ($1) + proxy ($0.50); a sticky lease is NOT released on success.
+    assert total_spent_usd(session) == before + Decimal("1.50")
+    assert proxy_provider.released_ids == set()
+
+    # Force the gate open + promote: the dynamic proxy is carried onto the pool row.
+    with db_engine.begin() as conn:
+        conn.execute(
+            update(FactoryAccount).values(probation_until=datetime.now(UTC) - timedelta(days=1))
+        )
+    run_factory_tick(redis, settings=settings)
+    session.expire_all()
+    assert len(list_by_state(session, FACTORY_STATE_PROMOTED)) == 1
+    pool_row = session.scalars(
+        select(PoolSession).where(PoolSession.tg_user_id == FAKE_TG_USER_ID)
+    ).one()
+    assert pool_row.source == POOL_SOURCE_AUTO
+    assert pool_row.proxy == _FAKE_PROXY_URI
+    # Promotion is sticky-for-life: the proxy is NOT released.
+    assert proxy_provider.released_ids == set()
+
+
+def test_dynamic_proxy_released_on_registration_failure(
+    db_engine: Engine, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Registration rejects → number cancelled AND the leased proxy released once."""
+    proxy_provider = FakeProxyProvider()
+    monkeypatch.setattr("factory.tasks.get_proxy_provider", lambda settings: proxy_provider)
+
+    class _BannedRegistrar:
+        async def register(self, *, phone, code_cb, proxy=None):  # type: ignore[no-untyped-def]
+            await code_cb()
+            raise RegistrarBannedError("telegram banned this phone number")
+
+    monkeypatch.setattr("factory.tasks.get_registrar", lambda settings: _BannedRegistrar())
+
+    redis = _fake_redis_with_health()
+    settings = _settings_with(
+        account_factory_provider="fake",
+        account_factory_proxy_provider="fake",
+        account_factory_budget_usd=Decimal("10"),
+        account_factory_price_usd=Decimal("1"),
+        account_factory_proxy_price_usd=Decimal("0.50"),
+    )
+
+    # `register` raising propagates out of `_provision` (the Celery wrapper suppresses it
+    # in prod); the off-ramp INSIDE `_provision` must have released the lease + cancelled
+    # the number BEFORE re-raising, so neither cost leaks.
+    with pytest.raises(RegistrarBannedError):
+        run_factory_tick(redis, settings=settings)
+
+    session.expire_all()
+    # No probation row, no banned row (the failure happens before any row is persisted).
+    assert len(list_by_state(session, FACTORY_STATE_PROBATION)) == 0
+    assert len(list_by_state(session, FACTORY_STATE_BANNED)) == 0
+    assert len(proxy_provider.released_ids) == 1
+
+
+def test_dynamic_proxy_release_best_effort_records_banned(
+    db_engine: Engine, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A banned-on-transition off-ramp releases the lease + records the row banned."""
+    proxy_provider = FakeProxyProvider()
+    monkeypatch.setattr("factory.tasks.get_proxy_provider", lambda settings: proxy_provider)
+
+    class _BannedTransitionRegistrar:
+        # Registration SUCCEEDS, but the store-transition will reject it as banned below.
+        async def register(self, *, phone, code_cb, proxy=None):  # type: ignore[no-untyped-def]
+            await code_cb()
+            return RegisteredSession(session_string="1Aok", tg_user_id=FAKE_TG_USER_ID)
+
+    monkeypatch.setattr(
+        "factory.tasks.get_registrar", lambda settings: _BannedTransitionRegistrar()
+    )
+
+    # Make ONLY the `registered` transition raise banned; the subsequent `banned`
+    # transition must run through to mark the row terminal.
+    real_transition = factory_account_store.transition
+
+    def _transition(sess, account_id, to_state, **kwargs):  # type: ignore[no-untyped-def]
+        if to_state == FACTORY_STATE_REGISTERED:
+            raise RegistrarBannedError("flagged on transition")
+        return real_transition(sess, account_id, to_state, **kwargs)
+
+    monkeypatch.setattr("factory.tasks.factory_account_store.transition", _transition)
+
+    redis = _fake_redis_with_health()
+    settings = _settings_with(
+        account_factory_provider="fake",
+        account_factory_proxy_provider="fake",
+        account_factory_budget_usd=Decimal("10"),
+        account_factory_price_usd=Decimal("1"),
+        account_factory_proxy_price_usd=Decimal("0.50"),
+    )
+
+    run_factory_tick(redis, settings=settings)
+
+    session.expire_all()
+    assert len(list_by_state(session, FACTORY_STATE_BANNED)) == 1
+    # The defensive banned off-ramp released the held lease (best-effort).
+    assert len(proxy_provider.released_ids) == 1
+
+
+def test_promote_blocked_when_health_probe_fails(
+    db_engine: Engine, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Probe NOT ok → row `failed` (not promoted), no pool row; static-pool path."""
+    from factory.health.fake import FakeHealthProbe
+
+    monkeypatch.setattr(
+        "factory.tasks.get_health_probe", lambda settings: FakeHealthProbe(ok=False)
+    )
+
+    redis = _fake_redis_with_health()
+    settings = _settings_with(
+        account_factory_provider="fake",
+        account_factory_budget_usd=Decimal("10"),
+        account_factory_price_usd=Decimal("1"),
+        account_factory_proxy_pool=_PROXY,
+    )
+    run_factory_tick(redis, settings=settings)
+    with db_engine.begin() as conn:
+        conn.execute(
+            update(FactoryAccount).values(probation_until=datetime.now(UTC) - timedelta(days=1))
+        )
+    run_factory_tick(redis, settings=settings)
+
+    session.expire_all()
+    from factory.constants import FACTORY_STATE_FAILED
+
+    assert len(list_by_state(session, FACTORY_STATE_PROMOTED)) == 0
+    failed = list_by_state(session, FACTORY_STATE_FAILED)
+    assert len(failed) == 1
+    assert failed[0].last_error is not None
+    assert session.scalar(select(PoolSession.id)) is None
+
+
+def test_promote_ok_when_health_probe_passes(
+    db_engine: Engine, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Probe ok → promoted (happy path unchanged) under an explicit FakeHealthProbe."""
+    from factory.health.fake import FakeHealthProbe
+
+    monkeypatch.setattr("factory.tasks.get_health_probe", lambda settings: FakeHealthProbe(ok=True))
+
+    redis = _fake_redis_with_health()
+    settings = _settings_with(
+        account_factory_provider="fake",
+        account_factory_budget_usd=Decimal("10"),
+        account_factory_price_usd=Decimal("1"),
+        account_factory_proxy_pool=_PROXY,
+    )
+    run_factory_tick(redis, settings=settings)
+    with db_engine.begin() as conn:
+        conn.execute(
+            update(FactoryAccount).values(probation_until=datetime.now(UTC) - timedelta(days=1))
+        )
+    run_factory_tick(redis, settings=settings)
+
+    session.expire_all()
+    assert len(list_by_state(session, FACTORY_STATE_PROMOTED)) == 1
+    pool_row = session.scalars(
+        select(PoolSession).where(PoolSession.tg_user_id == FAKE_TG_USER_ID)
+    ).one()
+    assert pool_row.proxy == _PROXY
+
+
+def test_promote_health_fail_releases_dynamic_proxy(
+    db_engine: Engine, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Probe NOT ok on a dynamic-proxy row → failed AND the lease is released (140 path)."""
+    from factory.health.fake import FakeHealthProbe
+
+    proxy_provider = FakeProxyProvider()
+    monkeypatch.setattr("factory.tasks.get_proxy_provider", lambda settings: proxy_provider)
+    monkeypatch.setattr(
+        "factory.tasks.get_health_probe", lambda settings: FakeHealthProbe(ok=False)
+    )
+
+    redis = _fake_redis_with_health()
+    settings = _settings_with(
+        account_factory_provider="fake",
+        account_factory_proxy_provider="fake",
+        account_factory_budget_usd=Decimal("10"),
+        account_factory_price_usd=Decimal("1"),
+        account_factory_proxy_price_usd=Decimal("0.50"),
+    )
+    # Tick 1: buy → allocate dynamic proxy → probation (lease NOT released yet).
+    run_factory_tick(redis, settings=settings)
+    assert proxy_provider.released_ids == set()
+
+    with db_engine.begin() as conn:
+        conn.execute(
+            update(FactoryAccount).values(probation_until=datetime.now(UTC) - timedelta(days=1))
+        )
+    # Tick 2: probe fails → row failed → the held lease is released.
+    run_factory_tick(redis, settings=settings)
+
+    session.expire_all()
+    from factory.constants import FACTORY_STATE_FAILED
+
+    assert len(list_by_state(session, FACTORY_STATE_PROMOTED)) == 0
+    assert len(list_by_state(session, FACTORY_STATE_FAILED)) == 1
+    assert len(proxy_provider.released_ids) == 1
 
 
 def test_manual_source_unaffected(db_engine: Engine, session: Session) -> None:

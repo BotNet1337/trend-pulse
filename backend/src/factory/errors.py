@@ -69,6 +69,40 @@ class SmsProviderResponseError(SmsProviderError):
     NEVER the response body or the api_key (which could leak the secret)."""
 
 
+# --- Proxy provider errors (TASK-139). Mapped at the Mobileproxy.space HTTP boundary;
+# messages carry the endpoint only — NEVER the response body, the proxy URI (carries
+# user:pass creds), or the api token (Bearer secret). ---
+class ProxyProviderError(FactoryError):
+    """Base for all proxy-provider (e.g. Mobileproxy.space) domain errors.
+
+    Mirrors `SmsProviderError`: the dynamic allocate/release/balance surface raises
+    only typed subclasses — never sentinel values or the transport's exceptions. The
+    proxy URI and the api token are NEVER included in the message."""
+
+
+class ProxyProviderAuthError(ProxyProviderError):
+    """The provider rejected the API token (HTTP 401/403 / auth failure).
+
+    Raised when the upstream rejects the Bearer token. The token is NEVER included in
+    the message (it would leak the secret)."""
+
+
+class ProxyUnavailableError(ProxyProviderError):
+    """No proxy port is currently available to allocate (provider out of stock).
+
+    A transient condition — the caller retries after a backoff or falls back to the
+    static pool. Mirrors `SmsNumberUnavailableError`."""
+
+
+class ProxyProviderResponseError(ProxyProviderError):
+    """A non-OK or malformed provider response (TASK-139).
+
+    Covers non-2xx HTTP, malformed/non-object JSON, unexpected/incomplete buyProxy
+    shapes (missing host/port/id), an unparseable balance, and transport faults. The
+    message names the endpoint only — NEVER the response body, the proxy URI, or the
+    api token (which could leak a secret)."""
+
+
 # --- Telegram registrar errors (TASK-133). Raised by the real Telethon registrar. ---
 class RegistrarError(FactoryError):
     """Base for all Telegram-registrar domain errors."""

@@ -8,6 +8,11 @@
 #
 # Provider-gated: ACCOUNT_FACTORY_PROVIDER empty in prod = safe no-op tick.
 # Set to `smspva` + add vault_smspva_api_key + raise budget to activate.
+#
+# TASK-142: proxy provider activation:
+# ACCOUNT_FACTORY_PROXY_PROVIDER unset/empty = static pool / no dynamic proxy.
+# Set to `mobileproxy` (+ vault_mobileproxy_api_token in vault) to activate.
+# `fake` proxy provider runs network-free (CI-safe). `mobileproxy` needs egress.
 services:
   account-factory:
     image: ${APP_IMAGE_ML}
@@ -22,6 +27,13 @@ services:
     env_file:
       - ../env/deploy.env
       - ../env/sensitive.env
+    environment:
+      # TASK-142: proxy provider — non-secret settings from deploy.env; token from sensitive.env.
+      # All four are passed explicitly so they are visible in `docker compose config` output.
+      ACCOUNT_FACTORY_PROXY_PROVIDER: ${ACCOUNT_FACTORY_PROXY_PROVIDER:-}
+      MOBILEPROXY_API_TOKEN: ${MOBILEPROXY_API_TOKEN:-}
+      ACCOUNT_FACTORY_PROXY_PRICE_USD: ${ACCOUNT_FACTORY_PROXY_PRICE_USD:-0.00}
+      ACCOUNT_FACTORY_HEALTH_PROBE_CHANNEL: ${ACCOUNT_FACTORY_HEALTH_PROBE_CHANNEL:-}
     networks:
       - postgres_net
       - redis_net

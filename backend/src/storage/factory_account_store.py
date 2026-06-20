@@ -72,6 +72,9 @@ class FactoryAccountRecord:
     session_string: str | None = field(default=None, repr=False)
     # repr=False: the proxy carries user:pass creds — same secret treatment.
     proxy: str | None = field(default=None, repr=False)
+    # The dynamic-proxy lease id (provider's opaque port id) — NON-secret, so it stays
+    # visible in repr/logs. NULL for static-pool / no-proxy rows. Used by `release`.
+    proxy_lease_id: str | None = None
 
 
 def _to_record(row: FactoryAccount) -> FactoryAccountRecord:
@@ -90,6 +93,7 @@ def _to_record(row: FactoryAccount) -> FactoryAccountRecord:
         updated_at=row.updated_at,
         session_string=row.session_string,
         proxy=row.proxy,
+        proxy_lease_id=row.proxy_lease_id,
     )
 
 
@@ -101,6 +105,7 @@ def create_purchased(
     provider_order_id: str,
     cost_usd: Decimal,
     proxy: str | None = None,
+    proxy_lease_id: str | None = None,
 ) -> FactoryAccountRecord:
     """Insert a new account in state `purchased`; flush; return the record.
 
@@ -109,6 +114,8 @@ def create_purchased(
     rejected with `FactoryAccountValidationError` (the value itself is PII and is never
     echoed in the message). `session_string`/`tg_user_id` are NULL at this stage (set
     later on the `registered` transition). `proxy`, if given, is encrypted at rest.
+    `proxy_lease_id` (a dynamic provider's opaque port id) is NON-secret and stored as
+    plain VARCHAR — NULL for static-pool / no-proxy rows.
     """
     if FACTORY_PHONE_MASK_CHAR not in phone_masked:
         raise FactoryAccountValidationError(
@@ -120,6 +127,7 @@ def create_purchased(
         provider=provider,
         provider_order_id=provider_order_id,
         proxy=proxy,
+        proxy_lease_id=proxy_lease_id,
         state=FACTORY_STATE_PURCHASED,
         cost_usd=cost_usd,
         created_at=now,

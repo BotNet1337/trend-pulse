@@ -78,6 +78,9 @@ FACTORY_PROXY_MAX: Final = 512
 FACTORY_SESSION_STRING_MAX: Final = 1024
 # The `state` string — a short enum-like value from FACTORY_STATES.
 FACTORY_STATE_MAX: Final = 16
+# Dynamic-proxy lease id (the provider's opaque port id) — NON-secret, plain VARCHAR.
+# Generous cap for an opaque token (mobileproxy port ids are short numeric strings).
+FACTORY_PROXY_LEASE_ID_MAX: Final = 128
 # Last-error diagnostic message (non-secret) recorded on a failed/banned transition.
 FACTORY_LAST_ERROR_MAX: Final = 512
 
@@ -140,6 +143,76 @@ SMS_CODE_POLL_INTERVAL_SECONDS: Final = 20
 SMSPVA_HTTP_OK_FLOOR: Final = 200
 SMSPVA_HTTP_OK_CEIL: Final = 300
 
+# --- Proxy provider selection (TASK-139, Layer B-proxy). Chooses the ProxyProvider impl
+# from env `ACCOUNT_FACTORY_PROXY_PROVIDER`; unset/empty/unknown → None (static-pool
+# fallback). `fake` keeps CI/this env network-free; `mobileproxy` is the live path. ---
+ACCOUNT_FACTORY_PROXY_PROVIDER_FAKE: Final = "fake"
+ACCOUNT_FACTORY_PROXY_PROVIDER_MOBILEPROXY: Final = "mobileproxy"
+
+# --- Mobileproxy.space REST API (TASK-139). Bearer-authed JSON over httpx. The exact
+# wire format is partly unverified publicly (confirmed on the free 2h trial at the
+# final gate); base URL + endpoint paths + JSON field names are NAMED CONSTANTS so the
+# format is trivially adjustable later. The unit tests mock httpx → format-independent.
+# The api token (Bearer) and the built proxy URI (user:pass creds) are SECRETS, never
+# logged. See docs/research/proxy-provider-comparison.md. ---
+MOBILEPROXY_BASE_URL: Final = "https://mobileproxy.space"
+
+# Endpoint paths (REST under the base). Named so the exact route is adjustable later.
+MOBILEPROXY_ENDPOINT_BUY: Final = "/api/buyProxy"
+MOBILEPROXY_ENDPOINT_REFUND: Final = "/api/refundProxy"
+MOBILEPROXY_ENDPOINT_BALANCE: Final = "/api/getBalance"
+
+# HTTP request header for the Bearer token (RFC 6750). The token is the secret.
+MOBILEPROXY_AUTH_HEADER: Final = "Authorization"
+MOBILEPROXY_AUTH_SCHEME: Final = "Bearer"
+
+# Query param names sent to buyProxy/refundProxy.
+MOBILEPROXY_PARAM_COUNTRY: Final = "country"
+MOBILEPROXY_PARAM_PROXY_ID: Final = "proxy_id"
+
+# Response JSON field names read by the provider. buyProxy returns a proxy port id +
+# host:port + login/password creds; getBalance returns a numeric balance.
+MOBILEPROXY_FIELD_ID: Final = "proxy_id"
+MOBILEPROXY_FIELD_HOST: Final = "proxy_host"
+MOBILEPROXY_FIELD_PORT_SOCKS: Final = "proxy_socks5_port"
+MOBILEPROXY_FIELD_LOGIN: Final = "proxy_login"
+MOBILEPROXY_FIELD_PASSWORD: Final = "proxy_pass"
+MOBILEPROXY_FIELD_EXPIRES_AT: Final = "expires_at"
+MOBILEPROXY_FIELD_BALANCE: Final = "balance"
+
+# Out-of-stock signal on a 200 buyProxy body: the provider reports no port is
+# currently available (transient → map to ProxyUnavailableError, caller backs off, no
+# failed row). The exact wire value is partly unverified publicly (confirmed on the free
+# 2h trial at the final gate, like the other MOBILEPROXY_FIELD_* below) — a documented
+# guess: a `status` field equal to `"no_proxy_available"`. Named so the trial can adjust
+# it without touching mobileproxy.py. Mirrors SMSPVA's get_number response=2 (out of stock).
+MOBILEPROXY_STATUS_FIELD: Final = "status"
+MOBILEPROXY_STATUS_NO_STOCK: Final = "no_proxy_available"
+
+# The proxy URI scheme — SOCKS5 (Telethon/MTProto-over-SOCKS5; see research).
+MOBILEPROXY_PROXY_SCHEME: Final = "socks5"
+
+# httpx client timeout for Mobileproxy.space calls (seconds) — mirrors SMSPVA.
+MOBILEPROXY_HTTP_TIMEOUT_SECONDS: Final = 15.0
+
+# httpx 2xx success band (mirrors SMSPVA_HTTP_OK_*).
+MOBILEPROXY_HTTP_OK_FLOOR: Final = 200
+MOBILEPROXY_HTTP_OK_CEIL: Final = 300
+# Auth-rejection status band (401 Unauthorized / 403 Forbidden) → ProxyProviderAuthError.
+MOBILEPROXY_HTTP_UNAUTHORIZED: Final = 401
+MOBILEPROXY_HTTP_FORBIDDEN: Final = 403
+
+# --- FakeProxyProvider deterministic fixtures (TASK-139, CI-safe, no network). The
+# fake builds a `socks5://user:pass@host:port` lease from these + a monotonic counter
+# so allocate is deterministic but lease ids are unique within a provider instance. ---
+FAKE_PROXY_SCHEME: Final = MOBILEPROXY_PROXY_SCHEME
+FAKE_PROXY_HOST: Final = "127.0.0.1"
+FAKE_PROXY_PORT: Final = 1080
+FAKE_PROXY_LOGIN: Final = "fake-user"
+FAKE_PROXY_PASSWORD: Final = "fake-pass"
+FAKE_PROXY_LEASE_ID_PREFIX: Final = "fake-proxy-"
+FAKE_PROXY_DEFAULT_BALANCE: Final = "100.00"
+
 # --- Factory orchestration (TASK-134, Layer B1+B4+B5). The single beat task plus its
 # named defaults (CONVENTIONS: no magic literals — budget/probation/interval/price). ---
 
@@ -159,6 +232,12 @@ FACTORY_TICK_INTERVAL_SECONDS_DEFAULT: Final = 3600
 # stamps `cost_usd` with this configured value — the figure the budget hard-cap checks
 # and `total_spent_usd` accumulates. Env-overridable via ACCOUNT_FACTORY_PRICE_USD.
 ACCOUNT_FACTORY_PRICE_USD_DEFAULT: Final = "1.00"
+
+# Default budgeted cost per dynamically-allocated proxy lease (USD). Added to the row's
+# `cost_usd` (number_price + proxy_price) ONLY when a proxy was allocated/assigned, so the
+# budget hard-cap stays exact with no new counter. Default $0 → no budget change for the
+# static-pool / no-provider paths. Env-overridable via ACCOUNT_FACTORY_PROXY_PRICE_USD.
+ACCOUNT_FACTORY_PROXY_PRICE_USD_DEFAULT: Final = "0"
 
 # Default country for the factory's buy_number calls — reuses the SMSPVA default (RU).
 ACCOUNT_FACTORY_COUNTRY_DEFAULT: Final = SMSPVA_DEFAULT_COUNTRY
@@ -192,3 +271,13 @@ FACTORY_SIGNUP_FIRST_NAMES: Final = (
 # Last name kept empty — a single given name is a valid Telegram profile and minimises
 # fingerprint surface across the pool.
 FACTORY_SIGNUP_LAST_NAME: Final = ""
+
+# --- Pre-promote health probe (TASK-141, Layer B-proxy). The honest gate reads a public
+# channel through the account's OWN session+proxy before promotion. ---
+# Number of messages the probe fetches from the public channel; ≥1 read → healthy. One
+# message is the minimal honest "can-read" proof (a gentle warm-up touch over the proxy).
+FACTORY_HEALTH_READ_LIMIT: Final = 1
+# A well-known public channel handle, documented as an opt-in default for
+# `account_factory_health_probe_channel` (the config default stays EMPTY → fake-pass, so
+# a misconfig can't blackhole promotion; an operator sets the env to enable the real read).
+FACTORY_HEALTH_PROBE_CHANNEL_SUGGESTED: Final = "@telegram"

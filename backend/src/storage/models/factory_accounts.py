@@ -27,6 +27,7 @@ from factory.constants import (
     FACTORY_PHONE_MASKED_MAX,
     FACTORY_PROVIDER_MAX,
     FACTORY_PROVIDER_ORDER_ID_MAX,
+    FACTORY_PROXY_LEASE_ID_MAX,
     FACTORY_PROXY_MAX,
     FACTORY_SESSION_STRING_MAX,
     FACTORY_STATE_MAX,
@@ -79,6 +80,14 @@ class FactoryAccount(Base):
     # SOCKS5 proxy URI — carries user:pass creds → ENCRYPTED, NEVER logged. NULL = none.
     proxy: Mapped[str | None] = mapped_column(
         EncryptedString(FACTORY_PROXY_MAX),
+        nullable=True,
+        default=None,
+    )
+    # Dynamic-proxy lease id (provider's opaque port id) — NON-secret, plain VARCHAR.
+    # Set when a dynamic ProxyProvider allocated the proxy; NULL for static-pool / no
+    # proxy. Persisted so a later failure off-ramp can `release(lease_id)` the port.
+    proxy_lease_id: Mapped[str | None] = mapped_column(
+        String(FACTORY_PROXY_LEASE_ID_MAX),
         nullable=True,
         default=None,
     )

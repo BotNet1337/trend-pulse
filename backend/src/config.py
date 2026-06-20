@@ -17,6 +17,7 @@ from factory.constants import (
     ACCOUNT_FACTORY_PRICE_USD_DEFAULT,
     ACCOUNT_FACTORY_PROBATION_DAYS_DEFAULT,
     ACCOUNT_FACTORY_PROVIDER_FAKE,
+    ACCOUNT_FACTORY_PROXY_PRICE_USD_DEFAULT,
     FACTORY_TICK_INTERVAL_SECONDS_DEFAULT,
 )
 
@@ -416,6 +417,9 @@ _DEFAULT_POOL_MIN_HEALTHY = 5
 # `factory.constants` (no magic literals).
 _DEFAULT_ACCOUNT_FACTORY_BUDGET_USD = Decimal("0")
 _DEFAULT_ACCOUNT_FACTORY_PRICE_USD = Decimal(ACCOUNT_FACTORY_PRICE_USD_DEFAULT)
+# Per-proxy lease cost (Decimal, never float). Default $0 → no budget change for the
+# static-pool / no-provider paths; added to a row's cost_usd only when a proxy is used.
+_DEFAULT_ACCOUNT_FACTORY_PROXY_PRICE_USD = Decimal(ACCOUNT_FACTORY_PROXY_PRICE_USD_DEFAULT)
 # Ops self-alert throttle: at most one Telegram message per reason per window.
 _DEFAULT_OPS_ALERT_THROTTLE_SECONDS = 3600
 # TASK-100 resource alert thresholds (the 300s metric tick fires a throttled ops
@@ -573,6 +577,18 @@ class Settings(BaseSettings):
     # `get_sms_provider` fails fast if `account_factory_provider=smspva` and this is empty.
     smspva_api_key: str = ""
 
+    # --- Dynamic proxy provider (TASK-139, Layer B-proxy). Selects the ProxyProvider
+    # impl. Unset/empty (default) → `get_proxy_provider` returns None = "no dynamic
+    # provider, use the static pool" (zero behavior change). `fake` keeps CI/this env
+    # network-free; set ACCOUNT_FACTORY_PROXY_PROVIDER=mobileproxy to wire the real
+    # Mobileproxy.space path. ---
+    account_factory_proxy_provider: str = ""
+    # Mobileproxy.space REST API token — a SECRET (sensitive.env as MOBILEPROXY_API_TOKEN),
+    # NEVER hardcoded or logged. Empty default so the app boots without it (mirrors
+    # smspva_api_key); `get_proxy_provider` fails fast if the provider is `mobileproxy`
+    # and this is empty.
+    mobileproxy_api_token: str = ""
+
     # --- Account factory orchestration (TASK-134, Layer B1+B4+B5). Activation is
     # PROVIDER-DRIVEN (see `account_factory_provider` above) — there is NO enable flag.
     # The budget hard-cap ALWAYS applies regardless of provider. ---
@@ -583,6 +599,11 @@ class Settings(BaseSettings):
     # Budgeted cost per provisioned number (Decimal). Stamped as the row's `cost_usd` and
     # checked by the budget hard-cap (the provider surface carries no per-number price).
     account_factory_price_usd: Decimal = _DEFAULT_ACCOUNT_FACTORY_PRICE_USD
+    # Budgeted cost per dynamically-allocated proxy lease (Decimal). Added to a row's
+    # cost_usd (number+proxy) ONLY when a proxy is allocated/assigned, so the budget
+    # hard-cap stays exact. Default $0 → no budget change for static-pool/no-provider.
+    # Env ACCOUNT_FACTORY_PROXY_PRICE_USD.
+    account_factory_proxy_price_usd: Decimal = _DEFAULT_ACCOUNT_FACTORY_PROXY_PRICE_USD
     # Warm-up window (days) a registered account holds on probation before promotion.
     account_factory_probation_days: int = ACCOUNT_FACTORY_PROBATION_DAYS_DEFAULT
     # Comma-separated SOCKS5 proxy URIs the factory assigns to fresh registrations. Each
@@ -593,6 +614,11 @@ class Settings(BaseSettings):
     account_factory_country: str = ACCOUNT_FACTORY_COUNTRY_DEFAULT
     # Beat interval (seconds) for the factory tick (named default — no magic literal).
     account_factory_tick_interval_seconds: int = FACTORY_TICK_INTERVAL_SECONDS_DEFAULT
+    # Public channel handle the pre-promote health probe reads through each account's own
+    # session+proxy (TASK-141). EMPTY (default) → the probe is a deterministic fake-pass
+    # (no network) so a misconfig can't blackhole promotion; set e.g. `@telegram` (with
+    # telegram api creds + a real provider) to enable the honest can-read gate.
+    account_factory_health_probe_channel: str = ""
 
     # --- Twitter/X source (TASK-031, ADR-001). Optional: app boots without it
     # (collector unregistered → ingest no-op for TWITTER refs, like an empty TG
