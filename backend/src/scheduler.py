@@ -18,6 +18,7 @@ from billing.constants import CHECK_EXPIRING_SUBSCRIPTIONS_TASK
 from collector.constants import COLLECT_TICK_TASK
 from compliance.constants import PURGE_EXPIRED_RAW_CONTENT_TASK
 from config import get_settings
+from factory.constants import FACTORY_TICK_TASK
 from notifications.constants import SEND_LIFECYCLE_EMAILS_TASK
 from observability.constants import EMIT_SIGNAL_LATENCY_TASK
 from pipeline.constants import ENQUEUE_BATCHES_TASK, SCORE_TICK_TASK
@@ -152,5 +153,14 @@ beat_schedule: dict[str, dict[str, object]] = {
     "aggregate-business-metrics": {
         "task": AGGREGATE_BUSINESS_METRICS_TASK,
         "schedule": float(_settings.business_metrics_interval_seconds),
+    },
+    # Account-factory tick (TASK-134): top up the live pool when below target within a
+    # hard USD budget (buy → register → probation → promote with source='auto'). A no-op
+    # when `account_factory_provider` is unset/empty (provider-driven activation) and the
+    # budget hard-cap refuses every buy at the default $0 budget. Unrouted → default
+    # `celery` queue the worker already consumes (no compose change).
+    "factory-tick": {
+        "task": FACTORY_TICK_TASK,
+        "schedule": float(_settings.account_factory_tick_interval_seconds),
     },
 }

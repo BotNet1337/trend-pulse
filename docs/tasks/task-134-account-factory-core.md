@@ -1,12 +1,12 @@
 ---
 id: TASK-134
 title: account-factory core — buy→register→probation→promote + budget cap + probation gate
-status: planned
+status: review
 owner: backend
 created: 2026-06-19
 updated: 2026-06-19
 baseline_commit: acb9d1ead373ebd99f5dd570dcc75ff0c1625546
-branch: ""
+branch: "gsd/phase-134-account-factory-core"
 tags: [account-factory, orchestration, budget, probation, promote, layer-b]
 ---
 
@@ -93,19 +93,82 @@ no-op when `ACCOUNT_FACTORY_PROVIDER` is unset/empty; `fake` → active with fak
   `pool_sessions` row `source='auto'`; budget hard-cap; banned scenario.
 
 ## Checkpoints
-current_step: 3
-baseline_commit: acb9d1ead373ebd99f5dd570dcc75ff0c1625546
-branch: ""
-lock: ""
+current_step: 6
+baseline_commit: 0b5cfced630466a6f3116023539af922ef74957e
+branch: "gsd/phase-134-account-factory-core"
+lock: "exec-134-2026-06-20"
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — full fake tick: register→probation→promote→pool source=auto; budget cap)
-- [ ] 5 review (auto, adversarial)
-- [ ] 5.5 security (handles sessions, proxy creds, money, external registration)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — full fake tick: register→probation→promote→pool source=auto; budget cap)
+- [x] 5 review (auto, adversarial)
+- [x] 5.5 security (handles sessions, proxy creds, money, external registration)
 - [ ] 6 ship (PR)
 - [ ] 7 learnings (auto)
 debug_runs: []
 
 ## Details
-(initial)
+
+### `do` stage (checkpoint 3) — implementation notes
+
+- **Warming state used:** the row ends a buy tick in `FACTORY_STATE_PROBATION` (not literal
+  `registered`). The legal state machine is `purchased → registered → probation → promoted`,
+  and `probation_until` + the promote scan both belong to the `probation` state. So one buy
+  tick drives `purchased → registered → probation` and stamps `probation_until` on the
+  `probation` move. The AC text "registered with probation_until in future" is satisfied
+  honestly by the `probation` row holding a future `probation_until` (the state the promote
+  phase scans). No state-machine rule is violated.
+- **Per-number price model:** `SmsProvider`/`PurchasedNumber` carry NO price. Added
+  `account_factory_price_usd` (env `ACCOUNT_FACTORY_PRICE_USD`, default `Decimal("1.00")`):
+  the budgeted cost per provisioned number, stamped as the row's `cost_usd` and checked by
+  the budget hard-cap. Keeps budget accounting deterministic for the fake path.
+- **`upsert_revive_or_add` signature (verified):** `(session, *, tg_user_id, session_string,
+  display_label, pool_max, env_floor_size=0, source=None) -> UpsertResult`. It does **NOT**
+  accept a `proxy` param and does **NOT** write the `pool_sessions.proxy` column. Since
+  `pool_session_store.py` is OUT of this task's scope, promotion calls the store for
+  `source='auto'` (idempotent) and then sets the proxy on the just-promoted row via a
+  targeted `UPDATE pool_sessions SET proxy WHERE tg_user_id` in `factory.tasks`. A clean
+  follow-up is to add a `proxy=` param to `upsert_revive_or_add` and drop the direct update.
+- **Provider-driven no-op:** the gate is `if not settings.account_factory_provider: return`.
+  Default `fake` keeps it active in CI; the no-op test sets `account_factory_provider=""`.
+- **Promotion never connects a session** (no AuthKeyDuplicated): store-write + pool-reload
+  signal only. Phone masked before persistence (`+7******1234`); session/proxy never logged.
+- **Files changed:** `factory/service.py` (new pure helpers), `factory/tasks.py` (new tick),
+  `factory/constants.py` (+orchestration constants), `config.py` (+factory env fields +
+  `account_factory_proxy_pool_list`), `celery_app.py` (+`factory.tasks` include),
+  `scheduler.py` (+`factory-tick` beat entry). Tests: `tests/unit/factory/test_service.py`,
+  `tests/integration/test_factory_tick.py`.
+- **Verification:** `make ci-fast` green (1349 passed, fmt+lint+mypy+unit). Integration:
+  6/6 passed against the live pgvector test DB (run via a socat bridge over the internal
+  postgres net, since that net is `internal=true` with no published host port).
+
+### `review` stage (checkpoint 5) — verdict PASS (no CRITICAL/HIGH)
+
+- All invariants hold: budget hard-cap `<=` Decimal; probation gate `not None AND now >=
+  probation_until`; promotion is store-write + reload-signal only (no Telethon connect);
+  `source='auto'`; provider-unset early-returns before any DB/Redis/buy.
+- Secrets clean: every log carries only ids/states/exc_type/isoformat; phone masked;
+  session/proxy/api_key never logged. `asyncio.run` safe in the prefork worker;
+  `provider.aclose()` always awaited in `finally`.
+- **MEDIUM (accepted, documented follow-up):** the direct `pool_sessions.proxy` UPDATE is a
+  second writer vs the store's "only writer" docstring — safe stopgap; fix = add `proxy=` to
+  `upsert_revive_or_add` (TASK-135 or store change).
+- **LOW (deferred):** `_health_check_ok` only checks session/tg_user_id are set, not a real
+  can-read-a-public-channel probe — honest, documented; track as a follow-up.
+- **LOW (resolved at ship):** the 4 new files were untracked → `git add` them before the PR.
+
+### `security` stage (checkpoint 5.5) — verdict PASS (no CRITICAL/HIGH)
+
+- **Proxy creds encrypted at rest (the load-bearing check): PASS.** The direct
+  `update(PoolSession).values(proxy=...)` is an ORM Core construct bound to the
+  `EncryptedString` column → Fernet `process_bind_param` encrypts (verified: compiled bind
+  yields `gAA…` ciphertext, no `user:pass` plaintext). `factory_accounts.proxy` +
+  `session_string` are EncryptedString too. No plaintext secret at rest.
+- No secrets in logs, no hardcoded secrets, SMSPVA api_key only in the `apikey` query param
+  (never logged), budget hard-cap unbypassable (Decimal, can't be exceeded), hostile Redis
+  JSON handled defensively (fails safe to not-under-target), no SSRF surface, no HTTP endpoint
+  added. Test fixtures are clearly fake (RFC1918 IP, literal `user:pass`, `fake-string-session`)
+  — no rotation needed.
+- **LOW (out of scope):** EncryptedString decrypt-failure returns raw value with a WARNING
+  (pre-existing TASK-032 dual-read behavior); optional post-buy `failed`-row spend accounting
+  hardening for unexpected exceptions after a successful buy.

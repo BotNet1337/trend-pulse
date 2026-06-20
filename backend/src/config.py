@@ -5,13 +5,20 @@ materialized by `make ansible-unpack` into `development/env/*.env`.
 """
 
 import base64
+from decimal import Decimal
 from functools import lru_cache
 
 from pydantic import ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Pure constants module (no config import) — safe, no import cycle (TASK-133).
-from factory.constants import ACCOUNT_FACTORY_PROVIDER_FAKE
+from factory.constants import (
+    ACCOUNT_FACTORY_COUNTRY_DEFAULT,
+    ACCOUNT_FACTORY_PRICE_USD_DEFAULT,
+    ACCOUNT_FACTORY_PROBATION_DAYS_DEFAULT,
+    ACCOUNT_FACTORY_PROVIDER_FAKE,
+    FACTORY_TICK_INTERVAL_SECONDS_DEFAULT,
+)
 
 # Hosts that are allowed to use plain http:// for public_base_url — dev G2 runs
 # use http://localhost:8000; prod MUST use https:// (enforced by validator below).
@@ -402,6 +409,13 @@ _DEFAULT_FIELD_ENCRYPTION_KEY: str = _make_dev_fernet_key()
 # Code default is 5 (TASK-131: raised from 3 to align with the enlarged pool
 # ceiling of 20); prod overrides via POOL_MIN_HEALTHY in deploy.env/Ansible.
 _DEFAULT_POOL_MIN_HEALTHY = 5
+# Account-factory orchestration (TASK-134). Budget is a HARD ceiling (Decimal, never
+# float). Default $0 means "never buy" — the hard-cap refuses since spent+price > 0;
+# the PRIMARY activation gate is `account_factory_provider` (provider-driven, no enable
+# flag). Probation window / tick interval / per-number price defaults are named in
+# `factory.constants` (no magic literals).
+_DEFAULT_ACCOUNT_FACTORY_BUDGET_USD = Decimal("0")
+_DEFAULT_ACCOUNT_FACTORY_PRICE_USD = Decimal(ACCOUNT_FACTORY_PRICE_USD_DEFAULT)
 # Ops self-alert throttle: at most one Telegram message per reason per window.
 _DEFAULT_OPS_ALERT_THROTTLE_SECONDS = 3600
 # TASK-100 resource alert thresholds (the 300s metric tick fires a throttled ops
@@ -558,6 +572,27 @@ class Settings(BaseSettings):
     # or logged. Empty default so the app boots without it (mirrors nowpayments_api_key);
     # `get_sms_provider` fails fast if `account_factory_provider=smspva` and this is empty.
     smspva_api_key: str = ""
+
+    # --- Account factory orchestration (TASK-134, Layer B1+B4+B5). Activation is
+    # PROVIDER-DRIVEN (see `account_factory_provider` above) — there is NO enable flag.
+    # The budget hard-cap ALWAYS applies regardless of provider. ---
+    # Hard USD budget ceiling for provisioning (Decimal — never float). Default $0 =
+    # "never buy" (a safe no-op even if a provider is set). Env ACCOUNT_FACTORY_BUDGET_USD;
+    # pydantic-settings parses Decimal from the env string fine.
+    account_factory_budget_usd: Decimal = _DEFAULT_ACCOUNT_FACTORY_BUDGET_USD
+    # Budgeted cost per provisioned number (Decimal). Stamped as the row's `cost_usd` and
+    # checked by the budget hard-cap (the provider surface carries no per-number price).
+    account_factory_price_usd: Decimal = _DEFAULT_ACCOUNT_FACTORY_PRICE_USD
+    # Warm-up window (days) a registered account holds on probation before promotion.
+    account_factory_probation_days: int = ACCOUNT_FACTORY_PROBATION_DAYS_DEFAULT
+    # Comma-separated SOCKS5 proxy URIs the factory assigns to fresh registrations. Each
+    # URI carries user:pass creds → secret-ish: NEVER logged. Empty → register over no
+    # proxy. Parsed via `account_factory_proxy_pool_list`.
+    account_factory_proxy_pool: str = ""
+    # Country code for the factory's buy_number calls (default RU, via SMSPVA default).
+    account_factory_country: str = ACCOUNT_FACTORY_COUNTRY_DEFAULT
+    # Beat interval (seconds) for the factory tick (named default — no magic literal).
+    account_factory_tick_interval_seconds: int = FACTORY_TICK_INTERVAL_SECONDS_DEFAULT
 
     # --- Twitter/X source (TASK-031, ADR-001). Optional: app boots without it
     # (collector unregistered → ingest no-op for TWITTER refs, like an empty TG
@@ -1011,6 +1046,16 @@ def telegram_pool_sessions(settings: Settings) -> list[str]:
     Empty entries are stripped. Returns `[]` when unset. Secrets are never logged.
     """
     return [s.strip() for s in settings.telegram_pool_sessions.split(",") if s.strip()]
+
+
+def account_factory_proxy_pool_list(settings: Settings) -> tuple[str, ...]:
+    """Parse `account_factory_proxy_pool` (comma-separated) into a tuple of URIs.
+
+    Empty entries are stripped; an unset pool returns `()`. An immutable tuple so it
+    flows straight into the pure `factory.service.assign_proxy`. The URIs carry creds
+    (secret-ish) and are NEVER logged.
+    """
+    return tuple(p.strip() for p in settings.account_factory_proxy_pool.split(",") if p.strip())
 
 
 def active_env_pool_sessions(settings: Settings) -> list[str]:

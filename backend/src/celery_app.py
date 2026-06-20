@@ -31,6 +31,7 @@ celery_app = Celery(
     # change).
     include=[
         "collector.tasks",
+        "factory.tasks",
         "pipeline.tasks",
         "alerts.tasks",
         "compliance.tasks",
