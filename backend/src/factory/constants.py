@@ -139,3 +139,36 @@ SMS_CODE_POLL_INTERVAL_SECONDS: Final = 20
 # httpx 2xx success band (mirrors collector/twitter/client._HTTP_OK_*).
 SMSPVA_HTTP_OK_FLOOR: Final = 200
 SMSPVA_HTTP_OK_CEIL: Final = 300
+
+# --- Factory orchestration (TASK-134, Layer B1+B4+B5). The single beat task plus its
+# named defaults (CONVENTIONS: no magic literals — budget/probation/interval/price). ---
+
+# Celery task name for the factory tick (mirrors collector.constants.COLLECT_TICK_TASK).
+FACTORY_TICK_TASK: Final = "factory.tasks.factory_tick"
+
+# Default warm-up (probation) window before a registered account may be promoted into
+# the live pool — 14 days (env-overridable via ACCOUNT_FACTORY_PROBATION_DAYS).
+ACCOUNT_FACTORY_PROBATION_DAYS_DEFAULT: Final = 14
+
+# Default beat interval for the factory tick (seconds). 3600 = once per hour: pool
+# top-up + promotion is a slow control loop, not a hot path.
+FACTORY_TICK_INTERVAL_SECONDS_DEFAULT: Final = 3600
+
+# Default budgeted cost per provisioned number (USD). The provider/registrar surface
+# carries no per-number price (PurchasedNumber has no price field), so the factory
+# stamps `cost_usd` with this configured value — the figure the budget hard-cap checks
+# and `total_spent_usd` accumulates. Env-overridable via ACCOUNT_FACTORY_PRICE_USD.
+ACCOUNT_FACTORY_PRICE_USD_DEFAULT: Final = "1.00"
+
+# Default country for the factory's buy_number calls — reuses the SMSPVA default (RU).
+ACCOUNT_FACTORY_COUNTRY_DEFAULT: Final = SMSPVA_DEFAULT_COUNTRY
+
+# Number of trailing phone digits kept visible when masking before persistence
+# (e.g. `+7******1234`); the full number is NEVER persisted or logged.
+FACTORY_PHONE_MASK_VISIBLE_SUFFIX: Final = 4
+# Minimum digits a number must have to mask with a visible suffix; shorter numbers are
+# fully starred (defensive — real MSISDNs are far longer).
+FACTORY_PHONE_MASK_MIN_LEN: Final = 6
+
+# Display-label prefix for a promoted factory session in `pool_sessions` (non-secret).
+FACTORY_POOL_LABEL_PREFIX: Final = "factory-"
