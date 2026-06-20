@@ -68,18 +68,24 @@ tags: [account-factory, frontend, ui, admin-pool, layer-b]
   state correct, budget shown. (Backend seeded via fake-provider trigger + forced promote in verify.)
 
 ## Checkpoints
-current_step: 3
+current_step: 6
 baseline_commit: acb9d1ead373ebd99f5dd570dcc75ff0c1625546
 branch: ""
-lock: ""
+lock: "exec-136"
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — Playwright /admin/pool: panel + badges + button + budget)
-- [ ] 5 review (auto, adversarial)
+- [x] 3 do (TDD: failing test → minimal code) — 23 new tests RED→GREEN; vitest 363/363; tsc clean; real FACTORY_STATES used
+- [x] 4 verify (G2) — ci-fast GREEN (be 1349, fe tsc 0, vitest 43/43 pool-admin); e2e factory-panel.spec.ts authored+typechecks; live Playwright DEFERRED (Docker network exhausted)
+- [x] 5 review (opus, adversarial) — PASS, 0 CRITICAL/HIGH; 1 MEDIUM (trigger mutateAsync unhandled rejection) FIXED → mutate()+onError surface+isPending gate; 2 LOW (1 fixed via pending/error UX; 1 deferred e2e render-case, documented)
+- [x] 5.5 security — N/A (read-only superuser-gated panel + trigger on already-gated endpoint; no auth/secrets/input/crypto touched)
 - [ ] 6 ship (PR)
 - [ ] 7 learnings (auto)
 debug_runs: []
 
 ## Details
-(initial)
+- Source badge (manual|auto) AC was already shipped in TASK-130 (lib.ts helpers + pool-health-table.tsx column + pool-source-badge.spec.ts) — TASK-136 left it untouched.
+- Real FACTORY_STATES from backend/src/factory/constants.py: purchased/registered/probation/promoted/failed/banned (task spec's draft list was stale).
+- Money fields (cost_usd/budget_usd/spent_usd/remaining_usd) rendered as Decimal STRINGS — never parsed to float.
+- Register button disabled+tooltip when budget.enabled===false OR budget loading OR trigger pending; manual QR flow unchanged.
+- Review MEDIUM fix: useTriggerFactory consumers use .mutate() (not .mutateAsync) so a 503/500 lands in mutation error state (surfaced via [data-testid="factory-register-error"]) instead of an unhandled rejection.
+- Live Playwright DEFERRED: `make up` fails with Docker network exhaustion ("all predefined address pools have been fully subnetted") — same documented blocker as prior tasks. e2e spec committed; superuser-render case documented as not-automatable (no superuser-seed endpoint), proven instead by the 23 vitest unit tests + backend integration test_factory_api.py.
