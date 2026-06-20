@@ -141,14 +141,14 @@ No network in CI.
   mobileproxy+empty→FactoryError.
 
 ## Checkpoints
-current_step: 3
+current_step: 5
 baseline_commit: 9251a0471369f3bda60eeda44be544267ee22b33
-branch: ""
+branch: gsd/epic-proxy-autoprovision
 lock: ""
 - [x] 1 locate (scope + patterns + blast radius)
 - [x] 2 plan (G1 — minimal, approved)
-- [ ] 3 do (TDD: failing test → minimal code)
-- [ ] 4 verify (G2 — tests + runtime + real behavior)
+- [x] 3 do (TDD: failing test → minimal code)
+- [x] 4 verify (G2 — tests + runtime + real behavior)
 - [ ] 5 review (auto, adversarial)
 - [ ] 5.5 security (touches secrets/proxy creds → YES)
 - [ ] 6 ship (confirm plan done → PR)
@@ -157,3 +157,29 @@ debug_runs: []
 
 ## Details
 (initial)
+
+### do + verify (2026-06-20)
+- New package `backend/src/factory/proxy/`: `base.py` (`ProxyProvider` Protocol +
+  frozen `ProxyLease` DTO — `lease_id`/`uri`(SECRET)/`country`/`expires_at`), `fake.py`
+  (`FakeProxyProvider`, deterministic socks5 lease + monotonic unique ids + `released_ids`
+  set, constant `Decimal` balance), `mobileproxy.py` (`MobileProxyProvider` over httpx —
+  Bearer header, `allocate`→buyProxy builds `socks5://user:pass@host:port` + lease_id from
+  the port id, `release`→refundProxy best-effort never-raises, `balance`→getBalance Decimal;
+  redacts token/uri, suppresses httpx `__cause__` via `from None`; lazy
+  `build_mobileproxy_provider`), `factory.py` (`get_proxy_provider` → unset/empty/unknown
+  None, fake→Fake, mobileproxy+token→build, mobileproxy+empty/whitespace→FactoryError).
+- `factory/errors.py`: `ProxyProviderError(FactoryError)` + `ProxyProviderAuthError` /
+  `ProxyUnavailableError` / `ProxyProviderResponseError`.
+- `factory/constants.py`: `ACCOUNT_FACTORY_PROXY_PROVIDER_FAKE/MOBILEPROXY`, full
+  `MOBILEPROXY_*` set (base url, endpoint paths, auth header/scheme, param + JSON field
+  names, http ok floor/ceil + 401/403, timeout, `MOBILEPROXY_PROXY_SCHEME="socks5"`) and
+  `FAKE_PROXY_*` deterministic host/port/creds. Wire format is partly unverified publicly
+  → every route/field is a named constant, adjustable on the trial gate.
+- `config.py`: `account_factory_proxy_provider: str = ""` + `mobileproxy_api_token: str = ""`.
+- TDD: 3 test files written FIRST (confirmed RED via ImportError), then minimal impl → 30/30
+  green. Redaction proven: token + socks5 creds absent from `str(exc)` AND caplog; transport
+  error asserts `exc.__cause__ is None`.
+- VERIFY: `uv sync` (no venv in worktree), then `make ci-fast` GREEN — ruff format-check +
+  ruff check + mypy strict (no Any / no type:ignore) + mypy openapi + 1385 unit pass / 338
+  deselected. Default-None invariant verified at runtime (`get_proxy_provider(default)`→None
+  → zero runtime behavior change; provider unused until TASK-140).

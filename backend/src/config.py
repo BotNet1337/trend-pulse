@@ -573,6 +573,18 @@ class Settings(BaseSettings):
     # `get_sms_provider` fails fast if `account_factory_provider=smspva` and this is empty.
     smspva_api_key: str = ""
 
+    # --- Dynamic proxy provider (TASK-139, Layer B-proxy). Selects the ProxyProvider
+    # impl. Unset/empty (default) → `get_proxy_provider` returns None = "no dynamic
+    # provider, use the static pool" (zero behavior change). `fake` keeps CI/this env
+    # network-free; set ACCOUNT_FACTORY_PROXY_PROVIDER=mobileproxy to wire the real
+    # Mobileproxy.space path. ---
+    account_factory_proxy_provider: str = ""
+    # Mobileproxy.space REST API token — a SECRET (sensitive.env as MOBILEPROXY_API_TOKEN),
+    # NEVER hardcoded or logged. Empty default so the app boots without it (mirrors
+    # smspva_api_key); `get_proxy_provider` fails fast if the provider is `mobileproxy`
+    # and this is empty.
+    mobileproxy_api_token: str = ""
+
     # --- Account factory orchestration (TASK-134, Layer B1+B4+B5). Activation is
     # PROVIDER-DRIVEN (see `account_factory_provider` above) — there is NO enable flag.
     # The budget hard-cap ALWAYS applies regardless of provider. ---

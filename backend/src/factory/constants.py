@@ -140,6 +140,67 @@ SMS_CODE_POLL_INTERVAL_SECONDS: Final = 20
 SMSPVA_HTTP_OK_FLOOR: Final = 200
 SMSPVA_HTTP_OK_CEIL: Final = 300
 
+# --- Proxy provider selection (TASK-139, Layer B-proxy). Chooses the ProxyProvider impl
+# from env `ACCOUNT_FACTORY_PROXY_PROVIDER`; unset/empty/unknown → None (static-pool
+# fallback). `fake` keeps CI/this env network-free; `mobileproxy` is the live path. ---
+ACCOUNT_FACTORY_PROXY_PROVIDER_FAKE: Final = "fake"
+ACCOUNT_FACTORY_PROXY_PROVIDER_MOBILEPROXY: Final = "mobileproxy"
+
+# --- Mobileproxy.space REST API (TASK-139). Bearer-authed JSON over httpx. The exact
+# wire format is partly unverified publicly (confirmed on the free 2h trial at the
+# final gate); base URL + endpoint paths + JSON field names are NAMED CONSTANTS so the
+# format is trivially adjustable later. The unit tests mock httpx → format-independent.
+# The api token (Bearer) and the built proxy URI (user:pass creds) are SECRETS, never
+# logged. See docs/research/proxy-provider-comparison.md. ---
+MOBILEPROXY_BASE_URL: Final = "https://mobileproxy.space"
+
+# Endpoint paths (REST under the base). Named so the exact route is adjustable later.
+MOBILEPROXY_ENDPOINT_BUY: Final = "/api/buyProxy"
+MOBILEPROXY_ENDPOINT_REFUND: Final = "/api/refundProxy"
+MOBILEPROXY_ENDPOINT_BALANCE: Final = "/api/getBalance"
+
+# HTTP request header for the Bearer token (RFC 6750). The token is the secret.
+MOBILEPROXY_AUTH_HEADER: Final = "Authorization"
+MOBILEPROXY_AUTH_SCHEME: Final = "Bearer"
+
+# Query param names sent to buyProxy/refundProxy.
+MOBILEPROXY_PARAM_COUNTRY: Final = "country"
+MOBILEPROXY_PARAM_PROXY_ID: Final = "proxy_id"
+
+# Response JSON field names read by the provider. buyProxy returns a proxy port id +
+# host:port + login/password creds; getBalance returns a numeric balance.
+MOBILEPROXY_FIELD_ID: Final = "proxy_id"
+MOBILEPROXY_FIELD_HOST: Final = "proxy_host"
+MOBILEPROXY_FIELD_PORT_SOCKS: Final = "proxy_socks5_port"
+MOBILEPROXY_FIELD_LOGIN: Final = "proxy_login"
+MOBILEPROXY_FIELD_PASSWORD: Final = "proxy_pass"
+MOBILEPROXY_FIELD_EXPIRES_AT: Final = "expires_at"
+MOBILEPROXY_FIELD_BALANCE: Final = "balance"
+
+# The proxy URI scheme — SOCKS5 (Telethon/MTProto-over-SOCKS5; see research).
+MOBILEPROXY_PROXY_SCHEME: Final = "socks5"
+
+# httpx client timeout for Mobileproxy.space calls (seconds) — mirrors SMSPVA.
+MOBILEPROXY_HTTP_TIMEOUT_SECONDS: Final = 15.0
+
+# httpx 2xx success band (mirrors SMSPVA_HTTP_OK_*).
+MOBILEPROXY_HTTP_OK_FLOOR: Final = 200
+MOBILEPROXY_HTTP_OK_CEIL: Final = 300
+# Auth-rejection status band (401 Unauthorized / 403 Forbidden) → ProxyProviderAuthError.
+MOBILEPROXY_HTTP_UNAUTHORIZED: Final = 401
+MOBILEPROXY_HTTP_FORBIDDEN: Final = 403
+
+# --- FakeProxyProvider deterministic fixtures (TASK-139, CI-safe, no network). The
+# fake builds a `socks5://user:pass@host:port` lease from these + a monotonic counter
+# so allocate is deterministic but lease ids are unique within a provider instance. ---
+FAKE_PROXY_SCHEME: Final = MOBILEPROXY_PROXY_SCHEME
+FAKE_PROXY_HOST: Final = "127.0.0.1"
+FAKE_PROXY_PORT: Final = 1080
+FAKE_PROXY_LOGIN: Final = "fake-user"
+FAKE_PROXY_PASSWORD: Final = "fake-pass"
+FAKE_PROXY_LEASE_ID_PREFIX: Final = "fake-proxy-"
+FAKE_PROXY_DEFAULT_BALANCE: Final = "100.00"
+
 # --- Factory orchestration (TASK-134, Layer B1+B4+B5). The single beat task plus its
 # named defaults (CONVENTIONS: no magic literals — budget/probation/interval/price). ---
 
