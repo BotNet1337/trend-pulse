@@ -52,6 +52,7 @@ from api.rate_limit import limiter, rate_limit_handler
 from api.referral import router as referral_router
 from api.routes import account_router, ops_router
 from api.routes.email_unsubscribe import router as email_unsubscribe_router
+from api.routes.factory import router as factory_router
 from api.routes.ops_business import router as ops_business_router
 from api.routes.pool_admin import router as pool_admin_router
 from api.security.csrf import CSRFOriginMiddleware
@@ -367,6 +368,10 @@ v1_router.include_router(ops_business_router)
 # --- Pool-admin (TASK-116): POST/GET /pool-admin/qr-login/* + GET /pool-admin/pool-health
 # — superuser-only QR-login + pool-health snapshot read (EPIC-TG-QR-POOL). ---
 v1_router.include_router(pool_admin_router)
+
+# --- Factory-admin (TASK-135): POST/GET /factory/accounts + GET /factory/budget
+# — superuser-only account-factory provisioning trigger + list + budget read. ---
+v1_router.include_router(factory_router)
 
 # Mount the versioned router on the app (all routes become /v1/...).
 app.include_router(v1_router)
