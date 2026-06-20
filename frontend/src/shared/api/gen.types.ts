@@ -418,6 +418,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/factory/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all factory accounts (superuser only)
+         * @description Return all factory accounts across every state, ordered by id.
+         *
+         *     Iterates ``FACTORY_STATES`` and aggregates results from
+         *     ``factory_account_store.list_by_state``; the combined list is then sorted by
+         *     id for a stable, deterministic ordering. Works even when the provider is
+         *     unset (read-only — no provider gate). ``session_string`` and ``proxy`` are
+         *     NEVER included in the response.
+         */
+        get: operations["list_factory_accounts_v1_factory_accounts_get"];
+        put?: never;
+        /**
+         * Trigger a factory provisioning tick (superuser only)
+         * @description Enqueue / invoke a synchronous factory tick, then return 202 + summary.
+         *
+         *     Provider gate: if ``account_factory_provider`` is unset/empty → 503 with a
+         *     non-secret message (no stack leak). With a provider set the tick runs
+         *     in-process via ``run_in_threadpool`` (the tick is sync + opens its own DB
+         *     session) and returns a summary. The tick is best-effort — an unexpected
+         *     error inside it is logged (exception class only, no secrets) and surfaces as
+         *     500 via the unified envelope.
+         *
+         *     The tick runner is injected via ``get_factory_tick_runner()`` so tests can
+         *     substitute a no-op or a fakeredis-backed runner without touching factory core.
+         */
+        post: operations["trigger_factory_tick_v1_factory_accounts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/factory/accounts/{account_id}/relogin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-trigger provisioning for a factory account (superuser only)
+         * @description Re-register / relogin a factory account by triggering a provisioning tick.
+         *
+         *     Provider gate: 503 when ``account_factory_provider`` is unset/empty (mutating).
+         *     Existence gate: 404 when no factory account with ``account_id`` exists.
+         *
+         *     Since targeted single-account re-registration is outside TASK-134's scope (do
+         *     NOT touch factory core), this endpoint triggers the same full factory tick that
+         *     ``POST /factory/accounts`` uses. A future targeted relogin can slot in here once
+         *     factory core exposes a per-account re-register entrypoint. The 202 signals that
+         *     the tick was dispatched; the caller should poll GET /factory/accounts to observe
+         *     any state change.
+         */
+        post: operations["relogin_factory_account_v1_factory_accounts__account_id__relogin_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/factory/budget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Factory budget summary (superuser only)
+         * @description Return budget math: budget / spent / remaining + provider / enabled.
+         *
+         *     ``spent_usd`` is ``total_spent_usd`` — the sum of ``cost_usd`` across ALL factory
+         *     rows, INTENTIONALLY including terminal ``failed``/``banned`` accounts: real provider
+         *     money was spent on those buys (sunk cost), so the budget hard-cap counts them. This
+         *     mirrors the tick's own ``can_afford`` check, which sums the same total.
+         *
+         *     ``remaining_usd = max(0, budget_usd - spent_usd)`` — never negative even if the
+         *     stored spend exceeds the configured budget (an operator may lower the budget after
+         *     spend has accrued). Money is ``Decimal`` throughout (never float).
+         *
+         *     Works even when ``account_factory_provider`` is unset: ``enabled=False`` and
+         *     ``provider=""`` signal the unconfigured state without blocking the read.
+         */
+        get: operations["get_factory_budget_v1_factory_budget_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/feedback/{token}": {
         parameters: {
             query?: never;
@@ -990,6 +1092,26 @@ export interface components {
             token: string;
         };
         /**
+         * BudgetOut
+         * @description `GET /factory/budget` — budget math.
+         *
+         *     ``budget_usd``/``spent_usd``/``remaining_usd`` are Decimal-serialised strings.
+         *     ``provider`` is the configured slug (empty string when unset).
+         *     ``enabled`` is True iff ``account_factory_provider`` is non-empty.
+         */
+        BudgetOut: {
+            /** Budget Usd */
+            budget_usd: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Provider */
+            provider: string;
+            /** Remaining Usd */
+            remaining_usd: string;
+            /** Spent Usd */
+            spent_usd: string;
+        };
+        /**
          * BusinessMetricsResponse
          * @description Aggregate business metrics response (no per-user data, extra='forbid').
          *
@@ -1106,6 +1228,46 @@ export interface components {
             detail: string | {
                 [key: string]: string;
             };
+        };
+        /**
+         * FactoryAccountOut
+         * @description `GET /factory/accounts` — a single factory account row.
+         *
+         *     NEVER includes ``session_string`` or ``proxy`` — both are secrets. ``phone_masked``
+         *     is already masked at rest and is safe to surface. ``tg_user_id`` is the public
+         *     Telegram numeric id (non-secret identity), present only from the ``registered`` state.
+         */
+        FactoryAccountOut: {
+            /** Cost Usd */
+            cost_usd: string;
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Last Error */
+            last_error: string | null;
+            /** Phone Masked */
+            phone_masked: string;
+            /** Probation Until */
+            probation_until: string | null;
+            /** Provider */
+            provider: string;
+            /** Provider Order Id */
+            provider_order_id: string;
+            /** State */
+            state: string;
+            /** Tg User Id */
+            tg_user_id: number | null;
+            /** Updated At */
+            updated_at: string;
+        };
+        /**
+         * FactoryTriggerOut
+         * @description `POST /factory/accounts` — summary returned after triggering a tick (202).
+         */
+        FactoryTriggerOut: {
+            /** Status */
+            status: string;
         };
         /**
          * FunnelDayRow
@@ -2322,6 +2484,97 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_factory_accounts_v1_factory_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactoryAccountOut"][];
+                };
+            };
+        };
+    };
+    trigger_factory_tick_v1_factory_accounts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactoryTriggerOut"];
+                };
+            };
+        };
+    };
+    relogin_factory_account_v1_factory_accounts__account_id__relogin_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactoryTriggerOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_factory_budget_v1_factory_budget_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetOut"];
                 };
             };
         };

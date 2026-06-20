@@ -377,6 +377,41 @@
         "title": "Body_verify_verify_v1_auth_verify_post",
         "type": "object"
       },
+      "BudgetOut": {
+        "additionalProperties": false,
+        "description": "`GET /factory/budget` — budget math.\n\n``budget_usd``/``spent_usd``/``remaining_usd`` are Decimal-serialised strings.\n``provider`` is the configured slug (empty string when unset).\n``enabled`` is True iff ``account_factory_provider`` is non-empty.",
+        "properties": {
+          "budget_usd": {
+            "title": "Budget Usd",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "remaining_usd": {
+            "title": "Remaining Usd",
+            "type": "string"
+          },
+          "spent_usd": {
+            "title": "Spent Usd",
+            "type": "string"
+          }
+        },
+        "required": [
+          "budget_usd",
+          "spent_usd",
+          "remaining_usd",
+          "provider",
+          "enabled"
+        ],
+        "title": "BudgetOut",
+        "type": "object"
+      },
       "BusinessMetricsResponse": {
         "additionalProperties": false,
         "description": "Aggregate business metrics response (no per-user data, extra='forbid').\n\nAll fields are global aggregates; no `email`, `user_id`, or other PII.\n`extra='forbid'` means an accidental per-user field would raise at response\nvalidation time, making the invariant structurally enforced.",
@@ -610,6 +645,107 @@
           "detail"
         ],
         "title": "ErrorModel",
+        "type": "object"
+      },
+      "FactoryAccountOut": {
+        "additionalProperties": false,
+        "description": "`GET /factory/accounts` — a single factory account row.\n\nNEVER includes ``session_string`` or ``proxy`` — both are secrets. ``phone_masked``\nis already masked at rest and is safe to surface. ``tg_user_id`` is the public\nTelegram numeric id (non-secret identity), present only from the ``registered`` state.",
+        "properties": {
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "phone_masked": {
+            "title": "Phone Masked",
+            "type": "string"
+          },
+          "probation_until": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Probation Until"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "provider_order_id": {
+            "title": "Provider Order Id",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "tg_user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tg User Id"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "phone_masked",
+          "provider",
+          "provider_order_id",
+          "tg_user_id",
+          "probation_until",
+          "cost_usd",
+          "last_error",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "FactoryAccountOut",
+        "type": "object"
+      },
+      "FactoryTriggerOut": {
+        "additionalProperties": false,
+        "description": "`POST /factory/accounts` — summary returned after triggering a tick (202).",
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "FactoryTriggerOut",
         "type": "object"
       },
       "FunnelDayRow": {
@@ -2683,6 +2819,137 @@
         "summary": "Unsubscribe",
         "tags": [
           "email"
+        ]
+      }
+    },
+    "/v1/factory/accounts": {
+      "get": {
+        "description": "Return all factory accounts across every state, ordered by id.\n\nIterates ``FACTORY_STATES`` and aggregates results from\n``factory_account_store.list_by_state``; the combined list is then sorted by\nid for a stable, deterministic ordering. Works even when the provider is\nunset (read-only — no provider gate). ``session_string`` and ``proxy`` are\nNEVER included in the response.",
+        "operationId": "list_factory_accounts_v1_factory_accounts_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FactoryAccountOut"
+                  },
+                  "title": "Response List Factory Accounts V1 Factory Accounts Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List all factory accounts (superuser only)",
+        "tags": [
+          "factory"
+        ]
+      },
+      "post": {
+        "description": "Enqueue / invoke a synchronous factory tick, then return 202 + summary.\n\nProvider gate: if ``account_factory_provider`` is unset/empty → 503 with a\nnon-secret message (no stack leak). With a provider set the tick runs\nin-process via ``run_in_threadpool`` (the tick is sync + opens its own DB\nsession) and returns a summary. The tick is best-effort — an unexpected\nerror inside it is logged (exception class only, no secrets) and surfaces as\n500 via the unified envelope.\n\nThe tick runner is injected via ``get_factory_tick_runner()`` so tests can\nsubstitute a no-op or a fakeredis-backed runner without touching factory core.",
+        "operationId": "trigger_factory_tick_v1_factory_accounts_post",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactoryTriggerOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Trigger a factory provisioning tick (superuser only)",
+        "tags": [
+          "factory"
+        ]
+      }
+    },
+    "/v1/factory/accounts/{account_id}/relogin": {
+      "post": {
+        "description": "Re-register / relogin a factory account by triggering a provisioning tick.\n\nProvider gate: 503 when ``account_factory_provider`` is unset/empty (mutating).\nExistence gate: 404 when no factory account with ``account_id`` exists.\n\nSince targeted single-account re-registration is outside TASK-134's scope (do\nNOT touch factory core), this endpoint triggers the same full factory tick that\n``POST /factory/accounts`` uses. A future targeted relogin can slot in here once\nfactory core exposes a per-account re-register entrypoint. The 202 signals that\nthe tick was dispatched; the caller should poll GET /factory/accounts to observe\nany state change.",
+        "operationId": "relogin_factory_account_v1_factory_accounts__account_id__relogin_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactoryTriggerOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Re-trigger provisioning for a factory account (superuser only)",
+        "tags": [
+          "factory"
+        ]
+      }
+    },
+    "/v1/factory/budget": {
+      "get": {
+        "description": "Return budget math: budget / spent / remaining + provider / enabled.\n\n``spent_usd`` is ``total_spent_usd`` — the sum of ``cost_usd`` across ALL factory\nrows, INTENTIONALLY including terminal ``failed``/``banned`` accounts: real provider\nmoney was spent on those buys (sunk cost), so the budget hard-cap counts them. This\nmirrors the tick's own ``can_afford`` check, which sums the same total.\n\n``remaining_usd = max(0, budget_usd - spent_usd)`` — never negative even if the\nstored spend exceeds the configured budget (an operator may lower the budget after\nspend has accrued). Money is ``Decimal`` throughout (never float).\n\nWorks even when ``account_factory_provider`` is unset: ``enabled=False`` and\n``provider=\"\"`` signal the unconfigured state without blocking the read.",
+        "operationId": "get_factory_budget_v1_factory_budget_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Factory budget summary (superuser only)",
+        "tags": [
+          "factory"
         ]
       }
     },
